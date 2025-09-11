@@ -31,7 +31,7 @@ const itemVariants = {
 
 export default function IsoFooter() {
   return (
-    <Box sx={{ bgcolor: "#012a4a", color: "white", pt: 8, pb: 4 }}>
+    <Box sx={{ bgcolor: "#012a4a", color: "white", pt: 12, pb: 4 }}>
       <Container
         component={motion.div}
         variants={containerVariants}
@@ -40,7 +40,7 @@ export default function IsoFooter() {
         viewport={{ once: true, amount: 0.2 }}
       >
         {/* Top Section */}
-        <Grid container spacing={6} sx={{ mb: 6 }}>
+        <Grid container spacing={6} sx={{ mb: 12 }}>
           {/* Left Side */}
           <Grid item xs={12} md={6}>
             <motion.div variants={itemVariants}>
