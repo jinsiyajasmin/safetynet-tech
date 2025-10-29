@@ -17,7 +17,8 @@ import { motion } from "framer-motion";
 import IsoTrustSection from "./components/IsoTrustSection";
 import IsoFeaturesSection from "./components/IsoFeaturesSection";
 import IsoFooter from "./components/IsoFooter";
-
+import FAQSection from "./components/FAQSection";
+import { Link as RouterLink } from "react-router-dom";
 
 export default function Home() {
     const heroVariants = {
@@ -80,7 +81,7 @@ export default function Home() {
 
                                 {/* Menu */}
                                 <Box sx={{ display: "flex", gap: 4, alignItems: "center" }}>
-                                    {["Home", "How it works?", "Contact Us", "Learn"].map((item) => (
+                                    {["Home", "How it works?", "Contact Us",].map((item) => (
                                         <Button
                                             key={item}
                                             disableRipple
@@ -102,6 +103,8 @@ export default function Home() {
                                 {/* Actions */}
                                 <Box sx={{ display: "flex", gap: 2 }}>
                                     <Button
+                                        component={RouterLink}
+                                        to="/login"
                                         variant="outlined"
                                         sx={{
                                             borderRadius: "10px",
@@ -112,6 +115,8 @@ export default function Home() {
                                         Login
                                     </Button>
                                     <Button
+                                      component={RouterLink}
+                                        to="/signup"
                                         variant="contained"
                                         sx={{
                                             borderRadius: "10px",
@@ -508,7 +513,9 @@ export default function Home() {
             </Box>
             <IsoTrustSection />
             <IsoFeaturesSection />
-         <IsoFooter /> 
+            <FAQSection />
+
+            <IsoFooter />
         </>
     );
 }

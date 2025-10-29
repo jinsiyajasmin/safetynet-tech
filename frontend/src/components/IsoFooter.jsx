@@ -160,9 +160,7 @@ export default function IsoFooter() {
               <Link href="#features" underline="none" sx={{ color: "white" }}>
                 Features
               </Link>
-              <Link href="#services" underline="none" sx={{ color: "white" }}>
-                Services
-              </Link>
+              
               <Link href="#contact" underline="none" sx={{ color: "white" }}>
                 Contact
               </Link>
