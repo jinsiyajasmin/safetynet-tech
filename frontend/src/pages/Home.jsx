@@ -14,10 +14,11 @@ import {
 } from "@mui/material";
 import ShieldIcon from "@mui/icons-material/Security";
 import { motion } from "framer-motion";
-import IsoTrustSection from "./components/IsoTrustSection";
-import IsoFeaturesSection from "./components/IsoFeaturesSection";
-import IsoFooter from "./components/IsoFooter";
-import FAQSection from "./components/FAQSection";
+
+import IsoTrustSection from "../components/IsoTrustSection";
+import IsoFeaturesSection from "../components/IsoFeaturesSection";
+import IsoFooter from "../components/IsoFooter";
+import FAQSection from "../components/FAQSection";
 import { Link as RouterLink } from "react-router-dom";
 
 export default function Home() {
@@ -115,7 +116,7 @@ export default function Home() {
                                         Login
                                     </Button>
                                     <Button
-                                      component={RouterLink}
+                                        component={RouterLink}
                                         to="/signup"
                                         variant="contained"
                                         sx={{

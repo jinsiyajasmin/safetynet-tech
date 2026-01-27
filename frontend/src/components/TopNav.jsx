@@ -27,11 +27,31 @@ export default function TopNav({ onMenuClick }) {
   const navigate = useNavigate();
   const [openDrawer, setOpenDrawer] = useState(false);
 
-  // get name, email, and profile picture (from localStorage if saved)
-  const name = localStorage.getItem("name") || "John Doe";
-  const email = localStorage.getItem("email") || "John@gmail.com";
-  const profilePic =
-    localStorage.getItem("profilePic") || "/profile-placeholder.jpg"; // 🔹 use your default image path
+  // get user from localStorage
+  const [user, setUser] = useState(null);
+
+  React.useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (e) {
+        console.error("Failed to parse user from local storage", e);
+      }
+    }
+  }, []);
+
+  const name = user?.firstName ? `${user.firstName} ${user.lastName || ""}` : (user?.username || "User");
+  const email = user?.email || "";
+  const profilePic = user?.avatar;
+
+  // Get initials (First letter of First Name + First letter of Last Name)
+  const getInitials = () => {
+    if (user?.firstName) {
+      return (user.firstName.charAt(0) + (user.lastName ? user.lastName.charAt(0) : "")).toUpperCase();
+    }
+    return (user?.username || "U").charAt(0).toUpperCase();
+  };
 
   const toggleDrawer = (open) => () => setOpenDrawer(open);
 
@@ -100,13 +120,13 @@ export default function TopNav({ onMenuClick }) {
               alt={name}
               sx={{
                 width: 48,
-                height:48,
+                height: 48,
                 bgcolor: "#0d5d97ff",
                 color: "white",
                 fontWeight: 600,
               }}
             >
-              {!profilePic && name.charAt(0).toUpperCase()}
+              {!profilePic && getInitials()}
             </Avatar>
           </IconButton>
         </Toolbar>
@@ -169,7 +189,7 @@ export default function TopNav({ onMenuClick }) {
                 fontWeight: 700,
               }}
             >
-              {!profilePic && name.charAt(0).toUpperCase()}
+              {!profilePic && getInitials()}
             </Avatar>
           </Box>
 
@@ -212,7 +232,7 @@ export default function TopNav({ onMenuClick }) {
               <ListItemText primary="Profile" />
             </ListItemButton>
 
-            
+
             <ListItemButton
               onClick={() => handleNavigate("/templates")}
               sx={{ py: 1.25, px: 3 }}

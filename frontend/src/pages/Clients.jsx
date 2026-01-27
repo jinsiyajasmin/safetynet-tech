@@ -1,4 +1,3 @@
-// src/pages/Clients.jsx
 import React, { useEffect, useRef, useState } from "react";
 import {
   Box,
@@ -22,13 +21,15 @@ import {
   Snackbar,
   Alert,
 } from "@mui/material";
-import OpenInNewIcon from "@mui/icons-material/OpenInNew";
-import AddIcon from "@mui/icons-material/Add";
-import MoreVertIcon from "@mui/icons-material/MoreVert";
+import {
+  OpenInNew as OpenInNewIcon,
+  Add as AddIcon,
+  MoreVert as MoreVertIcon,
+} from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar.jsx";
 import TopNav from "../components/TopNav";
-import api from "../api.jsx";
+import api from "../services/api";
 
 // helper to build absolute URL for logos saved as /uploads/filename
 const computeLogoUrl = (logo) => {
@@ -67,7 +68,11 @@ export default function ClientsPage() {
 
   const previewRef = useRef("");
 
-  const onOpen = (client) => navigate(`/clients/${client.id ?? client._id}`);
+  // navigate to users of a client
+  const onOpen = (client) => {
+    const id = client?._id ?? client?.id;
+    if (id) navigate(`/clients/${id}/users`);
+  };
 
   // fetch clients
   const fetchClients = async () => {
@@ -108,6 +113,7 @@ export default function ClientsPage() {
 
   // ---- modal open for edit ----
   const openEditModal = (client) => {
+    if (!client) return;
     if (previewRef.current) {
       URL.revokeObjectURL(previewRef.current);
       previewRef.current = "";
@@ -174,7 +180,9 @@ export default function ClientsPage() {
     return Object.keys(e).length === 0;
   };
 
-  // create handler (unchanged)
+  // create handler
+  // inside Clients.jsx
+  // --- create handler (robust) ---
   const handleCreate = async () => {
     if (!validateForm()) return;
     setSubmitting(true);
@@ -182,22 +190,47 @@ export default function ClientsPage() {
       const data = new FormData();
       data.append("name", form.name.trim());
       if (form.file) data.append("logo", form.file);
+
       const res = await api.post("/clients", data);
-      const created = res?.data?.client;
+      // accept either res.data.client or res.data as the created object
+      const created = res?.data?.client ?? res?.data;
+
       if (created) {
-        setClients((prev) => [created, ...prev]);
+        // Normalize the created client to have _id and/or id
+        const normalized = {
+          _id: created.id ?? created._id ?? created._id,
+          id: created.id ?? (created._id ? created._id.toString() : undefined),
+          name: created.name,
+          logo: created.logo ?? created.logoUrl ?? created.logo_url ?? null,
+          ...created,
+        };
+
+        // add new client to top of list
+        setClients((prev) => [normalized, ...prev]);
+
         setSuccessMsg("Client created successfully!");
         setOpenSnackbar(true);
       } else {
+        // fallback: refetch
         await fetchClients();
       }
+
       closeModal();
+      // replace catch in handleCreate
     } catch (err) {
       console.error("Create client failed", err);
-    } finally {
+      console.error("Requested URL:", err.config?.url);
+      console.error("Full request config:", err.config);
+      console.error("Status:", err.response?.status);
+      console.error("Response data:", err.response?.data);
+      const data = err?.response?.data;
+      if (data?.message) setErrors((p) => ({ ...p, form: data.message }));
+    }
+    finally {
       setSubmitting(false);
     }
   };
+
 
   // update handler
   const handleUpdate = async (id) => {
@@ -206,13 +239,11 @@ export default function ClientsPage() {
     try {
       const data = new FormData();
       data.append("name", form.name.trim());
-      // if user selected a new file, append it; else backend will keep old logo
       if (form.file) data.append("logo", form.file);
 
       const res = await api.put(`/clients/${id}`, data);
       const updated = res?.data?.client;
       if (updated) {
-        // merge into clients list
         setClients((prev) =>
           prev.map((c) => (c.id === id || c._id === id ? updated : c))
         );
@@ -254,6 +285,9 @@ export default function ClientsPage() {
         setClients((prev) => prev.filter((c) => c.id !== id && c._id !== id));
         setSuccessMsg("Client deleted successfully!");
         setOpenSnackbar(true);
+      } else {
+        // optional: show backend message if any
+        console.warn("Delete returned:", res?.data);
       }
     } catch (err) {
       console.error("Delete client failed:", err);
@@ -273,7 +307,7 @@ export default function ClientsPage() {
         <Box
           component="aside"
           sx={{
-            width: { xs: 0, md: 320 },
+            width: { xs: 0, md: 260 },
             flexShrink: 0,
             alignSelf: "flex-start",         // allow sticky to work correctly
             position: "sticky",
@@ -287,7 +321,6 @@ export default function ClientsPage() {
         </Box>
 
         {/* Main */}
-
         <Box
           component="main"
           sx={{
@@ -313,7 +346,7 @@ export default function ClientsPage() {
           ) : (
             <Grid container spacing={3}>
               {clients.map((client) => (
-                <Grid key={client.id ?? client._id ?? client.name}>
+                <Grid key={client.id ?? client._id ?? client.name} item xs={12} sm={6} md={4} lg={3}>
                   <Card variant="outlined" sx={{ width: CARD_WIDTH, height: CARD_HEIGHT, display: "flex", flexDirection: "column", justifyContent: "space-between", borderRadius: 2, boxShadow: "0 6px 18px rgba(2,6,23,0.04)", transition: "transform .15s ease, box-shadow .15s ease", "&:hover": { transform: "translateY(-6px)", boxShadow: "0 14px 28px rgba(2,6,23,0.10)" }, position: "relative" }}>
                     <IconButton sx={{ position: "absolute", top: 4, right: 4, color: "gray" }} onClick={(e) => handleMenuOpen(e, client)}>
                       <MoreVertIcon />
@@ -332,9 +365,11 @@ export default function ClientsPage() {
                     </CardContent>
 
                     <CardActions sx={{ justifyContent: "flex-start", pb: 2 }}>
-                      <Button variant="outlined" startIcon={<OpenInNewIcon />} onClick={() => onOpen(client)} sx={{ textTransform: "none", borderRadius: 1.5, px: 3, py: 0.5, fontSize: "1rem" }}>
-                        Open
-                      </Button>
+                      {String(client.name).toLowerCase() !== "safetynett" && (
+                        <Button variant="outlined" startIcon={<OpenInNewIcon />} onClick={() => onOpen(client)} sx={{ textTransform: "none", borderRadius: 1.5, px: 3, py: 0.5, fontSize: "1rem" }}>
+                          Open
+                        </Button>
+                      )}
                     </CardActions>
                   </Card>
                 </Grid>

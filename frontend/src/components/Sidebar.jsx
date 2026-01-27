@@ -10,7 +10,6 @@ import {
   Collapse,
 } from "@mui/material";
 
-// icons (outlined / modern variants)
 import AssessmentOutlinedIcon from "@mui/icons-material/AssessmentOutlined";
 import HealthAndSafetyOutlinedIcon from "@mui/icons-material/HealthAndSafetyOutlined";
 import SpaOutlinedIcon from "@mui/icons-material/SpaOutlined";
@@ -28,15 +27,16 @@ import AppRegistrationOutlinedIcon from "@mui/icons-material/AppRegistrationOutl
 import TrendingUpOutlinedIcon from "@mui/icons-material/TrendingUpOutlined";
 import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
+
+
+
 
 import { Link as RouterLink, useLocation } from "react-router-dom";
-import TopNav from "./TopNav";
 
 /* === config === */
-// dark blue for text & icon when active
-const ACTIVE_COLOR = "#0B4DA6"; // dark blue
-// light blue background for active / selected row
-const ACTIVE_BG = "#E8F1FF"; // very light blue
+const ACTIVE_COLOR = "#0B4DA6";
+const ACTIVE_BG = "#E8F1FF";
 
 const DASHBOARD_GROUP = {
   id: "dashboard",
@@ -48,18 +48,28 @@ const DASHBOARD_GROUP = {
   ],
 };
 
+// keep full menu definition here but we'll filter it later based on user/company
 const MENU_GROUPS = [
   { id: "clients", heading: "Clients", icon: <PeopleAltOutlinedIcon />, to: "/clients" },
+  // {
+  //   id: "user-access",
+  //   heading: "User access",
+  //   icon: <PersonAddAltOutlinedIcon />,
+  //   items: [
+  //     { id: "enable-user", label: "Enable user access", to: "/enable-user" },
+  //     { id: "reset-auth", label: "Reset user authentication", to: "/reset-auth" },
+  //   ],
+  // },
   {
-    id: "user-access",
-    heading: "User access",
-    icon: <PersonAddAltOutlinedIcon />,
-    items: [
-      { id: "enable-user", label: "Enable user access", to: "/enable-user" },
-      { id: "reset-auth", label: "Reset user authentication", to: "/reset-auth" },
-    ],
+    id: "form-build",
+    heading: "Form Builder",
+    icon: <BuildOutlinedIcon />,
+    to: "/forms",
   },
-  { id: "emergency", heading: "Emergency announcement", icon: <CampaignOutlinedIcon />, to: "/emergency" },
+
+
+
+  // { id: "emergency", heading: "Emergency announcement", icon: <CampaignOutlinedIcon />, to: "/emergency" },
   { id: "users", heading: "Users", icon: <PeopleOutlineOutlinedIcon />, to: "/users" },
   {
     id: "report-concern",
@@ -118,12 +128,35 @@ const MENU_GROUPS = [
 
 export default function Sidebar({ sx = {} }) {
   const location = useLocation();
-  // changed initial openGroup to null so no group is expanded/active by default
   const [openGroup, setOpenGroup] = useState(null);
-
   const toggleGroup = (id) => setOpenGroup((prev) => (prev === id ? null : id));
 
-  // NEW: check active by "startsWith" so /clients and /clients/:id both match clients
+  // read currently signed-in user from localStorage (where your login stores it)
+  // this is simple and works well for your current setup. For larger apps use Context.
+  let currentUser = null;
+  try {
+    currentUser = JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    currentUser = null;
+  }
+
+  // show Clients item only when companyname === 'safetynett' (case-insensitive)
+  const showClients = !!(
+    currentUser &&
+    typeof currentUser.companyname === "string" &&
+    currentUser.companyname.trim().toLowerCase() === "safetynett"
+  );
+
+  // filter menu based on showClients flag
+  const visibleMenu = MENU_GROUPS.filter((g) => {
+    if (g.id === "clients") return showClients;
+    if (g.id === "users") {
+      // Hide users menu if role is user
+      return currentUser?.role !== "user";
+    }
+    return true;
+  });
+
   const isActive = (to) => {
     if (!to) return false;
     const path = location.pathname || "";
@@ -137,192 +170,179 @@ export default function Sidebar({ sx = {} }) {
   });
 
   return (
-    <>
-      <Box
-        component="nav"
-        sx={{
-          width: { xs: "100%", md: 320 },
-          flexShrink: 0,
-          bgcolor: "background.paper",
-          borderRight: "1px solid",
-          borderColor: "divider",
-          height: "100vh",
-          px: { xs: 2, md: 3 },
-          py: { xs: 2, md: 4 },
-          overflowY: "auto",
-          ...sx,
-        }}
-      >
-        {/* Logo */}
-       
+    <Box
+      component="nav"
+      sx={{
+        width: { xs: "100%", md: 260 },
+        flexShrink: 0,
+        bgcolor: "background.paper",
+        borderRight: "1px solid",
+        borderColor: "divider",
+        height: "100vh",
+        px: { xs: 2, md: 3 },
+        py: { xs: 2, md: 4 },
+        overflowY: "auto",
+        ...sx,
+      }}
+    >
+      <Typography variant="overline" sx={{ color: "text.secondary", mb: 1, display: "block" }}>
+        OVERVIEW
+      </Typography>
 
-        {/* OVERVIEW */}
-        <Typography variant="overline" sx={{ color: "text.secondary", mb: 1, display: "block" }}>
-          OVERVIEW
-        </Typography>
+      <Box sx={{ mb: 2 }}>
+        <ListItemButton
+          onClick={() => toggleGroup(DASHBOARD_GROUP.id)}
+          sx={{
+            pl: 0,
+            py: 0.75,
+            "&:hover": { bgcolor: "action.hover" },
+            bgcolor: openGroup === DASHBOARD_GROUP.id ? ACTIVE_BG : "transparent",
+          }}
+        >
+          <ListItemIcon sx={{ minWidth: 36, color: openGroup === DASHBOARD_GROUP.id ? ACTIVE_COLOR : "text.secondary" }}>
+            {DASHBOARD_GROUP.icon}
+          </ListItemIcon>
 
-        {/* Dashboard group */}
-        <Box sx={{ mb: 2 }}>
-          <ListItemButton
-            onClick={() => toggleGroup(DASHBOARD_GROUP.id)}
+          <ListItemText primary={DASHBOARD_GROUP.heading} primaryTypographyProps={headingTypographyProps(openGroup === DASHBOARD_GROUP.id)} />
+
+          <ExpandMoreIcon
             sx={{
-              pl: 0,
-              py: 0.75,
-              "&:hover": { bgcolor: "action.hover" },
-              bgcolor: openGroup === DASHBOARD_GROUP.id ? ACTIVE_BG : "transparent",
+              color: "text.secondary",
+              transform: openGroup === DASHBOARD_GROUP.id ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 0.18s ease",
             }}
-          >
-            <ListItemIcon sx={{ minWidth: 36, color: openGroup === DASHBOARD_GROUP.id ? ACTIVE_COLOR : "text.secondary" }}>
-              {DASHBOARD_GROUP.icon}
-            </ListItemIcon>
+          />
+        </ListItemButton>
 
-            <ListItemText primary={DASHBOARD_GROUP.heading} primaryTypographyProps={headingTypographyProps(openGroup === DASHBOARD_GROUP.id)} />
+        <Collapse in={openGroup === DASHBOARD_GROUP.id} timeout="auto" unmountOnExit>
+          <Box sx={{ ml: 4.5, mt: 0.5, position: "relative" }}>
+            <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "2px", bgcolor: "#e5e7eb" }} />
+            {DASHBOARD_GROUP.items.map((it) => {
+              const active = isActive(it.to);
+              return (
+                <Box key={it.id} sx={{ position: "relative" }}>
+                  <Box sx={{ position: "absolute", left: 0, top: "50%", width: "16px", height: "2px", bgcolor: "#e5e7eb" }} />
 
-            <ExpandMoreIcon
-              sx={{
-                color: "text.secondary",
-                transform: openGroup === DASHBOARD_GROUP.id ? "rotate(180deg)" : "rotate(0deg)",
-                transition: "transform 0.18s ease",
-              }}
-            />
-          </ListItemButton>
-
-          <Collapse in={openGroup === DASHBOARD_GROUP.id} timeout="auto" unmountOnExit>
-            <Box sx={{ ml: 4.5, mt: 0.5, position: "relative" }}>
-              {/* vertical connector */}
-              <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "2px", bgcolor: "#e5e7eb" }} />
-
-              {DASHBOARD_GROUP.items.map((it) => {
-                const active = isActive(it.to);
-                return (
-                  <Box key={it.id} sx={{ position: "relative" }}>
-                    {/* horizontal connector */}
-                    <Box sx={{ position: "absolute", left: 0, top: "50%", width: "16px", height: "2px", bgcolor: "#e5e7eb" }} />
-
-                    <ListItemButton
-                      component={RouterLink}
-                      to={it.to}
-                      selected={active}
-                      sx={{
-                        pl: 3,
-                        py: 0.6,
-                        borderRadius: 1,
-                        bgcolor: active ? ACTIVE_BG : "transparent",
+                  <ListItemButton
+                    component={RouterLink}
+                    to={it.to}
+                    selected={active}
+                    sx={{
+                      pl: 3,
+                      py: 0.6,
+                      borderRadius: 1,
+                      bgcolor: active ? ACTIVE_BG : "transparent",
+                      color: active ? ACTIVE_COLOR : "text.secondary",
+                      "& .MuiListItemIcon-root": { color: active ? ACTIVE_COLOR : "text.secondary" },
+                      "&:hover": { bgcolor: "action.hover" },
+                    }}
+                  >
+                    <ListItemText
+                      primary={it.label}
+                      primaryTypographyProps={{
+                        fontSize: "0.95rem",
+                        fontWeight: active ? 600 : 400,
                         color: active ? ACTIVE_COLOR : "text.secondary",
-                        "& .MuiListItemIcon-root": { color: active ? ACTIVE_COLOR : "text.secondary" },
-                        "&:hover": { bgcolor: "action.hover" },
                       }}
-                    >
-                      <ListItemText
-                        primary={it.label}
-                        primaryTypographyProps={{
-                          fontSize: "0.95rem",
-                          fontWeight: active ? 600 : 400,
-                          color: active ? ACTIVE_COLOR : "text.secondary",
-                        }}
-                      />
-                    </ListItemButton>
-                  </Box>
-                );
-              })}
-            </Box>
-          </Collapse>
-        </Box>
-
-        <Divider sx={{ my: 2 }} />
-
-        {/* MENU */}
-        <Typography variant="overline" sx={{ color: "text.secondary", mb: 1, display: "block" }}>
-          MENU
-        </Typography>
-
-        {MENU_GROUPS.map((group) => {
-          const expanded = openGroup === group.id;
-
-          // direct link (no sub-items)
-          if (!group.items) {
-            const active = isActive(group.to);
-            return (
-              <ListItemButton
-                key={group.id}
-                component={RouterLink}
-                to={group.to}
-                selected={active}
-                sx={{
-                  pl: 0,
-                  py: 0.75,
-                  mb: 1.5,
-                  borderRadius: 1,
-                  bgcolor: active ? ACTIVE_BG : "transparent",
-                  color: active ? ACTIVE_COLOR : "text.primary",
-                  "&:hover": { bgcolor: "action.hover" },
-                }}
-              >
-                <ListItemIcon sx={{ minWidth: 36, color: active ? ACTIVE_COLOR : "text.secondary" }}>{group.icon}</ListItemIcon>
-                <ListItemText primary={group.heading} primaryTypographyProps={headingTypographyProps(active)} />
-              </ListItemButton>
-            );
-          }
-
-          // groups with sub-items
-          return (
-            <Box key={group.id} sx={{ mb: 1.5 }}>
-              <ListItemButton
-                onClick={() => toggleGroup(group.id)}
-                sx={{
-                  pl: 0,
-                  py: 0.75,
-                  "&:hover": { bgcolor: "action.hover" },
-                  bgcolor: expanded ? ACTIVE_BG : "transparent",
-                }}
-              >
-                <ListItemIcon sx={{ minWidth: 36, color: expanded ? ACTIVE_COLOR : "text.secondary" }}>{group.icon}</ListItemIcon>
-                <ListItemText primary={group.heading} primaryTypographyProps={headingTypographyProps(expanded)} />
-                <ExpandMoreIcon sx={{ color: "text.secondary", transform: expanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.18s ease" }} />
-              </ListItemButton>
-
-              <Collapse in={expanded} timeout="auto" unmountOnExit>
-                <Box sx={{ ml: 4.5, mt: 0.5, position: "relative" }}>
-                  <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "2px", bgcolor: "#e5e7eb" }} />
-
-                  {group.items.map((it) => {
-                    const active = isActive(it.to);
-                    return (
-                      <Box key={it.id} sx={{ position: "relative" }}>
-                        <Box sx={{ position: "absolute", left: 0, top: "50%", width: "16px", height: "2px", bgcolor: "#e5e7eb" }} />
-
-                        <ListItemButton
-                          component={RouterLink}
-                          to={it.to}
-                          selected={active}
-                          sx={{
-                            pl: 3,
-                            py: 0.6,
-                            borderRadius: 1,
-                            bgcolor: active ? ACTIVE_BG : "transparent",
-                            color: active ? ACTIVE_COLOR : "text.secondary",
-                            "& .MuiListItemIcon-root": { color: active ? ACTIVE_COLOR : "text.secondary" },
-                            "&:hover": { bgcolor: "action.hover" },
-                          }}
-                        >
-                          <ListItemText
-                            primary={it.label}
-                            primaryTypographyProps={{
-                              fontSize: "0.95rem",
-                              fontWeight: active ? 600 : 400,
-                              color: active ? ACTIVE_COLOR : "text.secondary",
-                            }}
-                          />
-                        </ListItemButton>
-                      </Box>
-                    );
-                  })}
+                    />
+                  </ListItemButton>
                 </Box>
-              </Collapse>
-            </Box>
-          );
-        })}
+              );
+            })}
+          </Box>
+        </Collapse>
       </Box>
-    </>
+
+      <Divider sx={{ my: 2 }} />
+
+      <Typography variant="overline" sx={{ color: "text.secondary", mb: 1, display: "block" }}>
+        MENU
+      </Typography>
+
+      {visibleMenu.map((group) => {
+        const expanded = openGroup === group.id;
+
+        if (!group.items) {
+          const active = isActive(group.to);
+          return (
+            <ListItemButton
+              key={group.id}
+              component={RouterLink}
+              to={group.to}
+              selected={active}
+              sx={{
+                pl: 0,
+                py: 0.75,
+                mb: 1.5,
+                borderRadius: 1,
+                bgcolor: active ? ACTIVE_BG : "transparent",
+                color: active ? ACTIVE_COLOR : "text.primary",
+                "&:hover": { bgcolor: "action.hover" },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 36, color: active ? ACTIVE_COLOR : "text.secondary" }}>{group.icon}</ListItemIcon>
+              <ListItemText primary={group.heading} primaryTypographyProps={headingTypographyProps(active)} />
+            </ListItemButton>
+          );
+        }
+
+        return (
+          <Box key={group.id} sx={{ mb: 1.5 }}>
+            <ListItemButton
+              onClick={() => toggleGroup(group.id)}
+              sx={{
+                pl: 0,
+                py: 0.75,
+                "&:hover": { bgcolor: "action.hover" },
+                bgcolor: expanded ? ACTIVE_BG : "transparent",
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 36, color: expanded ? ACTIVE_COLOR : "text.secondary" }}>{group.icon}</ListItemIcon>
+              <ListItemText primary={group.heading} primaryTypographyProps={headingTypographyProps(expanded)} />
+              <ExpandMoreIcon sx={{ color: "text.secondary", transform: expanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.18s ease" }} />
+            </ListItemButton>
+
+            <Collapse in={expanded} timeout="auto" unmountOnExit>
+              <Box sx={{ ml: 4.5, mt: 0.5, position: "relative" }}>
+                <Box sx={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "2px", bgcolor: "#e5e7eb" }} />
+
+                {group.items.map((it) => {
+                  const active = isActive(it.to);
+                  return (
+                    <Box key={it.id} sx={{ position: "relative" }}>
+                      <Box sx={{ position: "absolute", left: 0, top: "50%", width: "16px", height: "2px", bgcolor: "#e5e7eb" }} />
+
+                      <ListItemButton
+                        component={RouterLink}
+                        to={it.to}
+                        selected={active}
+                        sx={{
+                          pl: 3,
+                          py: 0.6,
+                          borderRadius: 1,
+                          bgcolor: active ? ACTIVE_BG : "transparent",
+                          color: active ? ACTIVE_COLOR : "text.secondary",
+                          "& .MuiListItemIcon-root": { color: active ? ACTIVE_COLOR : "text.secondary" },
+                          "&:hover": { bgcolor: "action.hover" },
+                        }}
+                      >
+                        <ListItemText
+                          primary={it.label}
+                          primaryTypographyProps={{
+                            fontSize: "0.95rem",
+                            fontWeight: active ? 600 : 400,
+                            color: active ? ACTIVE_COLOR : "text.secondary",
+                          }}
+                        />
+                      </ListItemButton>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Collapse>
+          </Box>
+        );
+      })}
+    </Box>
   );
 }

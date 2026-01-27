@@ -9,11 +9,10 @@ import {
   AccordionSummary,
   AccordionDetails,
   Divider,
-  useTheme,
-  useMediaQuery,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { motion } from "framer-motion";
+
 
 const FAQS = [
   {
@@ -65,8 +64,6 @@ const itemVariants = {
 };
 
 export default function FAQSection() {
-  const theme = useTheme();
-  const isSm = useMediaQuery(theme.breakpoints.down("md"));
   const [expanded, setExpanded] = useState(false);
 
   const handleChange = (panel) => (_, isExpanded) => {

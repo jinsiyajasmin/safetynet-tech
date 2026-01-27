@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { Box, Container, Typography, Grid, Paper } from "@mui/material";
 import { useInView } from "react-intersection-observer";
 

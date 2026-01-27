@@ -8,6 +8,7 @@ import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import { motion } from "framer-motion";
 
+
 const isoFeatures = [
     {
         icon: (

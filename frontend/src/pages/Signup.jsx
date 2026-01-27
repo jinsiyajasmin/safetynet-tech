@@ -1,3 +1,4 @@
+// src/pages/SignupPage.jsx
 import React, { useState } from "react";
 import {
   Box,
@@ -9,11 +10,15 @@ import {
   InputAdornment,
   Alert,
   Link as MuiLink,
+  Snackbar,
 } from "@mui/material";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
-import api from "../api";
+import { useNavigate } from "react-router-dom";
+import api from "../services/api";
 
 export default function SignupPage() {
+  const navigate = useNavigate();
+
   const [form, setForm] = useState({
     username: "",
     firstName: "",
@@ -31,6 +36,9 @@ export default function SignupPage() {
   const [errors, setErrors] = useState({});
   const [serverMsg, setServerMsg] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // snackbar for success
+  const [snack, setSnack] = useState({ open: false, text: "" });
 
   const handleChange = (key) => (e) => {
     setForm((s) => ({ ...s, [key]: e.target.value }));
@@ -63,70 +71,96 @@ export default function SignupPage() {
     return Object.keys(e).length === 0;
   };
 
- const handleSubmit = async (ev) => {
-  ev.preventDefault();
-  if (!validate()) return;
+  const handleSubmit = async (ev) => {
+    ev.preventDefault();
+    if (!validate()) return;
 
-  setLoading(true);
-  setServerMsg(null);
+    setLoading(true);
+    setServerMsg(null);
 
-  try {
-    const payload = {
-      username: form.username.trim(),
-      firstName: form.firstName.trim(),
-      lastName: form.lastName.trim(),
-      email: form.email.trim().toLowerCase(),
-      jobTitle: form.jobTitle?.trim() || null,
-      employer: form.employer?.trim() || null,
-      mobile: form.mobile.trim(),
-      password: form.password,
-      passwordConfirm: form.passwordConfirm,
-    };
+    try {
+      const payload = {
+        username: form.username.trim(),
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        email: form.email.trim().toLowerCase(),
+        jobTitle: form.jobTitle?.trim() || null,
+        employer: form.employer?.trim() || null,
+        mobile: form.mobile.trim(),
+        password: form.password,
+        passwordConfirm: form.passwordConfirm,
+      };
 
-    // POST to /signup — ensure your axios instance `api` has baseURL set to /api/auth
-    const res = await api.post("/signup", payload);
+      // POST to /signup — ensure your axios instance `api` has baseURL set appropriately
+      const res = await api.post("/auth/signup", payload);
 
-    // success response shape: { success: true, message, user, token }
-    if (res?.data?.success) {
-      setServerMsg({ type: "success", text: res.data.message || "Account created" });
-      setErrors({});
-      // clear sensitive fields
-      setForm((s) => ({ ...s, password: "", passwordConfirm: "" }));
+      // success response shape: { success: true, message, user, token } (adjust to your backend)
+      // success response shape: { success: true, message, user, token }
+      if (res?.data?.success) {
+        const message = res.data.message || "Account created";
+        setServerMsg({ type: "success", text: message });
+        setErrors({});
+        setForm((s) => ({ ...s, password: "", passwordConfirm: "" }));
 
-      // store token if backend returns one (optional — you may prefer httpOnly cookie)
-      if (res.data.token) {
-        localStorage.setItem("token", res.data.token);
+        if (res.data.token) {
+          localStorage.setItem("token", res.data.token);
+        }
+
+        // show snackbar then redirect
+        setSnack({ open: true, text: message });
+
+        // store user info for later checks
+        const user = res?.data?.user;
+        if (user) localStorage.setItem("user", JSON.stringify(user));
+
+        // redirect after short delay so user sees success toast
+        setTimeout(() => {
+          const role = user?.role?.toLowerCase();
+
+          // company field may be employer or companyname depending on backend
+          const company =
+            user?.companyname ||
+            user?.employer ||
+            user?.company ||
+            "";
+
+          const normalizedCompany = company.trim().toLowerCase();
+
+          const isSuperAdmin = role === "superadmin";
+          const isSafetyNettCompany = normalizedCompany === "safetynett";
+
+          if (isSuperAdmin || isSafetyNettCompany) {
+            navigate("/clients");
+          } else {
+            navigate("/company");
+          }
+        }, 900);
+
       }
+      else {
+        setServerMsg({ type: "error", text: res.data?.message || "Signup failed" });
+      }
+    } catch (err) {
+      console.error("Signup error — full:", err);
 
-      // optionally navigate to login or dashboard here
-      // navigate('/login'); // if you're using react-router's useNavigate
-    } else {
-      setServerMsg({ type: "error", text: res.data?.message || "Signup failed" });
+      const status = err?.response?.status;
+      const data = err?.response?.data;
+
+      if (status === 400) {
+        // company not found (or other validation)
+        setServerMsg({ type: "error", text: data?.message || "Invalid company name" });
+        setErrors((prev) => ({ ...prev, employer: "Company not found" }));
+      } else if (status === 409) {
+        setServerMsg({ type: "error", text: data?.message || "Conflict" });
+      } else if (err.request && !err.response) {
+        setServerMsg({ type: "error", text: "No response from server — check backend or network" });
+      } else {
+        setServerMsg({ type: "error", text: data?.message || err.message || "Signup failed. Try again." });
+      }
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-  console.error('Signup error — full:', err);
-
-  const status = err?.response?.status;
-  const data = err?.response?.data;
-
-  // show server-provided message or full data for debugging
-  if (status === 400 && data?.errors) {
-    setErrors((prev) => ({ ...prev, ...data.errors }));
-    setServerMsg({ type: "error", text: data.message || "Validation failed (check fields)" });
-  } else if (status === 409 && data?.message) {
-    setServerMsg({ type: "error", text: data.message });
-  } else if (err.request && !err.response) {
-    setServerMsg({ type: "error", text: "No response from server — check backend or network (ERR_CONNECTION_REFUSED?)" });
-  } else if (data) {
-    // show any returned JSON for clarity
-    setServerMsg({ type: "error", text: data.message || JSON.stringify(data) });
-  } else {
-    // fallback: show axios message
-    setServerMsg({ type: "error", text: err.message || "Signup failed. Check your connection." });
-  }
-}
-};
-
+  };
 
   return (
     <Box sx={{ display: "flex", height: "100vh", overflow: "hidden" }}>
@@ -243,11 +277,13 @@ export default function SignupPage() {
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
-                  label="Employer"
+                  label="Company name"
                   fullWidth
                   size="small"
                   value={form.employer}
                   onChange={handleChange("employer")}
+                  error={!!errors.employer}
+                  helperText={errors.employer}
                 />
               </Grid>
             </Grid>
@@ -351,6 +387,17 @@ export default function SignupPage() {
           </Box>
         </Box>
       </Box>
+
+      <Snackbar
+        open={snack.open}
+        autoHideDuration={2500}
+        onClose={() => setSnack({ open: false, text: "" })}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert onClose={() => setSnack({ open: false, text: "" })} severity="success" sx={{ width: "100%" }}>
+          {snack.text}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
