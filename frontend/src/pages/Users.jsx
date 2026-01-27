@@ -19,10 +19,10 @@ import {
   DialogContent,
   Snackbar,
   Alert,
-  DialogTitle,  
+  DialogTitle,
   DialogActions,
   Button,
-  
+
 
 
 } from "@mui/material";
@@ -42,7 +42,7 @@ import api from "../services/api";
 const computeAvatarUrl = (avatar) => {
   if (!avatar) return null;
   if (/^https?:\/\//i.test(avatar)) return avatar;
-  const host = "http://localhost:4000";
+  const host = "https://safetynet-tech-zavg.vercel.app";
   return `${host.replace(/\/$/, "")}${avatar.startsWith("/") ? "" : "/"}${avatar}`;
 };
 

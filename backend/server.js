@@ -11,7 +11,7 @@ const formsRoutes = require("./src/routes/forms");
 const responseRoutes = require("./src/routes/responseRoutes");
 
 const path = require("path");
-const fs = require("fs");      
+const fs = require("fs");
 
 const start = async () => {
 
@@ -39,7 +39,7 @@ const start = async () => {
   );
 
 
-  const allowedOrigin = process.env.CLIENT_URL || "http://localhost:5173";
+  const allowedOrigin = process.env.CLIENT_URL || "https://safetynet-psi.vercel.app";
 
   app.use(
     cors({

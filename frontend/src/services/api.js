@@ -1,6 +1,6 @@
 // src/api.js
 import axios from "axios";
-const base = "http://localhost:4000";
+const base = "https://safetynet-tech-zavg.vercel.app";
 
 const api = axios.create({
   baseURL: base + "/api",

@@ -20,7 +20,7 @@ export default function ClientsPage() {
     const computeLogoUrl = (logo) => {
         if (!logo) return null;
         if (/^https?:\/\//i.test(logo)) return logo;
-        const host = "http://localhost:4000"; // Or import from config
+        const host = "https://safetynet-tech-zavg.vercel.app"; // Or import from config
         return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
     };
 
