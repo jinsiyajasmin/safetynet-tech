@@ -24,7 +24,7 @@ app.use(
   })
 );
 
-const allowedOrigin = process.env.CLIENT_URL || "https://safetynet-psi.vercel.app";
+const allowedOrigin = process.env.CLIENT_URL || "https://safetynet-tech.vercel.app";
 
 app.use(
   cors({
