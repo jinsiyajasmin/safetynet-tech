@@ -74,7 +74,11 @@ app.use((err, req, res, next) => {
 
   res
     .status(err.status || 500)
-    .json({ success: false, message: err.message || "Server error" });
+    .json({
+      success: false,
+      message: err.message || "Server error",
+      debug_stack: process.env.NODE_ENV === 'production' ? undefined : err.stack // Expose stack for debug
+    });
 });
 
 app.get("/", (req, res) => {
