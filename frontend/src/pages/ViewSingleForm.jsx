@@ -186,6 +186,24 @@ export default function ViewSingleForm() {
               </Box>
             ))}
           </Paper>
+          {/* LOGO at Bottom Right */}
+          {form.createdBy?.clientId?.logo && (
+            <Box
+              component="img"
+              src={form.createdBy.clientId.logo}
+              alt="Company Logo"
+              sx={{
+                position: "fixed",
+                bottom: 24,
+                right: 32,
+                height: 80,
+                width: "auto",
+                objectFit: "contain",
+                zIndex: 10,
+                opacity: 0.9,
+              }}
+            />
+          )}
         </Box>
       </Box>
     </>

@@ -55,7 +55,15 @@ exports.getAllForms = async (req, res, next) => {
 // ✅ Get single form by ID
 exports.getFormById = async (req, res, next) => {
   try {
-    const form = await Form.findById(req.params.id);
+    const form = await Form.findById(req.params.id)
+      .populate({
+        path: 'createdBy',
+        select: 'clientId',
+        populate: {
+          path: 'clientId',
+          select: 'logo name'
+        }
+      });
 
     if (!form) {
       return res.status(404).json({
