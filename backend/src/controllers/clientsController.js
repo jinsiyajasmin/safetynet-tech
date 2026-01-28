@@ -37,7 +37,7 @@ exports.createClient = asyncHandler(async (req, res) => {
       });
     }
 
-    const logoUrl = req.file ? `/uploads/${req.file.filename}` : (req.body.logo || null);
+    const logoUrl = req.file ? req.file.path : (req.body.logo || null);
 
     const client = new Client({ name: name.trim(), logo: logoUrl || null });
     await client.save();
@@ -95,25 +95,13 @@ exports.updateClient = asyncHandler(async (req, res) => {
       client.name = name.trim();
     }
 
-    // if a new file uploaded, build logo path and remove old file if local
+    // if a new file uploaded, use the Cloudinary URL
     if (req.file) {
-      const newLogo = `/uploads/${req.file.filename}`;
+      const newLogo = req.file.path;
 
-      // delete old local file if it exists and was saved under /uploads/
-      if (client.logo && client.logo.startsWith('/uploads/')) {
-        try {
-          const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
-          const uploadsRoot = isProduction ? path.join('/tmp', 'uploads') : path.join(process.cwd(), 'uploads');
-          const filename = client.logo.split('/').pop();
-          const oldPath = path.join(uploadsRoot, filename);
-          if (fs.existsSync(oldPath)) {
-            fs.unlinkSync(oldPath);
-            console.log('Deleted old logo file:', oldPath);
-          }
-        } catch (err) {
-          console.warn('Failed to delete old logo file', err);
-        }
-      }
+      // OPTIONAL: Delete old image from Cloudinary if needed.
+      // For now, we just update the URL. To delete from Cloudinary, 
+      // we'd need to extract the public_id and use cloudinary.uploader.destroy()
 
       client.logo = newLogo;
     }
