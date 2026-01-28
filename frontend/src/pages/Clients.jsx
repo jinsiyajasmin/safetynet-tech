@@ -35,7 +35,7 @@ import api from "../services/api";
 const computeLogoUrl = (logo) => {
   if (!logo) return null;
   if (/^https?:\/\//i.test(logo)) return logo;
-  const host = "https://safetynet-tech-zavg.vercel.app";
+  const host = "https://safetynet-tech-7qme.vercel.app";
   return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
 };
 
