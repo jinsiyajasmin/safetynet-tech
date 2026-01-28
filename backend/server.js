@@ -42,7 +42,7 @@ app.use(express.json());
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
-}, express.static(process.env.VERCEL ? path.join('/tmp', 'uploads') : path.join(process.cwd(), 'uploads')));
+}, express.static((process.env.NODE_ENV === 'production' || process.env.VERCEL) ? path.join('/tmp', 'uploads') : path.join(process.cwd(), 'uploads')));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/clients", clientsRoutes);
@@ -99,9 +99,8 @@ app.get("/api/health", (req, res) => {
 });
 
 const start = async () => {
-  const uploadsDir = process.env.VERCEL
-    ? path.join('/tmp', 'uploads')
-    : path.join(process.cwd(), 'uploads');
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
+  const uploadsDir = isProduction ? path.join('/tmp', 'uploads') : path.join(process.cwd(), 'uploads');
 
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
