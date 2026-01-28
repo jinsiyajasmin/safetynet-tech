@@ -103,8 +103,12 @@ const start = async () => {
   const uploadsDir = isProduction ? path.join('/tmp', 'uploads') : path.join(process.cwd(), 'uploads');
 
   if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-    console.log(`Created uploads dir: ${uploadsDir}`);
+    try {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      console.log(`Created uploads dir: ${uploadsDir}`);
+    } catch (err) {
+      console.warn(`Failed to create uploads dir at startup: ${uploadsDir}. Will attempt lazy creation on upload.`, err);
+    }
   }
 
   try {
