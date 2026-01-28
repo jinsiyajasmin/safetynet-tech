@@ -39,6 +39,20 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
+
+// Middleware to ensure DB connection (Crucial for Vercel Serverless)
+app.use(async (req, res, next) => {
+  if (mongoose.connection.readyState === 0) { // Disconnected
+    try {
+      console.log('Connecting to MongoDB...');
+      await connectDB();
+    } catch (err) {
+      console.error('Failed to connect to MongoDB in middleware', err);
+      return res.status(500).json({ error: 'Database connection failed' });
+    }
+  }
+  next();
+});
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
