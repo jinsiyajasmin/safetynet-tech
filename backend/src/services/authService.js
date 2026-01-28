@@ -15,14 +15,17 @@ exports.signup = async (payload) => {
     password,
   } = payload;
 
+  console.log("Signup Step 1: Checking existing user");
   // 1️⃣ Check if user already exists
   const existingUser = await User.findOne({ $or: [{ email }, { username }] });
   if (existingUser) {
+    console.log("Signup Error: User already exists");
     const err = new Error("User with this email or username already exists");
     err.status = 409;
     throw err;
   }
 
+  console.log("Signup Step 2: Checking/Creating client");
   // 2️⃣ Check if company (client) exists — case-insensitive
   const companyName = employer?.trim();
   if (!companyName) {
@@ -32,7 +35,6 @@ exports.signup = async (payload) => {
   }
 
   // Escape regex special characters to prevent errors
-  // Escape regex special characters to prevent errors
   const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   // Use a more flexible regex: case-insensitive
@@ -41,14 +43,19 @@ exports.signup = async (payload) => {
   let client = await Client.findOne({ name: { $regex: regex } });
 
   if (!client) {
-    // Auto-create company if not found or if the regex failed for some reason
-    console.log(`Company '${companyName}' not found (Regex: ${regex}). Creating new client.`);
+    // Auto-create company if not found
+    console.log(`Company '${companyName}' not found. Creating new client.`);
     client = await Client.create({ name: companyName });
+    console.log(`Client created: ${client._id}`);
+  } else {
+    console.log(`Client found: ${client._id}`);
   }
 
+  console.log("Signup Step 3: Hashing password");
   // 3️⃣ Hash password
   const hashed = await bcrypt.hash(password, 10);
 
+  console.log("Signup Step 4: Creating user");
   // 4️⃣ Create user linked to client
   const user = await User.create({
     username,
@@ -61,9 +68,12 @@ exports.signup = async (payload) => {
     password: hashed,
     clientId: client._id,
   });
+  console.log(`User created: ${user._id}`);
 
+  console.log("Signup Step 5: Generating token");
   // 5️⃣ Generate token
   if (!process.env.JWT_SECRET) {
+    console.error("Signup Error: JWT_SECRET missing");
     throw new Error("JWT_SECRET is not defined in environment variables");
   }
   const token = jwt.sign(
@@ -71,6 +81,7 @@ exports.signup = async (payload) => {
     process.env.JWT_SECRET,
     { expiresIn: "7d" }
   );
+  console.log("Signup Complete: Token generated");
 
   return { user, token };
 };

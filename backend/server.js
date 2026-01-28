@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
+const mongoose = require("mongoose");
 const connectDB = require("./src/config/db");
 const Client = require("./src/models/Client");
 const authRoutes = require("./src/routes/auth");
@@ -78,6 +79,23 @@ app.use((err, req, res, next) => {
 
 app.get("/", (req, res) => {
   res.send("Server is running");
+});
+
+app.get("/api/health", (req, res) => {
+  const dbStatus = mongoose.connection.readyState; // 0: disconnected, 1: connected, 2: connecting, 3: disconnecting
+  const dbStatusMap = { 0: "Disconnected", 1: "Connected", 2: "Connecting", 3: "Disconnecting" };
+
+  res.json({
+    success: true,
+    message: "Health check",
+    serverTime: new Date().toISOString(),
+    dbStatus: dbStatusMap[dbStatus] || "Unknown",
+    env: {
+      hasJwtSecret: !!process.env.JWT_SECRET,
+      hasMongoUri: !!process.env.MONGO_URI,
+      nodeEnv: process.env.NODE_ENV
+    }
+  });
 });
 
 const start = async () => {
