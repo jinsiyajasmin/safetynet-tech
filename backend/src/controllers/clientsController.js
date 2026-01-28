@@ -102,7 +102,9 @@ exports.updateClient = asyncHandler(async (req, res) => {
       // delete old local file if it exists and was saved under /uploads/
       if (client.logo && client.logo.startsWith('/uploads/')) {
         try {
-          const oldPath = path.join(process.cwd(), client.logo);
+          const uploadsRoot = process.env.VERCEL ? path.join('/tmp', 'uploads') : path.join(process.cwd(), 'uploads');
+          const filename = client.logo.split('/').pop();
+          const oldPath = path.join(uploadsRoot, filename);
           if (fs.existsSync(oldPath)) {
             fs.unlinkSync(oldPath);
             console.log('Deleted old logo file:', oldPath);
