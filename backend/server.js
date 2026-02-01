@@ -34,6 +34,7 @@ app.use(
 
       const allowedOrigins = [
         "https://safetynet-tech.vercel.app", // Main frontend
+        "https://safetynet-tech-7qme.vercel.app", // Backend itself (sometimes helpful)
         "http://localhost:5173",             // Local dev
         "http://localhost:3000",             // Alternative local dev
       ];

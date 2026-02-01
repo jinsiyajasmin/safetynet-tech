@@ -1,6 +1,6 @@
 // src/api.js
 import axios from "axios";
-const base = import.meta.env.VITE_BACKEND_URL || "https://safetynet-tech.vercel.app";
+const base = import.meta.env.VITE_BACKEND_URL || "https://safetynet-tech-7qme.vercel.app";
 
 const api = axios.create({
   baseURL: base + "/api",
