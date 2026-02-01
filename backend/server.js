@@ -28,9 +28,27 @@ const allowedOrigin = process.env.CLIENT_URL || "https://safetynet-tech.vercel.a
 
 app.use(
   cors({
-    origin: allowedOrigin,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+
+      const allowedOrigins = [
+        "https://safetynet-tech.vercel.app", // Main frontend
+        "http://localhost:5173",             // Local dev
+        "http://localhost:3000",             // Alternative local dev
+      ];
+
+      // Also allow Vercel preview deployments
+      if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith(".vercel.app")) {
+        callback(null, true);
+      } else {
+        console.log("Blocked by CORS:", origin);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
   })
 );
 
