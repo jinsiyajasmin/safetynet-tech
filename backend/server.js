@@ -49,9 +49,12 @@ app.use(
     },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     credentials: true,
+    credentials: true,
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
   })
 );
+
+app.options('*', cors()); // Enable pre-flight for all routes
 
 app.use((req, res, next) => {
   next();
