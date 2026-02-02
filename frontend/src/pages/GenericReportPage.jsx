@@ -406,7 +406,6 @@ export default function GenericReportPage({ pageTitle }) {
                                             values={formValues}
                                             readOnly={true}
                                             hideTitle={true} // Clean view
-                                            logoUrl={logoUrl}
                                         />
                                     </Box>
 
