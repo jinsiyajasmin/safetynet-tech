@@ -54,7 +54,7 @@ app.use(
   })
 );
 
-app.options('*', cors()); // Enable pre-flight for all routes
+app.options(/.*/, cors()); // Enable pre-flight for all routes
 
 app.use((req, res, next) => {
   next();
