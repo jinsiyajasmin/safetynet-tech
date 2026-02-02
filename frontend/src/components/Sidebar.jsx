@@ -151,8 +151,12 @@ export default function Sidebar({ sx = {} }) {
   const visibleMenu = MENU_GROUPS.filter((g) => {
     if (g.id === "clients") return showClients;
     if (g.id === "users") {
-      // Hide users menu if role is user
-      return currentUser?.role !== "user";
+      // Show users menu ONLY if company is Safetynett
+      return (
+        currentUser &&
+        typeof currentUser.companyname === "string" &&
+        currentUser.companyname.trim().toLowerCase() === "safetynett"
+      );
     }
     return true;
   });

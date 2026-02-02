@@ -32,6 +32,7 @@ import {
   AdminPanelSettings as AdminPanelSettingsIcon,
   MoreVert as MoreVertIcon,
   OpenInNew as OpenInNewIcon,
+  Delete as DeleteIcon,
 } from "@mui/icons-material";
 import { useParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar.jsx";
@@ -59,6 +60,11 @@ export default function UsersPage() {
   const [accessDialogOpen, setAccessDialogOpen] = useState(false);
   const [accessUser, setAccessUser] = useState(null);
   const [selectedRole, setSelectedRole] = useState("user");
+
+  // Delete State
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteUser, setDeleteUser] = useState(null);
+
   const [snack, setSnack] = useState({ open: false, msg: "", severity: "info" });
 
   // get current user (try localStorage then fallback to /auth/me)
@@ -217,6 +223,25 @@ export default function UsersPage() {
     } catch (err) {
       console.error("Update role error:", err);
       setSnack({ open: true, msg: "Failed to update role", severity: "error" });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteUser) return;
+    try {
+      const res = await api.delete(`/users/${deleteUser._id ?? deleteUser.id}`);
+      if (res?.data?.success) {
+        setUsers((prev) => prev.filter((u) => (u._id ?? u.id) !== (deleteUser._id ?? deleteUser.id)));
+        setSnack({ open: true, msg: "User deleted successfully", severity: "success" });
+      } else {
+        throw new Error(res?.data?.message || "Failed to delete");
+      }
+    } catch (err) {
+      console.error("Delete user error:", err);
+      setSnack({ open: true, msg: "Failed to delete user", severity: "error" });
+    } finally {
+      setDeleteDialogOpen(false);
+      setDeleteUser(null);
     }
   };
 
@@ -408,6 +433,18 @@ export default function UsersPage() {
           }}
         >
           <AdminPanelSettingsIcon fontSize="small" sx={{ mr: 1 }} /> Manage user access
+        </MenuItem>
+
+        <MenuItem
+          onClick={() => {
+            if (!menuUser) return closeMenu();
+            setDeleteUser(menuUser);
+            setDeleteDialogOpen(true);
+            closeMenu();
+          }}
+          sx={{ color: "error.main" }}
+        >
+          <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Delete user
         </MenuItem>
       </Menu>
 
@@ -617,6 +654,26 @@ export default function UsersPage() {
             </Button>
           </Box>
         </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2 } }}
+      >
+        <DialogTitle>Delete User</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete <strong>{deleteUser?.firstName} {deleteUser?.lastName}</strong>? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDeleteDialogOpen(false)} color="inherit">Cancel</Button>
+          <Button onClick={handleDelete} variant="contained" color="error">Delete</Button>
+        </DialogActions>
       </Dialog>
 
 
