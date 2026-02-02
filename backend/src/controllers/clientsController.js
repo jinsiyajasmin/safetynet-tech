@@ -60,7 +60,8 @@ exports.createClient = asyncHandler(async (req, res) => {
 exports.deleteClient = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("🗑️ DELETE REQUEST RECEIVED for ID:", id);
+    console.log(`🗑️ DELETE REQUEST RECEIVED for ID: ${id}`);
+    console.log(`User requesting delete:`, req.user);
 
     const client = await Client.findById(id);
     if (!client) {
@@ -69,7 +70,7 @@ exports.deleteClient = asyncHandler(async (req, res) => {
     }
 
     await client.deleteOne();
-    console.log("✅ Client deleted successfully:", id);
+    console.log(`✅ Client deleted successfully: ${id}`);
 
     return res.json({ success: true, message: "Client deleted successfully", id });
   } catch (err) {
@@ -83,7 +84,8 @@ exports.updateClient = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { name } = req.body;
 
-    console.log('UPDATE CLIENT - id:', id, 'body:', req.body, 'file:', req.file);
+    console.log(`UPDATE CLIENT - id: ${id}, body:`, req.body);
+    if (req.file) console.log(`UPDATE CLIENT - file received:`, req.file.path);
 
     const client = await Client.findById(id);
     if (!client) {

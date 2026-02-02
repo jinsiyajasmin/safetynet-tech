@@ -35,7 +35,9 @@ import api from "../services/api";
 const computeLogoUrl = (logo) => {
   if (!logo) return null;
   if (/^https?:\/\//i.test(logo)) return logo;
-  const host = "https://safetynet-tech-7qme.vercel.app";
+  // If we have a relative path, prepend the backend URL
+  // We can grab it from import.meta.env.VITE_BACKEND_URL or rely on a helper
+  const host = import.meta.env.VITE_BACKEND_URL || "https://safetynet-tech.vercel.app";
   return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
 };
 
@@ -224,9 +226,11 @@ export default function ClientsPage() {
       console.error("Status:", err.response?.status);
       console.error("Response data:", err.response?.data);
       const data = err?.response?.data;
-      if (data?.message) setErrors((p) => ({ ...p, form: data.message }));
-    }
-    finally {
+      const errorMsg = data?.message || "Failed to create client";
+      setErrors((p) => ({ ...p, form: errorMsg }));
+      setSuccessMsg(`Error: ${errorMsg}`);
+      setOpenSnackbar(true);
+    } finally {
       setSubmitting(false);
     }
   };
@@ -255,6 +259,9 @@ export default function ClientsPage() {
       closeModal();
     } catch (err) {
       console.error("Update client failed", err);
+      const msg = err.response?.data?.message || "Update failed";
+      setSuccessMsg(`Error: ${msg}`);
+      setOpenSnackbar(true);
     } finally {
       setSubmitting(false);
     }
@@ -291,6 +298,8 @@ export default function ClientsPage() {
       }
     } catch (err) {
       console.error("Delete client failed:", err);
+      setSuccessMsg("Failed to delete client");
+      setOpenSnackbar(true);
     } finally {
       setDeleteDialogOpen(false);
       setSelectedClient(null);
