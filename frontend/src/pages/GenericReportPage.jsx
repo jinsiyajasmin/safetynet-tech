@@ -35,6 +35,14 @@ import api from "../services/api";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
+// helper to build absolute URL for logos
+const computeLogoUrl = (logo) => {
+    if (!logo) return null;
+    if (/^https?:\/\//i.test(logo)) return logo;
+    const host = "https://safetynet-tech-7qme.vercel.app";
+    return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
+};
+
 export default function GenericReportPage({ pageTitle }) {
     const [dialogOpen, setDialogOpen] = useState(false);
     const [selectedForm, setSelectedForm] = useState(null);
@@ -46,13 +54,18 @@ export default function GenericReportPage({ pageTitle }) {
             const userStr = localStorage.getItem("user");
             if (userStr) {
                 const user = JSON.parse(userStr);
+                let rawLogo = null;
                 // Check if clientId is an object (populated) or just ID
                 if (user.clientId && typeof user.clientId === 'object' && user.clientId.logo) {
-                    setLogoUrl(user.clientId.logo);
+                    rawLogo = user.clientId.logo;
                 } else if (user.companyLogo) {
-                    setLogoUrl(user.companyLogo);
+                    rawLogo = user.companyLogo;
                 } else if (user.logo) {
-                    setLogoUrl(user.logo);
+                    rawLogo = user.logo;
+                }
+
+                if (rawLogo) {
+                    setLogoUrl(computeLogoUrl(rawLogo));
                 }
             }
         } catch (e) {
@@ -254,13 +267,26 @@ export default function GenericReportPage({ pageTitle }) {
 
     const handleDownloadPdf = async () => {
         if (printRef.current) {
-            const canvas = await html2canvas(printRef.current);
-            const imgData = canvas.toDataURL("image/png");
-            const pdf = new jsPDF("p", "mm", "a4");
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-            pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-            pdf.save(`report-${selectedForm?.title || "download"}.pdf`);
+            try {
+                // Use CORS to ensure external images (like logo) are captured
+                const canvas = await html2canvas(printRef.current, {
+                    useCORS: true,
+                    scale: 2, // Improve quality
+                    allowTaint: true,
+                    logging: true,
+                    // If your logo is on a different domain, make sure backend sends CORS headers for image
+                    // or handle proxy. But standard CORS usually works with useCORS: true
+                });
+                const imgData = canvas.toDataURL("image/png");
+                const pdf = new jsPDF("p", "mm", "a4");
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+                pdf.save(`report-${selectedForm?.title || "download"}.pdf`);
+            } catch (err) {
+                console.error("PDF generation failed", err);
+                alert("Could not generate PDF. Please try again.");
+            }
         }
     };
 
