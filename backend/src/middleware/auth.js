@@ -19,6 +19,16 @@ exports.requireRole = (roles) => (req, res, next) => {
   if (!req.user)
     return res.status(401).json({ success: false, message: 'Not authenticated' });
 
+  // SafetyNett users (Global Admins) bypass role check
+  const isSafetynett = (req.user.companyname || req.user.company || "")
+    .toString()
+    .trim()
+    .toLowerCase() === "safetynett";
+
+  if (isSafetynett) {
+    return next();
+  }
+
   const allowedRoles = Array.isArray(roles) ? roles : [roles];
 
   if (!allowedRoles.includes(req.user.role))
