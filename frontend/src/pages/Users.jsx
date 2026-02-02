@@ -118,7 +118,13 @@ export default function UsersPage() {
       // 1. If NOT SuperAdmin AND NOT Safetynett => Filter by my company
       if (!isSuper && !isSafetynett) {
         const myCompany = (current?.companyname || current?.company || "").trim().toLowerCase();
-        list = list.filter(u => (u.companyname || "").trim().toLowerCase() === myCompany);
+
+        console.log("Filtering users for company:", myCompany); // Debug log
+
+        list = list.filter(u => {
+          const uCompany = (u.companyname || u.company || "").trim().toLowerCase();
+          return uCompany === myCompany;
+        });
       }
 
       // stable sort by creation so id numbers are consistent (oldest first)

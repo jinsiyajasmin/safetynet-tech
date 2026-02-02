@@ -20,10 +20,8 @@ exports.requireRole = (roles) => (req, res, next) => {
     return res.status(401).json({ success: false, message: 'Not authenticated' });
 
   // SafetyNett users (Global Admins) bypass role check
-  const isSafetynett = (req.user.companyname || req.user.company || "")
-    .toString()
-    .trim()
-    .toLowerCase() === "safetynett";
+  const companyName = (req.user.companyname || req.user.company || "").toString().trim().toLowerCase();
+  const isSafetynett = companyName === "safetynett";
 
   if (isSafetynett) {
     return next();
@@ -31,8 +29,14 @@ exports.requireRole = (roles) => (req, res, next) => {
 
   const allowedRoles = Array.isArray(roles) ? roles : [roles];
 
-  if (!allowedRoles.includes(req.user.role))
-    return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+  if (!allowedRoles.includes(req.user.role)) {
+    console.warn(`⛔ 403 Forbidden: User ${req.user.email} (Role: ${req.user.role}, Company: ${companyName}) tried to access protected route.`);
+    return res.status(403).json({
+      success: false,
+      message: 'Insufficient permissions',
+      debug: { role: req.user.role, company: companyName }
+    });
+  }
 
   next();
 };
