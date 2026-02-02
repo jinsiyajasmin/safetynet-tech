@@ -147,9 +147,19 @@ export default function SignupPage() {
       const data = err?.response?.data;
 
       if (status === 400) {
-        // company not found (or other validation)
-        setServerMsg({ type: "error", text: data?.message || "Invalid company name" });
-        setErrors((prev) => ({ ...prev, employer: "Company not found" }));
+        // Validation error from backend
+        const msg = data?.message || "Validation failed";
+        setServerMsg({ type: "error", text: msg });
+
+        // If backend returns field-specific errors (e.g. { errors: { email: '...' } })
+        if (data?.errors) {
+          setErrors(data.errors);
+        } else {
+          // If we suspect it's the company/employer field based on message
+          if (msg.toLowerCase().includes("company")) {
+            setErrors((prev) => ({ ...prev, employer: msg }));
+          }
+        }
       } else if (status === 409) {
         setServerMsg({ type: "error", text: data?.message || "Conflict" });
       } else if (err.request && !err.response) {
