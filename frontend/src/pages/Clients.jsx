@@ -299,6 +299,24 @@ export default function ClientsPage() {
 
   const firstChar = (s) => (s && s.length ? s[0].toUpperCase() : "?");
 
+  // Determine if user is Safetynett or SuperAdmin
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    const raw = localStorage.getItem("user");
+    if (raw) {
+      try {
+        const u = JSON.parse(raw);
+        setCurrentUser(u);
+      } catch (e) {
+        console.error("Parse user error", e);
+      }
+    }
+  }, []);
+
+  const isSafetynettOrAdmin = currentUser?.role === "superadmin" ||
+    (currentUser?.companyname || currentUser?.company || "").trim().toLowerCase() === "safetynett";
+
   return (
     <>
       <TopNav />
@@ -334,9 +352,11 @@ export default function ClientsPage() {
           <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
             <Typography variant="h4" sx={{ fontWeight: 800 }}>Clients</Typography>
 
-            <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateModal} sx={{ textTransform: "none", borderRadius: 2, bgcolor: "#013a63", "&:hover": { bgcolor: "#075692" } }}>
-              Create new client
-            </Button>
+            {isSafetynettOrAdmin && (
+              <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateModal} sx={{ textTransform: "none", borderRadius: 2, bgcolor: "#013a63", "&:hover": { bgcolor: "#075692" } }}>
+                Create new client
+              </Button>
+            )}
           </Box>
 
           {loadingClients ? (
@@ -348,9 +368,12 @@ export default function ClientsPage() {
               {clients.map((client) => (
                 <Grid key={client.id ?? client._id ?? client.name} item xs={12} sm={6} md={4} lg={3}>
                   <Card variant="outlined" sx={{ width: CARD_WIDTH, height: CARD_HEIGHT, display: "flex", flexDirection: "column", justifyContent: "space-between", borderRadius: 2, boxShadow: "0 6px 18px rgba(2,6,23,0.04)", transition: "transform .15s ease, box-shadow .15s ease", "&:hover": { transform: "translateY(-6px)", boxShadow: "0 14px 28px rgba(2,6,23,0.10)" }, position: "relative" }}>
-                    <IconButton sx={{ position: "absolute", top: 4, right: 4, color: "gray" }} onClick={(e) => handleMenuOpen(e, client)}>
-                      <MoreVertIcon />
-                    </IconButton>
+
+                    {isSafetynettOrAdmin && (
+                      <IconButton sx={{ position: "absolute", top: 4, right: 4, color: "gray" }} onClick={(e) => handleMenuOpen(e, client)}>
+                        <MoreVertIcon />
+                      </IconButton>
+                    )}
 
                     <CardContent sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", flexGrow: 1, textAlign: "center", gap: 1.5 }}>
                       <Box sx={{ width: 72, height: 72, borderRadius: 1.5, display: "grid", placeItems: "center", background: "rgba(2,6,23,0.03)", overflow: "hidden" }}>
@@ -365,7 +388,8 @@ export default function ClientsPage() {
                     </CardContent>
 
                     <CardActions sx={{ justifyContent: "flex-start", pb: 2 }}>
-                      {String(client.name).toLowerCase() !== "safetynett" && (
+                      {/* Safetynett users can open ANY client. Others can open only non-Safetynett clients (logic preserved, but Safetynett override added) */}
+                      {(isSafetynettOrAdmin || String(client.name).toLowerCase() !== "safetynett") && (
                         <Button variant="outlined" startIcon={<OpenInNewIcon />} onClick={() => onOpen(client)} sx={{ textTransform: "none", borderRadius: 1.5, px: 3, py: 0.5, fontSize: "1rem" }}>
                           Open
                         </Button>
