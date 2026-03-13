@@ -132,7 +132,8 @@ export default function SignupPage() {
           if (isSuperAdmin || isSafetyNettCompany) {
             navigate("/clients");
           } else {
-            navigate("/company");
+            // Non-Safetynett accounts go straight to the dashboard
+            navigate("/concern-reports");
           }
         }, 900);
 

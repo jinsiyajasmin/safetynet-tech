@@ -1,5 +1,5 @@
 // src/pages/EnableUserAccess.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     Box,
     Grid,
@@ -10,68 +10,170 @@ import {
     Button,
     Snackbar,
     Alert,
+    CircularProgress,
+    Autocomplete
 } from "@mui/material";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import TopNav from "../components/TopNav";
-import Sidebar from "../components/Sidebar";
-import api from "../services/api"; // your axios instance
+import Layout from "../components/Layout";
+import api from "../services/api";
+import { useTheme } from "../context/ThemeContext";
 
 const PERMISSION_LEVELS = [
-    { id: 0, title: "Level 0 - Basic Access", desc: "Login/logout only. Requires admin approval for access to features.", color: "#F3F4F6" },
-    { id: 1, title: "Level 1 - Dashboard & Messaging", desc: "The user will be able to view dashboard, send messages but will not be able to view reports, or conduct audit inspections.", color: "rgba(59,130,246,0.06)" },
-    { id: 2, title: "Level 2 - Reports Viewer", desc: "View and download reports. Cannot edit or conduct audits.", color: "rgba(99,102,241,0.06)" },
-    { id: 3, title: "Level 3 - Editor", desc: "Full editing capabilities including audit inspections. Cannot delete entire reports.", color: "rgba(250,204,21,0.06)" },
-    { id: 4, title: "Level 4 - Senior Management", desc: "Full access including user management, activity logs, and complete report control.", color: "rgba(34,197,94,0.06)" },
+    { id: 4, title: "Superadmin (Level 4)", desc: "The highest level of access. The user will be able to view dashboards, send messages, view reports, conduct audit inspections, edit and delete sections of the report and delete the whole report. The user can also manage the entire table of users, details, and activity logs.", color: "rgba(34,197,94,0.06)", role: "superadmin" },
+    { id: 3, title: "Company Admin (Level 3)", desc: "High-level access for company management. The user can view dashboards, reports, and conduct inspections. They can manage company users and view activity logs but may have restricted access to global system settings.", color: "rgba(34,197,94,0.06)", role: "company_admin" },
+    { id: 2, title: "Site Manager (Level 2)", desc: "Management access for specific sites. The user can view dashboards, reports, and conduct audit inspections. They can edit sections of reports but cannot delete entire reports or manage user lists.", color: "rgba(250,204,21,0.06)", role: "site_manager" },
+    { id: 1, title: "Supervisor (Level 1)", desc: "Supervisory access. The user can view dashboards and download reports but cannot edit report sections or conduct inspections.", color: "rgba(99,102,241,0.06)", role: "supervisor" },
+    { id: 0, title: "Worker (Level 0)", desc: "The lowest level of permissions. The user can log in, view dashboards, and send messages but cannot view reports or conduct inspections.", color: "rgba(59,130,246,0.06)", role: "worker" },
 ];
 
 export default function EnableUserAccessPage() {
+    const { isDarkMode } = useTheme();
     const [form, setForm] = useState({
         email: "",
-        permission: 1,
+        companyId: "",
+        permission: 0,
     });
+
+    const [companies, setCompanies] = useState([]);
+    const [loadingCompanies, setLoadingCompanies] = useState(false);
+
+    // User validation state
+    const [checkingUser, setCheckingUser] = useState(false);
+    const [userExists, setUserExists] = useState(null); // null = unknown, true = exists, false = doesn't exist
+    const [userCheckMsg, setUserCheckMsg] = useState("");
 
     const [errors, setErrors] = useState({});
     const [snack, setSnack] = useState({ open: false, msg: "", severity: "success" });
     const [submitting, setSubmitting] = useState(false);
 
+    useEffect(() => {
+        fetchCompanies();
+    }, []);
+
+    const fetchCompanies = async () => {
+        setLoadingCompanies(true);
+        try {
+            const res = await api.get("/clients");
+            if (res.data?.success) {
+                setCompanies(res.data.clients || []);
+            }
+        } catch (err) {
+            console.error("Failed to load companies", err);
+        } finally {
+            setLoadingCompanies(false);
+        }
+    };
+
     const handleChange = (key) => (ev) => {
         const value = ev?.target ? ev.target.value : ev;
         setForm((f) => ({ ...f, [key]: value }));
         setErrors((e) => ({ ...e, [key]: undefined }));
+
+        // Reset user check if email or company changes
+        if (key === "email" || key === "companyId") {
+            setUserExists(null);
+            setUserCheckMsg("");
+        }
+    };
+
+    const handleCompanyChange = (event, newValue) => {
+        setForm(f => ({ ...f, companyId: newValue?.id || "" }));
+        setUserExists(null);
+        setUserCheckMsg("");
+    };
+
+    
+    const checkUser = async () => {
+        if (!form.email || !form.companyId) return;
+
+        setCheckingUser(true);
+        try {
+            const res = await api.post("/users/check-user", {
+                email: form.email,
+                companyId: form.companyId
+            });
+
+            if (res.data?.exists) {
+                setUserExists(true);
+                setUserCheckMsg("");
+                // Optionally auto-set role if returned
+            } else {
+                setUserExists(false);
+                setUserCheckMsg(res.data?.message || "User does not exist in this company.");
+            }
+        } catch (err) {
+            console.error(err);
+            setUserExists(false); // Assume failure means not verifiable or error
+            setUserCheckMsg("Error checking user.");
+        } finally {
+            setCheckingUser(false);
+        }
     };
 
     const validate = () => {
         const e = {};
         if (!form.email || !/^\S+@\S+\.\S+$/.test(form.email)) e.email = "Enter a valid email";
+        if (!form.companyId) e.companyId = "Select a company";
         if (!Number.isInteger(Number(form.permission))) e.permission = "Select permission level";
+
+        if (userExists === false) e.email = "User does not exist in the selected company.";
+
         setErrors(e);
         return Object.keys(e).length === 0;
     };
 
     const handleSubmit = async (ev) => {
         ev?.preventDefault();
+
+        // Trigger check if not done
+        if (userExists === null) {
+            await checkUser();
+            // Re-validate after check (handled by next click or if implemented async wait properly)
+            // Ideally we wait for checkUser() but state updates are async. 
+            // Simplified: If userExists is false/null, stop.
+            if (userExists === false) return;
+        }
+
         if (!validate()) return;
+        if (userExists === false) return;
+
         setSubmitting(true);
         try {
+            // Find role string from ID
+            const level = PERMISSION_LEVELS.find(p => p.id === Number(form.permission));
+
+            // We need to UPDATE the user. The previous code was /users/invite, assuming creating?
+            // "allow to select the user roles" implies updating an existing user.
+            // Since we validated user exists, checkUser returned user ID? 
+            // We should use that ID to update. But checkUser didn't store ID in state yet.
+
+            // Let's call update. We need the User ID. 
+            // Retrigger check or fetch user.
+
+            // Actually, let's fetch user ID during checkUser and store it.
+            const checkRes = await api.post("/users/check-user", { email: form.email, companyId: form.companyId });
+            if (!checkRes.data?.exists) {
+                setSnack({ open: true, msg: "User not found.", severity: "error" });
+                return;
+            }
+            const userId = checkRes.data.user.id;
+
             const payload = {
-                email: form.email.trim().toLowerCase(),
-                permissionLevel: Number(form.permission),
+                role: level.role,
+                
             };
 
-            // adapt to your endpoint
-            const res = await api.post("/users/invite", payload);
+            const res = await api.put(`/users/${userId}`, payload);
             if (res?.data?.success) {
-                setSnack({ open: true, msg: res.data.message || "User invited/created", severity: "success" });
-                setForm({
-                    email: "",
-                    permission: 1,
-                });
+                setSnack({ open: true, msg: "User role updated successfully", severity: "success" });
+                setForm({ email: "", companyId: "", permission: 1 });
+                setUserExists(null);
             } else {
                 throw new Error(res?.data?.message || "Failed");
             }
         } catch (err) {
-            console.error("Invite/create user error:", err);
-            const msg = err?.response?.data?.message || err.message || "Failed to create user";
+            console.error("Update role error:", err);
+            const msg = err?.response?.data?.message || err.message || "Failed to update role";
             setSnack({ open: true, msg, severity: "error" });
         } finally {
             setSubmitting(false);
@@ -81,183 +183,290 @@ export default function EnableUserAccessPage() {
     const selectedLevel = PERMISSION_LEVELS.find((p) => p.id === Number(form.permission)) ?? PERMISSION_LEVELS[0];
 
     return (
-        <>
-            <TopNav />
-            <Box sx={{ display: "flex", height: "calc(100vh - 0px)", bgcolor: "#ffffff" }}>
-                <Box
-                    component="aside"
-                    sx={{
-                        width: { xs: 0, md: 260 },
-                        flexShrink: 0,
-                        alignSelf: "flex-start",
-                        position: "sticky",
-                        top: "64px",
-                        height: "calc(100vh - 64px)",
-                        overflow: "auto",
-                        p: 0,
-                    }}
-                >
-                    <Sidebar sx={{ height: "100%" }} />
-                </Box>
+        <Layout>
+            <Box sx={{ flex: 1, overflow: "auto", }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 1, color: isDarkMode ? "#F9FAFB" : "#111827" }}>Enable user access</Typography>
+                <Typography variant="body2" sx={{ mb: 4, color: isDarkMode ? "#9CA3AF" : "text.secondary" }}>Assign permissions to existing users.</Typography>
 
-                <Box
-                    component="main"
-                    sx={{
-                        flex: 1,
-                        overflow: "auto",
-                        px: { xs: 2, sm: 3, md: 6 },
-                        py: { xs: 4, md: 6 },
-                    }}
-                >
-                    <Typography variant="h4" sx={{ fontWeight: 800, mb: 1 }}>
-                        Enable user access
-                    </Typography>
-                    <Typography color="text.secondary" sx={{ mb: 4 }}>
-                        {/* Create or invite a user and  */}
-                        assign permission levels.
-                    </Typography>
+                <Grid container spacing={4}>
+                    <Grid item xs={12} md={7}>
+                        <Paper
+                            elevation={0}
+                            sx={{
+                                p: 5,
+                                bgcolor: isDarkMode ? "#1B212C" : "#FBFBFA",
+                                border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
+                                borderRadius: 6,
+                            }}
+                        >
+                            <form onSubmit={handleSubmit}>
+                             
+                                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: isDarkMode ? "#F9FAFB" : "#374151" }}>User email</Typography>
+                                <TextField
+                                    value={form.email}
+                                    onChange={handleChange("email")}
+                                    onBlur={checkUser}
+                                    placeholder="user@example.com"
+                                    fullWidth
+                                    error={!!errors.email || userExists === false}
+                                    helperText={errors.email || userCheckMsg}
+                                    sx={{
+                                        mb: 3,
+                                        "& .MuiOutlinedInput-root": {
+                                            borderRadius: 4,
+                                            bgcolor: isDarkMode ? "#111827" : "#FFFFFF",
+                                            "& fieldset": { borderColor: isDarkMode ? "#374151" : "#E5E7EB" },
+                                            "&.Mui-focused fieldset": { borderColor: "#0B4DA6", borderWidth: 1.5 },
+                                            "& .MuiInputBase-input": { color: isDarkMode ? "#F9FAFB" : "inherit" }
+                                        },
+                                        "& .MuiInputBase-input": { py: 1.8, px: 2 }
+                                    }}
+                                />
 
-                    <Grid >
-                        {/* Left: form */}
-                        <Grid item xs={12} md={6}>
-                            <Paper
-                                sx={{
-                                    p: 5,
-                                    border: "1px solid #E5E7EB",
-                                    borderRadius: 4,
-                                    mb: 4,
-                                }}
-                            >
-
-                                <form onSubmit={handleSubmit}>
-                                    <Typography sx={{ fontWeight: 700, mb: 1 }}>User email</Typography>
-                                    <TextField
-                                        value={form.email}
-                                        onChange={handleChange("email")}
-                                        placeholder="user@example.com"
-                                        fullWidth
-                                        size="small"
-                                        error={!!errors.email}
-                                        helperText={errors.email}
-                                        sx={{ mb: 2 }}
-                                    />
-
-                                    {/* ===== Permission level as a TextField (select) to look like an input ===== */}
-                                    <Typography sx={{ fontWeight: 700, mb: 1 }}>Permission level</Typography>
-
-                                    <TextField
-                                        select
-                                        fullWidth
-                                        size="small"
-                                        value={form.permission}
-                                        onChange={handleChange("permission")}
-                                        sx={{
-                                            mb: 2,
-                                            borderRadius: 2,
-                                            // highlight with blue outline when focused
-                                            "& .MuiOutlinedInput-root": {
-                                                borderRadius: 2,
-                                            },
-                                            "& .MuiOutlinedInput-notchedOutline": {
-                                                borderColor: "rgba(11,77,166,0.25)",
-                                            },
-                                            "& .Mui-focused .MuiOutlinedInput-notchedOutline": {
-                                                borderColor: "#0B4DA6",
-                                                boxShadow: "0 0 0 4px rgba(11,77,166,0.06)",
-                                            },
-                                        }}
-                                    >
-                                        {PERMISSION_LEVELS.map((p) => (
-                                            <MenuItem key={p.id} value={p.id}>
-                                                {p.title}
-                                            </MenuItem>
-                                        ))}
-                                    </TextField>
-
-                                    {/* ===== Dynamic description "card" styled like your screenshot ===== */}
-                                    <Box
-                                        sx={{
-                                            display: "flex",
-                                            alignItems: "flex-start",
-                                            gap: 2,
-                                            p: 2,
-                                            borderRadius: 2,
-                                            border: "1.5px solid rgba(11,77,166,0.12)",
-                                            backgroundColor: "rgba(11,77,166,0.04)",
-                                            mb: 2,
-                                        }}
-                                    >
+                               
+                                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: isDarkMode ? "#F9FAFB" : "#374151" }}>Company</Typography>
+                                <Autocomplete
+                                    options={companies}
+                                    getOptionLabel={(option) => option.name}
+                                    onChange={handleCompanyChange}
+                                    onBlur={checkUser}
+                                    loading={loadingCompanies}
+                                    renderInput={(params) => (
+                                        <TextField
+                                            {...params}
+                                            placeholder="Select Company"
+                                            error={!!errors.companyId}
+                                            helperText={errors.companyId}
+                                        />
+                                    )}
+                                  
+                                    slotProps={{
+                                        paper: {
+                                            sx: {
+                                                borderRadius: 5,
+                                                mt: 1,
+                                                boxShadow: isDarkMode ? "0 4px 20px rgba(0,0,0,0.5)" : "0 4px 20px rgba(0,0,0,0.08)",
+                                                bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                                                border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
+                                                p: 1,
+                                                color: isDarkMode ? "#F9FAFB" : "inherit"
+                                            }
+                                        }
+                                    }}
+                                    renderOption={(props, option) => (
                                         <Box
+                                            component="li"
+                                            {...props}
+                                            key={option.id}
                                             sx={{
-                                                width: 36,
-                                                height: 36,
-                                                borderRadius: "50%",
-                                                bgcolor: "rgba(11,77,166,0.08)",
-                                                display: "grid",
-                                                placeItems: "center",
-                                                color: "#0B4DA6",
+                                                borderRadius: 50, // Pill shape
+                                                mx: 0.5,
+                                                my: 0.2,
+                                                px: 2,
+                                                py: 1,
+                                                fontSize: "0.85rem",
+                                                color: isDarkMode ? "#9CA3AF" : "#4B5563",
+                                                transition: "all 0.2s",
+                                               
+                                                "&.Mui-focused, &:hover": {
+                                                    bgcolor: isDarkMode ? "rgba(255,255,255,0.05) !important" : "#FEF7EC !important",
+                                                    color: isDarkMode ? "#F9FAFB !important" : "#A16207 !important",
+                                                },
+                                                "&[aria-selected='true']": {
+                                                    bgcolor: isDarkMode ? "rgba(11, 77, 166, 0.2) !important" : "#FEF7EC !important",
+                                                    color: isDarkMode ? "#60A5FA !important" : "#A16207 !important",
+                                                }
                                             }}
                                         >
-                                            <InfoOutlinedIcon fontSize="small" />
+                                            {option.name}
                                         </Box>
+                                    )}
+                                    sx={{
+                                        mb: 3,
+                                        "& .MuiOutlinedInput-root": {
+                                            borderRadius: 4,
+                                            bgcolor: isDarkMode ? "#111827" : "#FFFFFF",
+                                            "& fieldset": { borderColor: isDarkMode ? "#374151" : "#E5E7EB" },
+                                            "&.Mui-focused fieldset": { borderColor: "#0B4DA6", borderWidth: 1.5 },
+                                            p: "4px 12px",
+                                            "& .MuiInputBase-input": { color: isDarkMode ? "#F9FAFB" : "inherit" }
+                                        }
+                                    }}
+                                />
 
-                                        <Box>
-                                            <Typography sx={{ fontWeight: 700, color: "#0B4DA6", mb: 0.5 }}>
-                                                {selectedLevel.title}
-                                            </Typography>
-                                            <Typography color="text.secondary" sx={{ maxWidth: { xs: "100%", sm: 640 } }}>
-                                                {selectedLevel.desc}
-                                            </Typography>
-                                        </Box>
+                                {checkingUser && <Typography variant="caption" sx={{ display: 'block', mb: 2, color: "#6B7280" }}>Checking user...</Typography>}
+
+                            
+                                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: isDarkMode ? "#F9FAFB" : "#374151" }}>Permission level</Typography>
+                                <TextField
+                                    select
+                                    fullWidth
+                                    value={form.permission}
+                                    onChange={handleChange("permission")}
+                                    error={!!errors.permission}
+                                    helperText={errors.permission}
+                                    SelectProps={{
+                                        MenuProps: {
+                                            PaperProps: {
+                                                sx: {
+                                                    borderRadius: 5,
+                                                    mt: 1,
+                                                    boxShadow: isDarkMode ? "0 4px 20px rgba(0,0,0,0.5)" : "0 4px 20px rgba(0,0,0,0.08)",
+                                                    bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                                                    border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
+                                                    p: 1,
+                                                    color: isDarkMode ? "#F9FAFB" : "inherit"
+                                                }
+                                            }
+                                        }
+                                    }}
+                                    sx={{
+                                        mb: 4,
+                                        "& .MuiOutlinedInput-root": {
+                                            borderRadius: 4,
+                                            bgcolor: isDarkMode ? "#111827" : "#FFFFFF",
+                                            "& fieldset": { borderColor: isDarkMode ? "#374151" : "#E5E7EB" },
+                                            "&.Mui-focused fieldset": { borderColor: "#0B4DA6", borderWidth: 1.5 },
+                                            "& .MuiSelect-select": { color: isDarkMode ? "#F9FAFB" : "inherit" },
+                                            "& .MuiSelect-icon": { color: isDarkMode ? "#9CA3AF" : "inherit" }
+                                        },
+                                        "& .MuiInputBase-input": { py: 1.8, px: 2 }
+                                    }}
+                                >
+                                    {PERMISSION_LEVELS.map((p) => (
+                                        <MenuItem
+                                            key={p.id}
+                                            value={p.id}
+                                            sx={{
+                                                borderRadius: 50,
+                                                mx: 0.5,
+                                                my: 0.2,
+                                                px: 2,
+                                                py: 1,
+                                                fontSize: "0.85rem",
+                                                color: isDarkMode ? "#9CA3AF" : "#4B5563",
+                                                transition: "all 0.2s",
+                                                "&:hover, &.Mui-selected, &.Mui-selected:hover": {
+                                                    bgcolor: isDarkMode ? "rgba(11, 77, 166, 0.2) !important" : "#FEF7EC !important",
+                                                    color: isDarkMode ? "#60A5FA !important" : "#A16207 !important",
+                                                }
+                                            }}
+                                        >
+                                            {p.title}
+                                        </MenuItem>
+                                    ))}
+                                </TextField>
+
+                              
+                                <Box
+                                    sx={{
+                                        display: "flex",
+                                        gap: 2.5,
+                                        p: 3,
+                                        borderRadius: 4,
+                                        border: isDarkMode ? "1px solid rgba(209, 233, 255, 0.15)" : "1px solid #D1E9FF",
+                                        bgcolor: isDarkMode ? "#111827" : "#FEF7EC", // Light beige background
+                                        mb: 4
+                                    }}
+                                >
+                                    <Box
+                                        sx={{
+                                            width: 44,
+                                            height: 44,
+                                            borderRadius: "50%",
+                                            bgcolor: "#DBEAFE",
+                                            display: "grid",
+                                            placeItems: "center",
+                                            color: "#1D4ED8",
+                                            flexShrink: 0
+                                        }}
+                                    >
+                                        <InfoOutlinedIcon fontSize="medium" />
                                     </Box>
-
-                                    <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
-                                        <Button variant="contained" type="submit" disabled={submitting}>
-                                            {submitting ? "Saving..." : " Create"}
-                                        </Button>
-                                        <Button variant="outlined" disabled={submitting} onClick={() => { /* cancel handler */ }}>
-                                            Cancel
-                                        </Button>
+                                    <Box>
+                                        <Typography sx={{ fontWeight: 600, color: isDarkMode ? "#60A5FA" : "#1D4ED8", mb: 0.5, fontSize: "1rem" }}>
+                                            {selectedLevel.title}
+                                        </Typography>
+                                        <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280", lineHeight: 1.6 }}>
+                                            {selectedLevel.desc}
+                                        </Typography>
                                     </Box>
-                                </form>
-                            </Paper>
-                        </Grid>
+                                </Box>
 
-                        {/* Right: Permission levels overview */}
-                        <Grid item xs={12} md={6}>
-                            <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
-                                Permission levels overview
-                            </Typography>
-
-                            <Box sx={{ display: "grid", gap: 2 }}>
-                                {PERMISSION_LEVELS.map((p) => (
-                                    <Paper key={p.id} sx={{ p: 2.25, display: "flex", gap: 2, alignItems: "center", borderRadius: 2, bgcolor: p.color }}>
-                                        <Box sx={{ width: 48, height: 48, borderRadius: "50%", bgcolor: "background.paper", display: "grid", placeItems: "center", fontWeight: 700 }}>
-                                            {p.id}
-                                        </Box>
-                                        <Box>
-                                            <Typography sx={{ fontWeight: 700 }}>{p.title}</Typography>
-                                            <Typography color="text.secondary" sx={{ fontSize: "0.95rem" }}>{p.desc}</Typography>
-                                        </Box>
-                                    </Paper>
-                                ))}
-                            </Box>
-                        </Grid>
+                                <Box sx={{ mt: 2 }}>
+                                    <Button
+                                        variant="contained"
+                                        type="submit"
+                                        disabled={submitting || checkingUser || userExists === false}
+                                        sx={{
+                                            textTransform: "uppercase",
+                                            borderRadius: 50,
+                                            px: 4,
+                                            py: 1.6,
+                                            bgcolor: "#0B57D0",
+                                            fontWeight: 700,
+                                            boxShadow: "none",
+                                            "&:hover": {
+                                                bgcolor: "#0842A0",
+                                                boxShadow: "none"
+                                            }
+                                        }}
+                                    >
+                                        {submitting ? "Saving..." : "Update Access"}
+                                    </Button>
+                                </Box>
+                            </form>
+                        </Paper>
                     </Grid>
-                </Box>
+
+                    <Grid item xs={12} md={5}>
+                        <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: isDarkMode ? "#F9FAFB" : "#111827" }}>Permission levels overview</Typography>
+                        <Box sx={{ display: "grid", gap: 2.5 }}>
+                            {PERMISSION_LEVELS.map((p) => (
+                                <Paper
+                                    elevation={0}
+                                    key={p.id}
+                                    sx={{
+                                        p: 2.5,
+                                        display: "flex",
+                                        gap: 2,
+                                        alignItems: "start",
+                                        borderRadius: 4,
+                                        bgcolor: isDarkMode ? "rgba(255,255,255,0.03)" : p.color,
+                                        border: isDarkMode ? "1px solid #374151" : "1px solid rgba(0,0,0,0.03)"
+                                    }}
+                                >
+                                    <Box
+                                        sx={{
+                                            width: 36,
+                                            height: 36,
+                                            borderRadius: "50%",
+                                            bgcolor: isDarkMode ? "#1B212C" : "white",
+                                            display: "grid",
+                                            placeItems: "center",
+                                            fontWeight: 700,
+                                            flexShrink: 0,
+                                            fontSize: "0.9rem",
+                                            color: isDarkMode ? "#F9FAFB" : "inherit",
+                                            boxShadow: isDarkMode ? "none" : "0 2px 4px rgba(0,0,0,0.05)"
+                                        }}
+                                    >
+                                        {p.id}
+                                    </Box>
+                                    <Box>
+                                        <Typography sx={{ fontWeight: 600, color: isDarkMode ? "#F9FAFB" : "#111827", mb: 0.5 }}>{p.title}</Typography>
+                                        <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280", lineHeight: 1.5 }}>{p.desc}</Typography>
+                                    </Box>
+                                </Paper>
+                            ))}
+                        </Box>
+                    </Grid>
+                </Grid>
             </Box>
 
-            <Snackbar
-                open={snack.open}
-                autoHideDuration={3000}
-                onClose={() => setSnack((s) => ({ ...s, open: false }))}
-                anchorOrigin={{ vertical: "top", horizontal: "right" }}
-                sx={{ mt: 10, mr: 2 }}
-            >
-                <Alert onClose={() => setSnack((s) => ({ ...s, open: false }))} severity={snack.severity} sx={{ borderRadius: 2, backgroundColor: "rgba(2,6,23,0.06)" }}>
-                    {snack.msg}
-                </Alert>
+            <Snackbar open={snack.open} autoHideDuration={3000} onClose={() => setSnack((s) => ({ ...s, open: false }))} anchorOrigin={{ vertical: "top", horizontal: "right" }}>
+                <Alert onClose={() => setSnack((s) => ({ ...s, open: false }))} severity={snack.severity}>{snack.msg}</Alert>
             </Snackbar>
-        </>
+        </Layout>
     );
 }

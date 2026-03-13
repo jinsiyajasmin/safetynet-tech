@@ -23,18 +23,18 @@ exports.requireRole = (roles) => (req, res, next) => {
   const companyName = (req.user.companyname || req.user.company || "").toString().trim().toLowerCase();
   const isSafetynett = companyName === "safetynett";
 
-  if (isSafetynett) {
+  if (isSafetynett) { 
     return next();
   }
 
   const allowedRoles = Array.isArray(roles) ? roles : [roles];
 
   if (!allowedRoles.includes(req.user.role)) {
-    console.warn(`⛔ 403 Forbidden: User ${req.user.email} (Role: ${req.user.role}, Company: ${companyName}) tried to access protected route.`);
+    console.error(`⛔ 403 Forbidden: User ${req.user.email} (Role: ${req.user.role}) tried to access route expecting: ${allowedRoles.join(', ')}`);
     return res.status(403).json({
       success: false,
       message: 'Insufficient permissions',
-      debug: { role: req.user.role, company: companyName }
+      debug: { userRole: req.user.role, required: allowedRoles }
     });
   }
 

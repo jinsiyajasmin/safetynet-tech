@@ -17,13 +17,24 @@ import UseForm from './pages/UseForm';
 import ProfilePage from './pages/ProfilePage';
 import AccountSettings from './pages/AccountSettings';
 
+import ResetPassword from "./pages/ResetPassword";
+import Setup2FA from "./pages/Setup2FA";
+
 import GenericReportPage from './pages/GenericReportPage';
+
+
+import CreateSitesPage from './pages/CreateSitesPage';
+import SitepackManagement from './pages/SitepackManagement';
+import ConcernReportDashboard from './pages/ConcernReportDashboard';
+import AuditReportDashboard from './pages/AuditReportDashboard';
+
+
+import { ThemeProvider } from './context/ThemeContext';
 
 function App() {
 
-
   return (
-    <>
+    <ThemeProvider>
       <ErrorBoundary>
 
         <Routes>
@@ -31,6 +42,9 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/clients" element={<Client />} />
+
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
+          <Route path="/setup-2fa" element={<Setup2FA />} />
 
           <Route path="/users" element={<UsersPage />} />
           <Route path="/clients/:id/users" element={<UsersPage />} />
@@ -81,12 +95,20 @@ function App() {
           <Route path="/lift-sector-client" element={<RequireAuth><GenericReportPage pageTitle="Client level analysis" /></RequireAuth>} />
           <Route path="/lift-sector-site" element={<RequireAuth><GenericReportPage pageTitle="Site level analysis" /></RequireAuth>} />
 
+          <Route path="/create-sites" element={<RequireAuth><CreateSitesPage /></RequireAuth>} />
+          <Route path="/sitepack-management" element={<RequireAuth><SitepackManagement /></RequireAuth>} />
+
+
           <Route path="/frida-forms" element={<RequireAuth><GenericReportPage pageTitle="Friday pack forms" /></RequireAuth>} />
+
+          {/* Dashboards */}
+          <Route path="/concern-reports" element={<RequireAuth><ConcernReportDashboard /></RequireAuth>} />
+          <Route path="/audit-reports" element={<RequireAuth><AuditReportDashboard /></RequireAuth>} />
 
 
         </Routes>
       </ErrorBoundary>
-    </>
+    </ThemeProvider>
 
 
 

@@ -27,8 +27,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DownloadIcon from "@mui/icons-material/Download";
 import EmailIcon from "@mui/icons-material/Email";
-import TopNav from "../components/TopNav";
-import Sidebar from "../components/Sidebar";
+import Layout from "../components/Layout";
 import FormSelectionDialog from "../components/FormSelectionDialog";
 import FormRenderer from "../components/FormRenderer";
 import api from "../services/api";
@@ -39,7 +38,7 @@ import jsPDF from "jspdf";
 const computeLogoUrl = (logo) => {
     if (!logo) return null;
     if (/^https?:\/\//i.test(logo)) return logo;
-    const host = "https://safetynet-tech-7qme.vercel.app";
+    const host = import.meta.env.VITE_BACKEND_URL || "https://api-site-mateai.co.uk";
     return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
 };
 
@@ -142,22 +141,41 @@ export default function GenericReportPage({ pageTitle }) {
         setFormValues((prev) => ({ ...prev, [fieldId]: value }));
     };
 
+    const toBase64 = (file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+    });
+
     const handleSubmit = async () => {
         if (!selectedForm) return;
 
         setIsSubmitting(true);
         try {
+            // Process answers to handle files
+            const processedAnswers = {};
+            for (const [key, value] of Object.entries(formValues)) {
+                if (value instanceof File) {
+                    processedAnswers[key] = await toBase64(value);
+                } else if (!key.endsWith("_preview")) {
+                    processedAnswers[key] = value;
+                }
+            }
+
             let res;
             if (viewMode === "editing" && editingId) {
                 // Update existing
                 res = await api.put(`/forms/responses/${editingId}`, {
-                    answers: formValues
+                    answers: processedAnswers
                 });
             } else {
                 // Create new
-                res = await api.post(`/forms/${selectedForm._id}/responses`, {
-                    formId: selectedForm._id,
-                    answers: formValues,
+                // Check for id or _id to support both during migration, but prefer id
+                const formId = selectedForm.id || selectedForm._id;
+                res = await api.post(`/forms/${formId}/responses`, {
+                    formId: formId,
+                    answers: processedAnswers,
                     category: pageTitle
                 });
             }
@@ -239,12 +257,20 @@ export default function GenericReportPage({ pageTitle }) {
 
     const openSubmissionView = async (sub, mode) => {
         try {
-            const formId = sub.formId._id || sub.formId;
+            // Prisma response has `formId` as string and `form` as object
+            // Mongoose might have `formId` populated
+            const formId = sub.form?.id || sub.formId?._id || sub.formId;
+
+            if (!formId) {
+                console.error("No form ID found in submission", sub);
+                return;
+            }
+
             const formRes = await api.get(`/forms/${formId}`);
             if (formRes.data?.success) {
                 setSelectedForm(formRes.data.data);
                 setFormValues(sub.answers || {});
-                setEditingId(sub._id);
+                setEditingId(sub.id || sub._id);
                 setViewMode(mode);
             }
         } catch (e) {
@@ -255,7 +281,8 @@ export default function GenericReportPage({ pageTitle }) {
     const handleDeleteConfirm = async () => {
         if (!itemToDelete) return;
         try {
-            await api.delete(`/forms/responses/${itemToDelete._id}`);
+            const itemId = itemToDelete.id || itemToDelete._id;
+            await api.delete(`/forms/responses/${itemId}`);
             fetchSubmissions();
             setDeleteConfirmOpen(false);
             setItemToDelete(null);
@@ -293,7 +320,8 @@ export default function GenericReportPage({ pageTitle }) {
     const handleEmailSend = async () => {
         if (!recipientEmail || !emailingItem) return;
         try {
-            const res = await api.post(`/forms/responses/${emailingItem._id}/email`, { email: recipientEmail });
+            const itemId = emailingItem.id || emailingItem._id;
+            const res = await api.post(`/forms/responses/${itemId}/email`, { email: recipientEmail });
             if (res.data?.success) {
                 alert("Email sent successfully!");
                 setEmailDialogOpen(false);
@@ -308,123 +336,116 @@ export default function GenericReportPage({ pageTitle }) {
     };
 
     return (
-        <>
-            <TopNav />
-            <Box sx={{ display: "flex", bgcolor: "#f9fafb", minHeight: "100vh" }}>
-                <Box component="aside" sx={{ width: { xs: 0, md: 260 }, bgcolor: "#fff", borderRight: "1px solid #e5e7eb" }}>
-                    <Sidebar />
-                </Box>
-
-                <Box component="main" sx={{ flex: 1, px: 4, py: 4, height: "100vh", overflowY: "auto" }}>
-                    <Box sx={{ maxWidth: 1000, mx: "auto" }}>
-                        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 4 }}>
-                            <Typography variant="h4" fontWeight={700}>{pageTitle}</Typography>
-                            {(viewMode !== "initial") && (
-                                <Box sx={{ display: 'flex', gap: 2 }}>
-                                    {viewMode === "viewed" && (
-                                        <Button startIcon={<DownloadIcon />} variant="contained" onClick={handleDownloadPdf}>
-                                            Download PDF
-                                        </Button>
-                                    )}
-                                    <Button variant="outlined" onClick={() => setViewMode("initial")}>Back to List</Button>
-                                </Box>
-                            )}
-                            {viewMode === "initial" && (
-                                <Box sx={{ display: "flex", gap: 2 }}>
-                                    <Button variant="contained" onClick={() => setDialogOpen(true)}>Choose Form</Button>
-                                </Box>
-                            )}
-                        </Box>
-
+        <Layout>
+            <Box sx={{ flex: 1, px: 4, py: 4, height: "100%", overflowY: "auto" }}>
+                <Box sx={{ maxWidth: 1000, mx: "auto" }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", mb: 4 }}>
+                        <Typography variant="h4" fontWeight={700}>{pageTitle}</Typography>
+                        {(viewMode !== "initial") && (
+                            <Box sx={{ display: 'flex', gap: 2 }}>
+                                {viewMode === "viewed" && (
+                                    <Button startIcon={<DownloadIcon />} variant="contained" onClick={handleDownloadPdf}>
+                                        Download PDF
+                                    </Button>
+                                )}
+                                <Button variant="outlined" onClick={() => setViewMode("initial")}>Back to List</Button>
+                            </Box>
+                        )}
                         {viewMode === "initial" && (
-                            <Paper sx={{ width: '100%', mb: 2 }}>
-                                <TableContainer>
-                                    <Table>
-                                        <TableHead>
-                                            <TableRow>
-                                                <TableCell>Form Name</TableCell>
-                                                <TableCell>Date</TableCell>
-                                                <TableCell>Status</TableCell>
-                                                <TableCell align="right">Actions</TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {submissions.map((row) => (
-                                                <TableRow key={row._id}>
-                                                    <TableCell>{row.formId?.title || "Untitled"}</TableCell>
-                                                    <TableCell>{new Date(row.createdAt).toLocaleDateString()}</TableCell>
-                                                    <TableCell><Chip label="Submitted" color="success" size="small" variant="outlined" /></TableCell>
-                                                    <TableCell align="right">
-                                                        <IconButton onClick={(e) => handleMenuClick(e, row)}>
-                                                            <MoreVertIcon />
-                                                        </IconButton>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                            {submissions.length === 0 && (
-                                                <TableRow><TableCell colSpan={4} align="center">No submissions.</TableCell></TableRow>
-                                            )}
-                                        </TableBody>
-                                    </Table>
-                                </TableContainer>
-                            </Paper>
-                        )}
-
-                        {(viewMode === "filling" || viewMode === "editing") && selectedForm && (
-                            <Paper sx={{ p: 4 }}>
-                                <Typography variant="h6" gutterBottom>{viewMode === "editing" ? "Edit Report" : "New Report"}</Typography>
-                                <FormRenderer
-                                    form={selectedForm}
-                                    values={formValues}
-                                    onChange={handleFormChange}
-                                    onSubmit={handleSubmit}
-                                    isSubmitting={isSubmitting}
-                                    logoUrl={logoUrl}
-                                />
-                            </Paper>
-                        )}
-
-                        {viewMode === "viewed" && selectedForm && (
-                            <Box sx={{ width: '100%', overflow: 'auto', display: 'flex', justifyContent: 'center', py: 4 }}>
-                                <Paper
-                                    elevation={3}
-                                    sx={{
-                                        width: '210mm',
-                                        minHeight: '297mm',
-                                        p: '20mm',
-                                        position: 'relative',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        boxSizing: 'border-box'
-                                    }}
-                                    ref={printRef}
-                                >
-                                    {/* Form Content - Grows to push footer down */}
-                                    <Box sx={{ flex: 1 }}>
-                                        <FormRenderer
-                                            form={selectedForm}
-                                            values={formValues}
-                                            readOnly={true}
-                                            hideTitle={true} // Clean view
-                                        />
-                                    </Box>
-
-                                    {/* Footer: Black Line + Logo Bottom Right */}
-                                    <Box sx={{ mt: 4, pt: 2, borderTop: "2px solid black", display: "flex", justifyContent: "flex-end" }}>
-                                        <Box
-                                            component="img"
-                                            src={logoUrl || "/logo.png"}
-                                            alt="Company Logo"
-                                            sx={{
-                                                height: 40,
-                                                width: "auto"
-                                            }}
-                                        />
-                                    </Box>
-                                </Paper>
+                            <Box sx={{ display: "flex", gap: 2 }}>
+                                <Button variant="contained" onClick={() => setDialogOpen(true)}>Choose Form</Button>
                             </Box>
                         )}
                     </Box>
+
+                    {viewMode === "initial" && (
+                        <Paper sx={{ width: '100%', mb: 2 }}>
+                            <TableContainer>
+                                <Table>
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell>Form Name</TableCell>
+                                            <TableCell>Date</TableCell>
+                                            <TableCell>Status</TableCell>
+                                            <TableCell align="right">Actions</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {submissions.map((row) => (
+                                            <TableRow key={row.id || row._id}>
+                                                <TableCell>{row.form?.title || row.formId?.title || "Untitled"}</TableCell>
+                                                <TableCell>{new Date(row.createdAt).toLocaleDateString()}</TableCell>
+                                                <TableCell><Chip label="Submitted" color="success" size="small" variant="outlined" /></TableCell>
+                                                <TableCell align="right">
+                                                    <IconButton onClick={(e) => handleMenuClick(e, row)}>
+                                                        <MoreVertIcon />
+                                                    </IconButton>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                        {submissions.length === 0 && (
+                                            <TableRow><TableCell colSpan={4} align="center">No submissions.</TableCell></TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        </Paper>
+                    )}
+
+                    {(viewMode === "filling" || viewMode === "editing") && selectedForm && (
+                        <Paper sx={{ p: 4 }}>
+                            <Typography variant="h6" gutterBottom>{viewMode === "editing" ? "Edit Report" : "New Report"}</Typography>
+                            <FormRenderer
+                                form={selectedForm}
+                                values={formValues}
+                                onChange={handleFormChange}
+                                onSubmit={handleSubmit}
+                                isSubmitting={isSubmitting}
+                                logoUrl={logoUrl}
+                            />
+                        </Paper>
+                    )}
+
+                    {viewMode === "viewed" && selectedForm && (
+                        <Box sx={{ width: '100%', overflow: 'auto', display: 'flex', justifyContent: 'center', py: 4 }}>
+                            <Paper
+                                elevation={3}
+                                sx={{
+                                    width: '210mm',
+                                    minHeight: '297mm',
+                                    p: '20mm',
+                                    position: 'relative',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    boxSizing: 'border-box'
+                                }}
+                                ref={printRef}
+                            >
+                                {/* Form Content - Grows to push footer down */}
+                                <Box sx={{ flex: 1 }}>
+                                    <FormRenderer
+                                        form={selectedForm}
+                                        values={formValues}
+                                        readOnly={true}
+                                        hideTitle={true} // Clean view
+                                    />
+                                </Box>
+
+                                {/* Footer: Black Line + Logo Bottom Right */}
+                                <Box sx={{ mt: 4, pt: 2, borderTop: "2px solid black", display: "flex", justifyContent: "flex-end" }}>
+                                    <Box
+                                        component="img"
+                                        src={logoUrl || "/logo.png"}
+                                        alt="Company Logo"
+                                        sx={{
+                                            height: 40,
+                                            width: "auto"
+                                        }}
+                                    />
+                                </Box>
+                            </Paper>
+                        </Box>
+                    )}
                 </Box>
             </Box>
 
@@ -488,6 +509,6 @@ export default function GenericReportPage({ pageTitle }) {
                     <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon> <ListItemText sx={{ color: 'error.main' }}>Delete</ListItemText>
                 </MenuItem>
             </Menu>
-        </>
+        </Layout>
     );
 }

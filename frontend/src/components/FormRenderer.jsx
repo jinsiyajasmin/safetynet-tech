@@ -45,11 +45,16 @@ export default function FormRenderer({
                 WebkitTextFillColor: "rgba(0, 0, 0, 0.87) !important",
                 cursor: "default"
             },
-            "& .MuiOutlinedInput-notchedOutline": { border: "none" }, // Optional: remove border for cleaner "view" look? Or keep border but lighter? Let's keep default but ensure text is black.
-            // Actually user asked for black text "not in the grey clr".
-            // Default disabled is grey. ReadOnly is usually standard color but editable.
-            // We want it to look like static text.
+            "& .MuiOutlinedInput-notchedOutline": { 
+                borderColor: "rgba(0, 0, 0, 0.23)",
+            },
         }
+    };
+
+    const inputSx = {
+        "& .MuiOutlinedInput-root": {
+            borderRadius: "12px",
+        },
     };
 
     // For Select/Radio/Checkbox, "readOnly" attribute doesn't prevent interaction fully in MUI (select still opens).
@@ -88,13 +93,27 @@ export default function FormRenderer({
 
             {form.fields.map((f) => (
                 <Box key={f.id} sx={{ mb: 3 }}>
-                    <Typography sx={{ fontWeight: 600, mb: 1 }}>
-                        {f.label} {f.required && !readOnly && "*"}
-                    </Typography>
+                    {f.type !== "section_header" && (
+                        <Typography sx={{ fontWeight: 600, mb: 1 }}>
+                            {f.label} {f.required && !readOnly && "*"}
+                        </Typography>
+                    )}
+
+                    {/* Section Header Renderer */}
+                    {f.type === "section_header" && (
+                        <Box sx={{ width: '100%', textAlign: f.alignment || 'left', mt: 2, mb: 1 }}>
+                            {f.subheading && (
+                                <Typography variant="h6" sx={{ fontWeight: 600, color: f.color || '#000' }}>
+                                    {f.subheading}
+                                </Typography>
+                            )}
+                        </Box>
+                    )}
 
                     {f.type === "text" && (
                         <TextField
                             fullWidth
+                            sx={inputSx}
                             value={values[f.id] || ""}
                             onChange={(e) => handleChange(f.id, e.target.value)}
                             InputProps={readOnly ? readOnlyInputProps : {}}
@@ -107,6 +126,7 @@ export default function FormRenderer({
                             fullWidth
                             multiline
                             minRows={3}
+                            sx={inputSx}
                             value={values[f.id] || ""}
                             onChange={(e) => handleChange(f.id, e.target.value)}
                             InputProps={readOnly ? readOnlyInputProps : {}}
@@ -118,13 +138,10 @@ export default function FormRenderer({
                         <TextField
                             select
                             fullWidth
+                            sx={inputSx}
                             value={values[f.id] || ""}
                             onChange={(e) => handleChange(f.id, e.target.value)}
                             InputProps={readOnly ? readOnlyInputProps : {}}
-                        // If readOnly, we use MenuItem as readOnly display helper if needed, but TextField select handles it.
-                        // However, clicking it opens menu. We want to prevent opening? 
-                        // Easier: If readOnly, render just a Text Field with the selected LABEL.
-                        // But we only have values. We need to find the label.
                         >
                             {f.options?.map((o) => (
                                 <MenuItem key={o.id} value={o.value}>
@@ -153,7 +170,7 @@ export default function FormRenderer({
                                     label={o.label}
                                     disabled={readOnly}
                                     sx={{
-                                        "& .MuiFormControlLabel-label.Mui-disabled": { color: "text.primary" } // Force label black
+                                        "& .MuiFormControlLabel-label.Mui-disabled": { color: "text.primary" }
                                     }}
                                 />
                             ))}
@@ -177,7 +194,7 @@ export default function FormRenderer({
                                     }
                                     label={o.label}
                                     sx={{
-                                        "& .MuiFormControlLabel-label.Mui-disabled": { color: "text.primary" } // Force label black
+                                        "& .MuiFormControlLabel-label.Mui-disabled": { color: "text.primary" }
                                     }}
                                 />
                             ))}
@@ -188,6 +205,7 @@ export default function FormRenderer({
                         <TextField
                             type={f.type === "datetime" ? "datetime-local" : f.type === "monthyear" ? "month" : f.type}
                             fullWidth
+                            sx={inputSx}
                             value={values[f.id] || ""}
                             onChange={(e) => handleChange(f.id, e.target.value)}
                             InputProps={readOnly ? readOnlyInputProps : {}}
@@ -195,30 +213,57 @@ export default function FormRenderer({
                         />
                     )}
 
-                    {(f.type === "file" || f.type === "image_upload") && (
+                    {/* Image Upload Renderer */}
+                    {f.type === "image_upload" && (
                         <Box>
-                            {readOnly ? (
-                                <Typography variant="body1" color="text.primary">
-                                    {values[f.id] || "No file"}
-                                </Typography>
-                            ) : (
-                                <TextField
-                                    type="file"
-                                    fullWidth
-                                    onChange={(e) => {
-                                        const file = e.target.files[0];
-                                        if (file) {
-                                            handleChange(f.id, file.name);
+                            {/* Show preview if value exists (either file object, base64 string, or preview url) */}
+                            {(values[f.id] || values[f.id + "_preview"]) ? (
+                                <Box sx={{ mb: 1 }}>
+                                    <Box
+                                        component="img"
+                                        src={
+                                            // 1. Preview URL (File object created URL)
+                                            values[f.id + "_preview"] ||
+                                            // 2. Base64 string (from DB)
+                                            (typeof values[f.id] === 'string' ? values[f.id] : null) ||
+                                            // 3. Fallback
+                                            ""
                                         }
-                                    }}
-                                    InputLabelProps={{ shrink: true }}
-                                    inputProps={{
-                                        accept: f.type === "image_upload" ? "image/*" : "*/*"
-                                    }}
-                                />
+                                        alt="uploaded"
+                                        sx={{ maxWidth: '100%', maxHeight: 300, borderRadius: 2, border: '1px solid #ddd' }}
+                                    />
+                                    {!readOnly && (
+                                        <Button size="small" color="error" onClick={() => {
+                                            handleChange(f.id, null);
+                                            handleChange(f.id + "_preview", null);
+                                        }} sx={{ display: 'block', mt: 1 }}>Remove</Button>
+                                    )}
+                                </Box>
+                            ) : (
+                                !readOnly && (
+                                    <Button variant="outlined" component="label" fullWidth sx={{ height: 100, borderStyle: 'dashed', borderRadius: "12px" }}>
+                                        Upload Image
+                                        <input hidden accept="image/*" type="file" onChange={(e) => {
+                                            const file = e.target.files[0];
+                                            if (file) {
+                                                const url = URL.createObjectURL(file);
+                                                handleChange(f.id, file); // Store File object
+                                                handleChange(f.id + "_preview", url); // Store preview URL
+                                            }
+                                        }} />
+                                    </Button>
+                                )
                             )}
                         </Box>
                     )}
+
+                    {/* Signature Renderer (Placeholder) */}
+                    {f.type === "signature" && (
+                        <Box sx={{ border: "1px solid #cbd5e1", borderRadius: "12px", height: 120, bgcolor: readOnly ? "#fff" : "#f8fafc", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Typography color="text.secondary">{values[f.id] ? "Signed" : "Signature (Pending)"}</Typography>
+                        </Box>
+                    )}
+
                 </Box>
             ))}
 

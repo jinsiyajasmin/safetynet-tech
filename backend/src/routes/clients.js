@@ -19,7 +19,7 @@ router.get("/:id/users", getUsersByClient);
 router.post(
   "/",
   requireAuth,
-  requireRole(["superadmin", "admin"]),
+  requireRole(["superadmin", "company_admin"]),
   upload.single("logo"),
   createClient
 );
@@ -27,7 +27,7 @@ router.post(
 router.put(
   "/:id",
   requireAuth,
-  requireRole(["superadmin", "admin"]),
+  requireRole(["superadmin", "company_admin"]),
   upload.single("logo"),
   updateClient
 );
@@ -35,7 +35,7 @@ router.put(
 router.delete(
   "/:id",
   requireAuth,
-  requireRole(["superadmin", "admin"]),
+  requireRole(["superadmin", "company_admin"]),
   deleteClient
 );
 

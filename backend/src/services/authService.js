@@ -1,5 +1,4 @@
-const User = require("../models/User");
-const Client = require("../models/Client");
+const prisma = require("../prismaClient");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
@@ -17,7 +16,14 @@ exports.signup = async (payload) => {
 
   console.log("Signup Step 1: Checking existing user");
   // 1️⃣ Check if user already exists
-  const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+  const existingUser = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { email: { equals: email, mode: 'insensitive' } },
+        { username: { equals: username, mode: 'insensitive' } }
+      ]
+    }
+  });
   if (existingUser) {
     console.log("Signup Error: User already exists");
     const err = new Error("User with this email or username already exists");
@@ -34,21 +40,21 @@ exports.signup = async (payload) => {
     throw err;
   }
 
-  // Escape regex special characters to prevent errors
-  const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-  // Use a more flexible regex: case-insensitive
-  const regex = new RegExp("^" + escapeRegExp(companyName) + "$", "i");
-
-  let client = await Client.findOne({ name: { $regex: regex } });
+  let client = await prisma.client.findFirst({
+    where: {
+      name: { equals: companyName, mode: 'insensitive' }
+    }
+  });
 
   if (!client) {
     // Auto-create company if not found
     console.log(`Company '${companyName}' not found. Creating new client.`);
-    client = await Client.create({ name: companyName });
-    console.log(`Client created: ${client._id}`);
+    client = await prisma.client.create({
+      data: { name: companyName }
+    });
+    console.log(`Client created: ${client.id}`);
   } else {
-    console.log(`Client found: ${client._id}`);
+    console.log(`Client found: ${client.id}`);
   }
 
   console.log("Signup Step 3: Hashing password");
@@ -57,18 +63,20 @@ exports.signup = async (payload) => {
 
   console.log("Signup Step 4: Creating user");
   // 4️⃣ Create user linked to client
-  const user = await User.create({
-    username,
-    firstName,
-    lastName,
-    email,
-    jobTitle,
-    companyname: client.name, // store canonical name
-    mobile,
-    password: hashed,
-    clientId: client._id,
+  const user = await prisma.user.create({
+    data: {
+      username,
+      firstName,
+      lastName,
+      email,
+      jobTitle,
+      companyname: client.name, // store canonical name
+      mobile,
+      password: hashed,
+      clientId: client.id,
+    }
   });
-  console.log(`User created: ${user._id}`);
+  console.log(`User created: ${user.id}`);
 
   console.log("Signup Step 5: Generating token");
   // 5️⃣ Generate token
@@ -77,7 +85,13 @@ exports.signup = async (payload) => {
     throw new Error("JWT_SECRET is not defined in environment variables");
   }
   const token = jwt.sign(
-    { id: user._id, email: user.email, role: user.role, clientId: client._id },
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      clientId: client.id,
+      companyname: user.companyname
+    },
     process.env.JWT_SECRET,
     { expiresIn: "7d" }
   );
@@ -99,11 +113,16 @@ exports.login = async ({ email, password }) => {
   console.log('DEBUG: login attempt for ->', lookup);
 
   // find by email (case-insensitive) or username exact
-  const user = await User.findOne({
-    $or: [{ email: lookup.toLowerCase() }, { username: lookup }],
-  })
-    .populate("clientId")
-    .exec();
+  // find by email (case-insensitive) or username exact
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { email: { equals: lookup, mode: 'insensitive' } },
+        { username: { equals: lookup, mode: 'insensitive' } }
+      ]
+    },
+    include: { client: true }
+  });
 
   if (!user) {
     console.warn('DEBUG: user not found for ->', lookup);
@@ -112,10 +131,10 @@ exports.login = async ({ email, password }) => {
     throw e;
   }
 
-  console.log('DEBUG: user found id=', user._id.toString(), 'email=', user.email, 'username=', user.username);
+  console.log('DEBUG: user found id=', user.id, 'email=', user.email, 'username=', user.username);
 
   if (!user.password) {
-    console.warn('DEBUG: user has no password stored (id=', user._id.toString(), ')');
+    console.warn('DEBUG: user has no password stored (id=', user.id, ')');
     const e = new Error('Invalid credentials');
     e.status = 401;
     throw e;
@@ -125,7 +144,7 @@ exports.login = async ({ email, password }) => {
   console.log('DEBUG: bcrypt compare result ->', matches);
 
   if (!matches) {
-    console.warn('DEBUG: password mismatch for user id=', user._id.toString());
+    console.warn('DEBUG: password mismatch for user id=', user.id);
     const e = new Error('Invalid credentials');
     e.status = 401;
     throw e;
@@ -136,12 +155,18 @@ exports.login = async ({ email, password }) => {
   }
 
   const token = jwt.sign(
-    { id: user._id.toString(), email: user.email, role: user.role, clientId: user.clientId },
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      clientId: user.clientId,
+      companyname: user.companyname
+    },
     process.env.JWT_SECRET,
     { expiresIn: '7d' }
   );
 
-  const u = user.toObject ? user.toObject() : user;
+  const u = { ...user };
   delete u.password;
   return { user: u, token };
 };

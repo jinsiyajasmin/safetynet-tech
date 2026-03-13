@@ -1,0 +1,122 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  logo      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+}
+
+model User {
+  id          String   @id @default(uuid())
+  username    String   @unique
+  firstName   String
+  lastName    String
+  email       String   @unique
+  jobTitle    String?
+  companyname String?
+  mobile      String
+  password    String
+  role        Role     @default(worker)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  twoFactorSecret  String?
+  twoFactorEnabled Boolean @default(false)
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+
+  managedSites Site[]
+  
+  createdForms  Form[]
+  submittedResponses FormResponse[]
+  uploadedDocuments SiteDocument[]
+}
+
+model Site {
+  id        String   @id @default(uuid())
+  name      String
+  address   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  managerId String?
+  manager   User?   @relation(fields: [managerId], references: [id])
+  
+  documents SiteDocument[]
+}
+
+model Form {
+  id             String   @id @default(uuid())
+  title          String   @default("Untitled Form")
+  titleColor     String   @default("#000000")
+  titleAlignment String   @default("left")
+  fields         Json     // Stores the array of form fields
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  createdById String?
+  createdBy   User?   @relation(fields: [createdById], references: [id])
+
+  responses FormResponse[]
+}
+
+model FormResponse {
+  id          String   @id @default(uuid())
+  answers     Json     // Stores the answers object
+  category    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  formId String
+  form   Form   @relation(fields: [formId], references: [id])
+
+  submittedById String?
+  submittedBy   User?   @relation(fields: [submittedById], references: [id])
+}
+
+enum Role {
+  superadmin
+  company_admin
+  site_manager
+  supervisor
+  worker
+}
+
+model SiteDocument {
+  id          String   @id @default(uuid())
+  title       String
+  type        String // PDF, DOC, etc.
+  version     String
+  url         String
+  size        String
+  category    String // rams, friday-pack, etc.
+  tags        String?
+  validFrom   String?
+  validUntil  String
+  
+  siteId      String
+  site        Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  uploadedById String
+  uploadedBy   User    @relation(fields: [uploadedById], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

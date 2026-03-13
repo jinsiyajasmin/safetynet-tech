@@ -64,7 +64,7 @@ export default function FormSelectionDialog({ open, onClose, onSelect }) {
                 ) : filteredForms.length > 0 ? (
                     <List>
                         {filteredForms.map((form) => (
-                            <ListItemButton key={form._id} onClick={() => onSelect(form)}>
+                            <ListItemButton key={form.id || form._id} onClick={() => onSelect(form)}>
                                 <ListItemText
                                     primary={form.title}
                                     secondary={`${form.fields?.length || 0} fields`}

@@ -1,285 +1,276 @@
-import React, { useState } from "react";
+import React from "react";
 import {
-  AppBar,
-  Toolbar,
   Box,
+  Typography,
   IconButton,
   Avatar,
-  Typography,
+  InputBase,
+  Badge,
   Drawer,
+  Button,
   Divider,
   List,
-  ListItemButton,
+  ListItem,
   ListItemIcon,
-  ListItemText,
-  Button,
+  ListItemText
 } from "@mui/material";
-import MenuIcon from "@mui/icons-material/Menu";
-import HomeIcon from "@mui/icons-material/Home";
-import PersonIcon from "@mui/icons-material/Person";
-import PaymentIcon from "@mui/icons-material/ReceiptLong";
-import DescriptionIcon from "@mui/icons-material/Description";
-import SettingsIcon from "@mui/icons-material/Settings";
-import CloseIcon from "@mui/icons-material/Close";
-import { useNavigate, Link as RouterLink } from "react-router-dom";
+import { Search, LogOut, User, Settings, Menu } from "lucide-react";
+import NotificationsNoneOutlinedIcon from "@mui/icons-material/NotificationsNoneOutlined";
+import { useLocation, useSearchParams, useNavigate } from "react-router-dom";
+import { useTheme } from "../context/ThemeContext";
 
-export default function TopNav({ onMenuClick }) {
-  const navigate = useNavigate();
-  const [openDrawer, setOpenDrawer] = useState(false);
+export default function TopNav({ pageTitle, onMobileMenuClick }) {
+  const { isDarkMode } = useTheme();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchQuery = searchParams.get("search") || "";
 
-  // get user from localStorage
-  const [user, setUser] = useState(null);
-
-  React.useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (e) {
-        console.error("Failed to parse user from local storage", e);
-      }
+  // Update URL search param on input change
+  const handleSearchChange = (e) => {
+    const value = e.target.value;
+    if (value) {
+      setSearchParams({ search: value });
+    } else {
+      setSearchParams({});
     }
-  }, []);
-
-  const name = user?.firstName ? `${user.firstName} ${user.lastName || ""}` : (user?.username || "User");
-  const email = user?.email || "";
-  const profilePic = user?.avatar;
-
-  // Get initials (First letter of First Name + First letter of Last Name)
-  const getInitials = () => {
-    if (user?.firstName) {
-      return (user.firstName.charAt(0) + (user.lastName ? user.lastName.charAt(0) : "")).toUpperCase();
-    }
-    return (user?.username || "U").charAt(0).toUpperCase();
   };
 
-  const toggleDrawer = (open) => () => setOpenDrawer(open);
+  // Page title from route (simple example)
+  const getPageTitle = (path) => {
+    if (path === "/clients") return "Clients";
+    if (path === "/users" || path.includes("/users")) return "Users";
+    if (path === "/sites" || path === "/create-sites") return "Sites";
+    if (path === "/enable-user") return "User Access";
+    if (path === "/sitepack-management") return "Site Pack Management";
+    if (path === "/forms" || path === "/form-build") return "Form Builder";
+    return "Dashboard";
+  };
+  const title = pageTitle || getPageTitle(location.pathname);
 
+  const hideSearch = ["/enable-user"].includes(location.pathname);
+
+  // State for offcanvas
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const navigate = useNavigate();
+
+  // Get user from local storage
+  const getUser = () => {
+    try {
+      const userStr = localStorage.getItem("user");
+      return userStr ? JSON.parse(userStr) : null;
+    } catch (e) {
+      return null;
+    }
+  };
+  const user = getUser();
+
+  // Handle Logout
   const handleLogout = () => {
     localStorage.removeItem("token");
-    setOpenDrawer(false);
+    localStorage.removeItem("user");
+    sessionStorage.removeItem("token");
     navigate("/login");
   };
 
-  const handleNavigate = (to) => {
-    setOpenDrawer(false);
-    navigate(to);
+  // User initials
+  const getInitials = () => {
+    if (!user) return "?";
+    const first = user.firstName ? user.firstName.charAt(0).toUpperCase() : "";
+    const last = user.lastName ? user.lastName.charAt(0).toUpperCase() : "";
+    return first + last || user.username?.charAt(0).toUpperCase() || "U";
   };
 
   return (
-    <>
-      {/* Top Navigation Bar */}
-      <AppBar
-        position="sticky"
-        elevation={0}
-        color="default"
-        sx={{
-          bgcolor: "#ffffff",
-        }}
-      >
-        <Toolbar
+    <Box
+      sx={{
+        px: 2.5,
+        py: 1.5,
+        bgcolor: isDarkMode ? "#111827" : "#FFFFFF",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        borderRadius: "20px",
+        boxShadow: isDarkMode ? "0px 4px 20px rgba(0, 0, 0, 0.4)" : "none",
+      }}
+    >
+      {/* LEFT: MENU ICON + PAGE TITLE */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+        <IconButton
+          edge="start"
+          color="inherit"
+          aria-label="menu"
+          onClick={onMobileMenuClick}
+          sx={{ display: { md: "none" }, color: isDarkMode ? "#F9FAFB" : "#111827" }}
+        >
+          <Menu />
+        </IconButton>
+        <Typography
           sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            px: { xs: 2, sm: 4 },
+            fontSize: "1.5rem",
+            fontWeight: 600,
+            color: isDarkMode ? "#F9FAFB" : "#111827",
           }}
         >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            {/* Menu Button (mobile) */}
-            <IconButton
-              edge="start"
-              sx={{ display: { xs: "inline-flex", md: "none" } }}
-              onClick={onMenuClick}
-            >
-              <MenuIcon />
-            </IconButton>
+          {title}
+        </Typography>
+      </Box>
 
-            {/* Logo */}
-            <Box
-              component={RouterLink}
-              to="/"
+      {/* RIGHT: SEARCH + AVATAR */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
+        {/* SEARCH */}
+        {!hideSearch && (
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+              px: 2,
+              py: 0.5,
+              bgcolor: isDarkMode ? "#1B212C" : "#E9E7E0",
+              borderRadius: 3,
+              width: 320,
+            }}
+          >
+            <Search size={20} color="#6B7280" />
+            <InputBase
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={handleSearchChange}
               sx={{
-                display: "flex",
-                alignItems: "center",
-                textDecoration: "none",
+                fontSize: "0.95rem",
+                color: isDarkMode ? "#F9FAFB" : "#374151",
+                width: "100%",
+              }}
+            />
+          </Box>
+        )}
+
+        {/* AVATAR */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          {/* Avatar with ring */}
+          <Box
+            onClick={() => setDrawerOpen(true)}
+            sx={{
+              p: 0.25,
+              borderRadius: "50%",
+              background: "linear-gradient(135deg, #F59E0B 0%, #EAB308 100%)",
+              cursor: "pointer",
+            }}
+          >
+            <Avatar
+              sx={{
+                width: 38,
+                height: 38,
+                bgcolor: "#2563EB",
+                fontWeight: 700,
+                fontSize: "0.9rem",
               }}
             >
-              <Box
-                component="img"
-                src="/logo.png"
-                alt="logo"
-                sx={{ height: 36, width: "auto" }}
-              />
+              {getInitials()}
+            </Avatar>
+          </Box>
+        </Box>
+      </Box>
+
+      {/* OFFCANVAS DRAWER */}
+      <Drawer
+        anchor="right"
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        PaperProps={{
+          sx: {
+            width: 320,
+            bgcolor: isDarkMode ? "#111827" : "#FFFFFF",
+            color: isDarkMode ? "#F9FAFB" : "#111827",
+            p: 3,
+            pt: 6, // More space on top
+            borderLeft: isDarkMode ? "1px solid #374151" : "none"
+          }
+        }}
+      >
+        <Box sx={{ display: "flex", flexDirection: "column" }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 4 }}>
+            <Avatar
+              sx={{
+                width: 64,
+                height: 64,
+                fontSize: "1.5rem",
+                bgcolor: "#2563EB",
+                boxShadow: "0 4px 12px rgba(37, 99, 235, 0.4)"
+              }}
+            >
+              {getInitials()}
+            </Avatar>
+            <Box sx={{ display: "flex", flexDirection: "column" }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
+                {user?.firstName} {user?.lastName}
+              </Typography>
+              <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280", fontSize: "0.85rem" }}>
+                {user?.email}
+              </Typography>
             </Box>
           </Box>
 
-          {/* Avatar/Profile */}
-          <IconButton onClick={toggleDrawer(true)}>
-            <Avatar
-              src="avatar.png" // ✅ image will appear here
-              alt={name}
+          <Divider sx={{ mb: 2, borderColor: isDarkMode ? "#374151" : "#E5E7EB" }} />
+
+          <List sx={{ px: 0 }}>
+            <ListItem
+              button
+              onClick={() => { setDrawerOpen(false); navigate("/profile"); }}
               sx={{
-                width: 48,
-                height: 48,
-                bgcolor: "#0d5d97ff",
-                color: "white",
-                fontWeight: 600,
+                borderRadius: 3,
+                mb: 1,
+                color: isDarkMode ? "#F9FAFB" : "#374151",
+                "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" }
               }}
             >
-              {!profilePic && getInitials()}
-            </Avatar>
-          </IconButton>
-        </Toolbar>
-      </AppBar>
+              <ListItemIcon sx={{ minWidth: 40, color: isDarkMode ? "#9CA3AF" : "#6B7280" }}>
+                <User size={20} />
+              </ListItemIcon>
+              <ListItemText primary="Profile" primaryTypographyProps={{ fontWeight: 500 }} />
+            </ListItem>
 
-      {/* Right Drawer (Offcanvas) */}
-      <Drawer
-        anchor="right"
-        open={openDrawer}
-        onClose={toggleDrawer(false)}
-        PaperProps={{
-          sx: {
-            width: { xs: "92%", sm: 380 },
-            maxWidth: 420,
-            borderRadius: { xs: 0, sm: 2 },
-            overflow: "hidden",
-          },
-        }}
-      >
-        {/* Close Button */}
-        <Box sx={{ px: 3, py: 2, display: "flex", justifyContent: "flex-end" }}>
-          <IconButton onClick={toggleDrawer(false)}>
-            <CloseIcon />
-          </IconButton>
-        </Box>
-
-        {/* Profile Avatar */}
-        <Box
-          sx={{
-            px: 3,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 1.5,
-          }}
-        >
-          {/* Avatar with border ring */}
-          <Box
-            sx={{
-              width: 110,
-              height: 110,
-              borderRadius: "50%",
-              display: "grid",
-              placeItems: "center",
-              background:
-                "linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.6))",
-              boxShadow:
-                "inset 0 0 0 6px rgba(170, 223, 190, 0.5), 0 6px 18px rgba(0,0,0,0.06)",
-            }}
-          >
-            <Avatar
-              src="avatar.png" // ✅ show image in drawer too
-              alt={name}
+            <ListItem
+              button
+              onClick={() => { setDrawerOpen(false); navigate("/account-settings"); }}
               sx={{
-                width: 88,
-                height: 88,
-                bgcolor: "#0d5d97ff",
-                color: "white",
-                fontSize: 28,
-                fontWeight: 700,
+                borderRadius: 3,
+                mb: 1,
+                color: isDarkMode ? "#F9FAFB" : "#374151",
+                "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" }
               }}
             >
-              {!profilePic && getInitials()}
-            </Avatar>
-          </Box>
-
-          <Typography sx={{ mt: 1, fontWeight: 700, fontSize: "1.05rem" }}>
-            {name}
-          </Typography>
-          <Typography color="text.secondary" sx={{ fontSize: "0.95rem" }}>
-            {email}
-          </Typography>
-        </Box>
-
-        {/* Dotted Divider */}
-        <Box sx={{ px: 3, pt: 2 }}>
-          <Divider sx={{ borderStyle: "dashed", borderColor: "divider" }} />
-        </Box>
-
-        {/* Menu Items */}
-        <Box sx={{ px: 1, mt: 1 }}>
-          <List disablePadding>
-            <ListItemButton
-              onClick={() => handleNavigate("/dashboard")}
-              sx={{ py: 1.25, px: 3 }}
-            >
-              <ListItemIcon sx={{ minWidth: 44 }}>
-                <HomeIcon color="action" />
+              <ListItemIcon sx={{ minWidth: 40, color: isDarkMode ? "#9CA3AF" : "#6B7280" }}>
+                <Settings size={20} />
               </ListItemIcon>
-              <ListItemText
-                primary="Home"
-                primaryTypographyProps={{ fontWeight: 600 }}
-              />
-            </ListItemButton>
-
-            <ListItemButton
-              onClick={() => handleNavigate("/profile")}
-              sx={{ py: 1.25, px: 3 }}
-            >
-              <ListItemIcon sx={{ minWidth: 44 }}>
-                <PersonIcon color="action" />
-              </ListItemIcon>
-              <ListItemText primary="Profile" />
-            </ListItemButton>
-
-
-            <ListItemButton
-              onClick={() => handleNavigate("/templates")}
-              sx={{ py: 1.25, px: 3 }}
-            >
-              <ListItemIcon sx={{ minWidth: 44 }}>
-                <DescriptionIcon color="action" />
-              </ListItemIcon>
-              <ListItemText primary="Templates" />
-            </ListItemButton>
-
-            <ListItemButton
-              onClick={() => handleNavigate("/account-settings")}
-              sx={{ py: 1.25, px: 3 }}
-            >
-              <ListItemIcon sx={{ minWidth: 44 }}>
-                <SettingsIcon color="action" />
-              </ListItemIcon>
-              <ListItemText primary="Account settings" />
-            </ListItemButton>
+              <ListItemText primary="Account Settings" primaryTypographyProps={{ fontWeight: 500 }} />
+            </ListItem>
           </List>
-        </Box>
 
-        {/* Dotted Divider */}
-        <Box sx={{ px: 3, pt: 2 }}>
-          <Divider sx={{ borderStyle: "dashed", borderColor: "divider" }} />
-        </Box>
-
-        {/* Logout Button */}
-        <Box sx={{ px: 3, py: 3, mt: "auto" }}>
-          <Button
-            fullWidth
-            onClick={handleLogout}
-            sx={{
-              bgcolor: "#FDEBE9",
-              color: "#B8332A",
-              borderRadius: 2,
-              textTransform: "none",
-              fontWeight: 700,
-              py: 1.5,
-              fontSize: "1rem",
-              "&:hover": { bgcolor: "#FDD9D3" },
-            }}
-          >
-            Logout
-          </Button>
+          <Box sx={{ mt: 6 }}>
+            <Button
+              fullWidth
+              variant="outlined"
+              color="error"
+              onClick={handleLogout}
+              startIcon={<LogOut size={18} />}
+              sx={{
+                borderRadius: 50,
+                textTransform: "none",
+                fontWeight: 600,
+                borderColor: isDarkMode ? "#EF4444" : "rgba(239, 68, 68, 0.5)",
+                color: "#EF4444",
+                "&:hover": {
+                  bgcolor: "rgba(239, 68, 68, 0.05)",
+                  borderColor: "#EF4444"
+                }
+              }}
+            >
+              Logout
+            </Button>
+          </Box>
         </Box>
       </Drawer>
-    </>
+    </Box >
   );
 }

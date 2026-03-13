@@ -1,5 +1,4 @@
-const Form = require("../models/form");
-const FormResponse = require("../models/FormResponse");
+const prisma = require("../prismaClient");
 const { sendEmail } = require("../services/emailService");
 
 
@@ -15,13 +14,14 @@ exports.saveForm = async (req, res, next) => {
       });
     }
 
-    const newForm = await Form.create({
-      title: title || "Untitled Form",
-      fields,
-      titleColor,
-      titleAlignment,
-
-      createdBy: req.user?.id,
+    const newForm = await prisma.form.create({
+      data: {
+        title: title || "Untitled Form",
+        fields,
+        titleColor,
+        titleAlignment,
+        createdById: req.user?.id,
+      }
     });
 
     res.status(201).json({
@@ -40,7 +40,10 @@ exports.getAllForms = async (req, res, next) => {
   try {
     const userId = req.user?.id;
     // Only return forms created by the current user
-    const forms = await Form.find({ createdBy: userId }).sort({ createdAt: -1 });
+    const forms = await prisma.form.findMany({
+      where: { createdById: userId },
+      orderBy: { createdAt: 'desc' }
+    });
 
     res.json({
       success: true,
@@ -55,15 +58,18 @@ exports.getAllForms = async (req, res, next) => {
 // ✅ Get single form by ID
 exports.getFormById = async (req, res, next) => {
   try {
-    const form = await Form.findById(req.params.id)
-      .populate({
-        path: 'createdBy',
-        select: 'clientId',
-        populate: {
-          path: 'clientId',
-          select: 'logo name'
+    const form = await prisma.form.findUnique({
+      where: { id: req.params.id },
+      include: {
+        createdBy: {
+          include: {
+            client: {
+              select: { logo: true, name: true }
+            }
+          }
         }
-      });
+      }
+    });
 
     if (!form) {
       return res.status(404).json({
@@ -87,7 +93,8 @@ exports.deleteForm = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const form = await Form.findByIdAndDelete(id);
+    // Check existence first
+    const form = await prisma.form.findUnique({ where: { id } });
 
     if (!form) {
       return res.status(404).json({
@@ -95,6 +102,8 @@ exports.deleteForm = async (req, res, next) => {
         message: "Form not found",
       });
     }
+
+    await prisma.form.delete({ where: { id } });
 
     res.json({
       success: true,
@@ -109,26 +118,37 @@ exports.deleteForm = async (req, res, next) => {
 
 exports.saveResponse = async (req, res) => {
   try {
-    const response = await FormResponse.create({
-      ...req.body,
-      submittedBy: req.user?.id
+    const { answers, category } = req.body;
+    const response = await prisma.formResponse.create({
+      data: {
+        answers,
+        category,
+        formId: req.params.id,
+        submittedById: req.user?.id
+      }
     });
     res.json({ success: true, data: response });
   } catch (err) {
-    res.status(500).json({ success: false });
+    console.error("Save response error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 exports.getAllResponses = async (req, res) => {
   try {
     const userId = req.user?.id;
-    const filter = { submittedBy: userId };
+    const filter = { submittedById: userId };
     if (req.query.category) {
       filter.category = req.query.category;
     }
 
-    const responses = await FormResponse.find(filter)
-      .sort({ createdAt: -1 })
-      .populate("formId", "title");
+    const responses = await prisma.formResponse.findMany({
+      where: filter,
+
+      orderBy: { createdAt: 'desc' },
+      include: {
+        form: { select: { title: true } }
+      }
+    });
 
     res.json({
       success: true,
@@ -143,7 +163,7 @@ exports.getAllResponses = async (req, res) => {
 exports.deleteResponse = async (req, res) => {
   try {
     const { id } = req.params;
-    await FormResponse.findByIdAndDelete(id);
+    await prisma.formResponse.delete({ where: { id } });
     res.json({ success: true, message: "Response deleted" });
   } catch (err) {
     res.status(500).json({ success: false, message: "Failed to delete" });
@@ -154,11 +174,10 @@ exports.updateResponse = async (req, res) => {
   try {
     const { id } = req.params;
     const { answers } = req.body;
-    const updated = await FormResponse.findByIdAndUpdate(
-      id,
-      { answers },
-      { new: true }
-    );
+    const updated = await prisma.formResponse.update({
+      where: { id },
+      data: { answers },
+    });
     res.json({ success: true, data: updated });
   } catch (err) {
     res.status(500).json({ success: false, message: "Failed to update" });
@@ -175,7 +194,10 @@ exports.sendResponseEmail = async (req, res) => {
       return res.status(400).json({ success: false, message: "Recipient email is required" });
     }
 
-    const response = await FormResponse.findById(id).populate("formId");
+    const response = await prisma.formResponse.findUnique({
+      where: { id },
+      include: { form: true }
+    });
     if (!response) {
       return res.status(404).json({ success: false, message: "Response not found" });
     }
@@ -186,7 +208,7 @@ exports.sendResponseEmail = async (req, res) => {
 
     // Format answers
     let htmlContent = `
-      <h2>${response.formId.title}</h2>
+      <h2>${response.form.title}</h2>
       <p>Submitted on: ${new Date(response.createdAt).toLocaleString()}</p>
       <h3>Answers:</h3>
       <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%;">
@@ -201,7 +223,7 @@ exports.sendResponseEmail = async (req, res) => {
 
     // We need to map answers to field labels if possible, but answers is just a map of id->value.
     // formId has the fields definition.
-    const fields = response.formId.fields || [];
+    const fields = response.form.fields || [];
     const answers = response.answers || {};
 
     fields.forEach(field => {
@@ -222,7 +244,7 @@ exports.sendResponseEmail = async (req, res) => {
 
     const result = await sendEmail({
       to: email,
-      subject: `Report: ${response.formId.title}`,
+      subject: `Report: ${response.form.title}`,
       html: htmlContent,
       replyTo: senderEmail,
     });

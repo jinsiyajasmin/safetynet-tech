@@ -2,13 +2,14 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
-const mongoose = require("mongoose");
-const connectDB = require("./src/config/db");
-const Client = require("./src/models/Client");
+
+const prisma = require("./src/prismaClient");
 const authRoutes = require("./src/routes/auth");
 const clientsRoutes = require("./src/routes/clients");
 const usersRoutes = require("./src/routes/users");
 const formsRoutes = require("./src/routes/forms");
+const siteRoutes = require("./src/routes/sites");
+const documentRoutes = require("./src/routes/documentRoutes");
 
 const responseRoutes = require("./src/routes/responseRoutes");
 
@@ -24,7 +25,7 @@ app.use(
   })
 );
 
-const allowedOrigin = process.env.CLIENT_URL || "https://safetynet-tech.vercel.app";
+const allowedOrigin = process.env.CLIENT_URL || "https://site-mateai.co.uk";
 
 app.use(
   cors({
@@ -33,8 +34,8 @@ app.use(
       if (!origin) return callback(null, true);
 
       const allowedOrigins = [
-        "https://safetynet-tech.vercel.app", // Main frontend
-        "https://safetynet-tech-7qme.vercel.app", // Backend itself (sometimes helpful)
+        "https://site-mateai.co.uk",         // Main frontend
+        "https://api-site-mateai.co.uk",     // Backend itself
         "http://localhost:5173",             // Local dev
         "http://localhost:3000",             // Alternative local dev
       ];
@@ -60,21 +61,13 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
 
 // Middleware to ensure DB connection (Crucial for Vercel Serverless)
-app.use(async (req, res, next) => {
-  if (mongoose.connection.readyState === 0) { // Disconnected
-    try {
-      console.log('Connecting to MongoDB...');
-      await connectDB();
-    } catch (err) {
-      console.error('Failed to connect to MongoDB in middleware', err);
-      return res.status(500).json({ error: 'Database connection failed' });
-    }
-  }
-  next();
-});
+// app.use(async (req, res, next) => {
+//   // Prisma handles connection pool management automatically
+//   next();
+// });
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
@@ -84,27 +77,18 @@ app.use("/api/auth", authRoutes);
 app.use("/api/clients", clientsRoutes);
 app.use("/api/forms", formsRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/sites", siteRoutes);
+app.use("/api/documents", documentRoutes);
 app.use("/api/responses", responseRoutes);
 
-app.use((err, req, res, next) => {
+app.use((err, req, res, next) => { 
   console.error("Error Handler:", err);
 
-  // Mongoose validation error
-  if (err.name === 'ValidationError') {
-    const messages = Object.values(err.errors).map(val => val.message);
-    return res.status(400).json({
-      success: false,
-      message: messages.join(', ') || 'Validation Error',
-      errors: err.errors
-    });
-  }
-
-  // Mongoose duplicate key error
-  if (err.code === 11000) {
-    const field = Object.keys(err.keyValue)[0];
+  // Prisma specific error handling could go here
+  if (err.code === 'P2002') {
     return res.status(409).json({
       success: false,
-      message: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists.`
+      message: `Unique constraint failed on the fields: ${err.meta.target}`
     });
   }
 
@@ -122,17 +106,14 @@ app.get("/", (req, res) => {
 });
 
 app.get("/api/health", (req, res) => {
-  const dbStatus = mongoose.connection.readyState; // 0: disconnected, 1: connected, 2: connecting, 3: disconnecting
-  const dbStatusMap = { 0: "Disconnected", 1: "Connected", 2: "Connecting", 3: "Disconnecting" };
-
   res.json({
     success: true,
     message: "Health check",
     serverTime: new Date().toISOString(),
-    dbStatus: dbStatusMap[dbStatus] || "Unknown",
+    dbStatus: "Connected (Prisma)", // Prisma lazy connects
     env: {
       hasJwtSecret: !!process.env.JWT_SECRET,
-      hasMongoUri: !!process.env.MONGO_URI,
+      hasDatabaseUrl: !!process.env.DATABASE_URL,
       nodeEnv: process.env.NODE_ENV
     }
   });
@@ -152,13 +133,18 @@ const start = async () => {
   }
 
   try {
-    await connectDB();
+    // await connectDB(); // Prisma auto-connects
 
     // Seed 'Safetynett' client if it doesn't exist
     const clientName = "Safetynett";
-    const existingClient = await Client.findOne({ name: clientName });
+    const existingClient = await prisma.client.findUnique({
+      where: { name: clientName }
+    });
+
     if (!existingClient) {
-      await Client.create({ name: clientName });
+      await prisma.client.create({
+        data: { name: clientName }
+      });
       console.log(`Client '${clientName}' created successfully.`);
     } else {
       console.log(`Client '${clientName}' already exists.`);
@@ -170,7 +156,7 @@ const start = async () => {
       console.log(`Allowed origin: ${allowedOrigin}`);
     });
   } catch (err) {
-    console.error("Failed to connect to MongoDB, exiting.", err);
+    console.error("Failed to start server/db, exiting.", err);
     process.exit(1);
   }
 };

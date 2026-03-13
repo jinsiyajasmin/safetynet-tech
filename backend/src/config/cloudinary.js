@@ -12,10 +12,19 @@ cloudinary.config({
 
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
-    params: {
-        folder: 'safetyapp_logos', // Folder name in Cloudinary
-        allowed_formats: ['jpg', 'png', 'jpeg', 'webp', 'svg'],
-        // transformation: [{ width: 500, height: 500, crop: 'limit' }], // optional
+    params: async (req, file) => {
+        const ext = file.originalname.split('.').pop().toLowerCase();
+        // RAW files that shouldn't be processed by Cloudinary (Cloudinary forces attachment download for these)
+        const isRaw = ['doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'].includes(ext);
+        // PDFs can be uploaded as 'image' which allows inline viewing without forcing download
+        const isPdf = ext === 'pdf';
+        
+        return {
+            folder: 'safetyapp_uploads',
+            resource_type: isRaw ? 'raw' : (isPdf ? 'image' : 'auto'),
+            // Only manually append extension for raw files, since image/auto handles it automatically
+            public_id: file.originalname.split('.')[0] + '_' + Date.now() + (isRaw ? `.${ext}` : ''),
+        };
     },
 });
 

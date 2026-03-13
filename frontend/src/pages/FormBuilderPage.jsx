@@ -34,6 +34,9 @@ import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import SmartphoneIcon from "@mui/icons-material/Smartphone";
 import LaptopMacIcon from "@mui/icons-material/LaptopMac";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
+import DrawOutlinedIcon from "@mui/icons-material/DrawOutlined";
+import ViewHeadlineIcon from "@mui/icons-material/ViewHeadline";
 
 import FormatAlignLeftIcon from "@mui/icons-material/FormatAlignLeft";
 import FormatAlignCenterIcon from "@mui/icons-material/FormatAlignCenter";
@@ -43,8 +46,7 @@ import { useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 
 
-import TopNav from "../components/TopNav";
-import Sidebar from "../components/Sidebar";
+import Layout from "../components/Layout";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
 import api from "../services/api";
@@ -64,6 +66,9 @@ const IconSvg = ({ name, size = 15, color = "warning.main" }) => {
     ),
     Save: <SaveOutlinedIcon sx={{ fontSize: size, color: "white" }} />,
     Eye: <VisibilityOutlinedIcon sx={{ fontSize: size, color: blue }} />,
+    ImageUpload: <ImageOutlinedIcon sx={{ fontSize: size, color: "#9333ea" }} />, // Purple
+    Signature: <DrawOutlinedIcon sx={{ fontSize: size, color: "#ea580c" }} />, // Orange
+    SectionHeader: <ViewHeadlineIcon sx={{ fontSize: size, color: "#0ea5e9" }} />, // Sky Blue
   };
 
   if (muiIcons[name]) return muiIcons[name];
@@ -78,8 +83,6 @@ const IconSvg = ({ name, size = 15, color = "warning.main" }) => {
   };
 
   const src = iconMap[name] || iconMap.ExampleUploadedPNG;
-
-
 
   return (
     <img
@@ -98,10 +101,11 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const TOOLBOX_CATEGORIES = [
 
   {
-    title: "Textbox",
+    title: "",
     items: [
       { type: "text", label: "Single Line", icon: "TextSingle" },
       { type: "textarea", label: "Multi Line", icon: "TextMulti" },
+      { type: "section_header", label: "Section Header", icon: "SectionHeader" },
     ],
   },
   {
@@ -122,10 +126,10 @@ const TOOLBOX_CATEGORIES = [
     ],
   },
   {
-    title: "Uploads",
+    title: "Uploads & Sign",
     items: [
-      { type: "file", label: "File Upload", icon: "FileUpload" },
-      { type: "media", label: "Audio/Video Upload", icon: "Media" },
+      { type: "image_upload", label: "Image Upload", icon: "ImageUpload" },
+      { type: "signature", label: "Signature", icon: "Signature" },
     ],
   },
 ];
@@ -162,6 +166,16 @@ function makeField(template) {
       { id: uid(), label: "Option 1", value: "option_1" },
       { id: uid(), label: "Option 2", value: "option_2" },
     ];
+  }
+
+  if (template.type === "section_header") {
+    return {
+      ...base,
+      label: "", // Empty label for section header
+      subheading: "Add a subheading",
+      color: "#000000",
+      alignment: "left"
+    };
   }
 
   return base;
@@ -309,7 +323,13 @@ export default function FormBuilderPage() {
 
   const saveEdit = () => {
     setFields((prev) =>
-      prev.map((f) => (f.id === editingField.id ? editingField : f))
+      prev.map((f) => {
+        if (f.id === editingField.id) {
+          // Ensure we return a new object with all properties from editingField
+          return { ...editingField };
+        }
+        return f;
+      })
     );
     closeEdit();
   };
@@ -355,21 +375,41 @@ export default function FormBuilderPage() {
   const canvasPreview = useMemo(() => fields, [fields]);
 
   const renderFieldInput = (f) => {
-    if (f.type === "text") return <TextField fullWidth />;
+    const inputSx = {
+      "& .MuiOutlinedInput-root": {
+        borderRadius: "12px",
+      },
+    };
+
+    if (f.type === "text") return <TextField fullWidth sx={inputSx} />;
     if (f.type === "textarea")
-      return <TextField fullWidth multiline minRows={3} />;
-    if (f.type === "date") return <TextField fullWidth type="date" />;
-    if (f.type === "time") return <TextField fullWidth type="time" />;
+      return <TextField fullWidth multiline minRows={3} sx={inputSx} />;
+    if (f.type === "date") return <TextField fullWidth type="date" sx={inputSx} />;
+    if (f.type === "time") return <TextField fullWidth type="time" sx={inputSx} />;
     if (f.type === "datetime")
-      return <TextField fullWidth type="datetime-local" />;
-    if (f.type === "monthyear") return <TextField fullWidth type="month" />;
-    if (f.type === "file") return <TextField fullWidth type="file" />;
+      return <TextField fullWidth type="datetime-local" sx={inputSx} />;
+    if (f.type === "monthyear") return <TextField fullWidth type="month" sx={inputSx} />;
+
+    // Updated: Image Upload (accepts images)
     if (f.type === "image_upload")
-      return <TextField fullWidth type="file" accept="image/*" />;
+      return (
+        <Box sx={{ border: "2px dashed #cbd5e1", borderRadius: "12px", p: 3, textAlign: "center", bgcolor: "#f8fafc", color: "text.secondary", transition: "all 0.2s", "&:hover": { borderColor: "#E89F17", bgcolor: "#fffbeb" } }}>
+          <Box sx={{ mb: 1 }}><ImageOutlinedIcon sx={{ fontSize: 36, opacity: 0.6, color: "#9333ea" }} /></Box>
+          <Typography variant="body2" sx={{ fontWeight: 500 }}>Click to upload image</Typography>
+        </Box>
+      );
+
+    // New: Signature Placeholder
+    if (f.type === "signature")
+      return (
+        <Box sx={{ border: "2px dashed #cbd5e1", borderRadius: "12px", height: 120, bgcolor: "#f8fafc", display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'text.secondary', transition: "all 0.2s", "&:hover": { borderColor: "#E89F17", bgcolor: "#fffbeb" } }}>
+          <Typography variant="body2" sx={{ fontStyle: 'italic', fontWeight: 500 }}>Sign here</Typography>
+        </Box>
+      );
 
     if (f.type === "select")
       return (
-        <TextField select fullWidth>
+        <TextField select fullWidth sx={inputSx}>
           {f.options?.map((o) => (
             <MenuItem key={o.id} value={o.value}>
               {o.label}
@@ -446,461 +486,467 @@ export default function FormBuilderPage() {
         </Typography>
       );
 
+    if (f.type === "section_header")
+      return (
+        <Box sx={{ width: '100%', textAlign: f.alignment || 'left' }}>
+          {f.subheading && (
+            <Typography variant="h6" sx={{ fontWeight: 600, color: f.color || '#000' }}>
+              {f.subheading}
+            </Typography>
+          )}
+        </Box>
+      );
+
     return null;
   };
 
   return (
-    <>
-      <TopNav />
-
-      <Box sx={{ display: "flex", bgcolor: "#fff" }}>
-        {/* Left sidebar */}
+    <Layout>
+      <Container maxWidth="xl" sx={{ py: 0, position: "relative", height: "100%" }}>
+        {/* Header Actions */}
         <Box
-          component="aside"
           sx={{
-            width: { xs: 0, md: 260 },
-            position: "sticky",
-            top: "64px",
-            height: "calc(100vh - 64px)",
+            mb: 2,
+            display: "flex",
+            justifyContent: "flex-end",
           }}
         >
-          <Sidebar />
-        </Box>
-
-        {/* Main content */}
-        <Container maxWidth="xl" sx={{ py: 4, position: "relative" }}>
-          {/* Sticky header */}
-          <Box
-            sx={{
-              position: "sticky",
-              top: 64,
-              zIndex: 10,
-              bgcolor: "#fff",
-              pb: 2,
-              mb: 2,
-            }}
-          >
-            <Box
+          <Box display="flex" gap={2}>
+            <Button
+              variant="outlined"
+              startIcon={<IconSvg name="Eye" color="#E89F17" />}
               sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 2,
+                borderRadius: "12px",
+                textTransform: "none",
+                borderColor: "#cbd5e1",
+                color: "#1e293b",
+                fontWeight: 600,
+                px: 3,
+                py: 1,
+                "&:hover": { borderColor: "#E89F17", backgroundColor: "#fffbeb", color: "#E89F17" },
+              }}
+              onClick={() => {
+                setPreviewMode("desktop");
+                setPreviewOpen(true);
               }}
             >
-              <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                Form Builder
-              </Typography>
+              Preview
+            </Button>
 
-              <Box display="flex" gap={1}>
-                <Button
-                  variant="outlined"
-                  startIcon={<IconSvg name="Eye" color="#2563eb" />}
-                  sx={{
-                    borderRadius: 2,
-                    border: "1px solid #cbd5e1",
-                    textTransform: "none",
-                  }}
-                  onClick={() => {
-                    setPreviewMode("desktop");
-                    setPreviewOpen(true);
-                  }}
-                >
-                  Preview
-                </Button>
-
-                <Button
-                  variant="contained"
-                  startIcon={<IconSvg name="Save" color="#fff" />}
-                  sx={{
-                    borderRadius: 2,
-                    textTransform: "none",
-                    backgroundColor: "#2563eb",
-                    "&:hover": { backgroundColor: "#1e40af" },
-                  }}
-                  onClick={saveToLocal}
-                  disabled={isSaving}
-                >
-                  {isSaving ? "Saving..." : "Save"}
-                </Button>
-              </Box>
-            </Box>
+            <Button
+              variant="contained"
+              startIcon={<IconSvg name="Save" color="#fff" />}
+              sx={{
+                borderRadius: "12px",
+                textTransform: "none",
+                backgroundColor: "#E89F17",
+                color: "#fff",
+                fontWeight: 600,
+                px: 3,
+                py: 1,
+                boxShadow: "none",
+                "&:hover": { backgroundColor: "#d97706", boxShadow: "0px 4px 14px rgba(232, 159, 23, 0.4)" },
+              }}
+              onClick={saveToLocal}
+              disabled={isSaving}
+            >
+              {isSaving ? "Saving..." : "Save"}
+            </Button>
           </Box>
+        </Box>
 
-          <DragDropContext onDragEnd={onDragEnd}>
-            <Grid container spacing={3}>
-              {/* LEFT TOOLBOX */}
-              <Grid item xs={12} md={3}>
-                <Box
-                  sx={{
-                    maxHeight: "calc(100vh - 160px)",
-                    overflowY: "auto",
-                    pr: 1,
-                  }}
-                >
-                  <Stack spacing={2}>
-                    {TOOLBOX_CATEGORIES.map((cat) => (
-                      <Box key={cat.title} sx={{ p: 0 }}>
-                        <Typography sx={{ mb: 1, fontWeight: 600 }}>
+        <DragDropContext onDragEnd={onDragEnd}>
+          <Grid container spacing={3}>
+            {/* LEFT TOOLBOX */}
+            <Grid item xs={12} md={3}>
+              <Box
+                sx={{
+                  maxHeight: "calc(100vh - 160px)",
+                  overflowY: "auto",
+                  pr: 1,
+                }}
+              >
+                <Stack spacing={2}>
+                  {TOOLBOX_CATEGORIES.map((cat, i) => (
+                    <Box key={cat.title || i} sx={{ p: 0 }}>
+                      {cat.title && (
+                        <Typography sx={{ mb: 1.5, fontWeight: 600, fontSize: "0.95rem", color: "#1e293b" }}>
                           {cat.title}
                         </Typography>
+                      )}
 
-                        <Droppable
-                          droppableId={`toolbox-${cat.title}`}
-                          isDropDisabled
-                          direction="horizontal"
-                        >
-                          {(provided) => (
-                            <Box
-                              ref={provided.innerRef}
-                              {...provided.droppableProps}
-                              sx={{
-                                display: "grid",
-                                gridTemplateColumns: "repeat(2, 1fr)",
-                                gap: 12 / 8,
-                              }}
-                            >
-                              {cat.items.map((it, index) => (
-                                <Draggable
-                                  key={it.type}
-                                  draggableId={`tool-${it.type}`}
-                                  index={index}
-                                >
-                                  {(dr) => (
-                                    <Box
-                                      ref={dr.innerRef}
-                                      {...dr.draggableProps}
-                                      {...dr.dragHandleProps}
-                                      onClick={() => {
-                                        const tmpl =
-                                          findTemplateByType(it.type);
-                                        if (!tmpl) return;
-                                        const newField = makeField(tmpl);
-                                        setFields((prev) => [
-                                          ...prev,
-                                          newField,
-                                        ]);
-                                        setSelectedFieldId(newField.id);
-                                      }}
-                                      sx={{
-                                        height: 90,
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        flexDirection: "column",
-                                        cursor: "grab",
-                                        borderRadius: 2,
-                                        border: "1px solid #e5e7eb",
-                                        backgroundColor: "#ffffff",
-                                        p: 1,
-                                        textAlign: "center",
-                                        transition: "all 150ms ease",
-                                        "&:hover": {
-                                          border: "1px dashed #16a34a",
-                                          backgroundColor: "#ECFDF3",
-                                          boxShadow:
-                                            "0 0 0 1px rgba(22,163,74,0.2)",
-                                          transform: "translateY(-2px)",
-                                        },
-                                      }}
-                                      style={dr.draggableProps.style}
-                                    >
-                                      <Box sx={{ mb: 0.5 }}>
-                                        <IconSvg name={it.icon} size={22} />
-                                      </Box>
-                                      <Typography
-                                        variant="caption"
-                                        sx={{ fontSize: 12 }}
-                                      >
-                                        {it.label}
-                                      </Typography>
-                                    </Box>
-                                  )}
-                                </Draggable>
-                              ))}
-                              {provided.placeholder}
-                            </Box>
-                          )}
-                        </Droppable>
-                      </Box>
-                    ))}
-                  </Stack>
-                </Box>
-              </Grid>
-
-              {/* RIGHT CANVAS */}
-              <Grid item xs={12} md={9}>
-                <Box
-                  sx={{
-                    maxHeight: "calc(100vh - 160px)",
-                    overflowY: "auto",
-                    pr: 1,
-                  }}
-                >
-                  <Paper
-                    sx={{
-                      p: 3,
-                      height: "calc(100vh - 160px)",
-                      overflowY: "auto",
-                      width: "750px",
-                      maxWidth: "900px",
-                      mx: "auto",
-                      border: "2px dashed #cbd5e1",
-                      borderRadius: 3,
-                      backgroundColor: "#f8fafc",
-                    }}
-                  >
-                    {/* Form title input */}
-                    <Box sx={{ display: "flex", gap: 2, alignItems: "center", mb: 2 }}>
-                      <TextField
-                        fullWidth
-                        placeholder="Enter form name"
-                        value={formTitle}
-                        onChange={(e) => setFormTitle(e.target.value)}
-                        sx={{
-                          "& .MuiOutlinedInput-root": {
-                            fontSize: "1.25rem",
-                            fontWeight: 600,
-                          },
-                        }}
-                      />
-                      <IconButton
-                        onClick={(e) => setSettingsAnchorEl(e.currentTarget)}
-                        sx={{
-                          border: "1px solid #e5e7eb",
-                          borderRadius: 2,
-                        }}
+                      <Droppable
+                        droppableId={`toolbox-${cat.title || i}`}
+                        isDropDisabled
+                        direction="horizontal"
                       >
-                        <EditOutlinedIcon />
-                      </IconButton>
-
-                      <Popover
-                        open={Boolean(settingsAnchorEl)}
-                        anchorEl={settingsAnchorEl}
-                        onClose={() => setSettingsAnchorEl(null)}
-                        anchorOrigin={{
-                          vertical: "bottom",
-                          horizontal: "right",
-                        }}
-                        transformOrigin={{
-                          vertical: "top",
-                          horizontal: "right",
-                        }}
-                      >
-                        <Box sx={{ p: 2, width: 250 }}>
-                          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                            Title Color
-                          </Typography>
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
-                            <input
-                              type="color"
-                              value={formTitleColor}
-                              onChange={(e) => setFormTitleColor(e.target.value)}
-                              style={{
-                                width: "100%",
-                                height: 40,
-                                cursor: "pointer",
-                                border: "1px solid #e5e7eb",
-                                borderRadius: 4,
-                              }}
-                            />
-                          </Box>
-
-                          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                            Alignment
-                          </Typography>
-                          <Box sx={{ display: "flex", gap: 1, bgcolor: "#f3f4f6", p: 0.5, borderRadius: 1 }}>
-                            {[
-                              { val: "left", icon: <FormatAlignLeftIcon /> },
-                              { val: "center", icon: <FormatAlignCenterIcon /> },
-                              { val: "right", icon: <FormatAlignRightIcon /> },
-                            ].map((opt) => (
-                              <IconButton
-                                key={opt.val}
-                                size="small"
-                                onClick={() => setTitleAlignment(opt.val)}
-                                sx={{
-                                  flex: 1,
-                                  bgcolor: titleAlignment === opt.val ? "#fff" : "transparent",
-                                  boxShadow: titleAlignment === opt.val ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
-                                  "&:hover": { bgcolor: "#fff" },
-                                }}
+                        {(provided) => (
+                          <Box
+                            ref={provided.innerRef}
+                            {...provided.droppableProps}
+                            sx={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(2, 1fr)",
+                              gap: 2,
+                              mb: 3,
+                            }}
+                          >
+                            {cat.items.map((it, index) => (
+                              <Draggable
+                                key={it.type}
+                                draggableId={`tool-${it.type}`}
+                                index={index}
                               >
-                                {opt.icon}
-                              </IconButton>
-                            ))}
-                          </Box>
-                        </Box>
-                      </Popover>
-                    </Box>
-
-
-
-
-
-
-                    <Droppable droppableId="canvas">
-                      {(provided, snapshot) => (
-                        <Box
-                          ref={provided.innerRef}
-                          {...provided.droppableProps}
-                          sx={{
-                            minHeight: 400,
-                            borderRadius: 2,
-                            transition: "background 0.2s ease",
-                            background: snapshot.isDraggingOver
-                              ? "#f5f7ff"
-                              : "transparent",
-                          }}
-                        >
-                          {fields.length === 0 && (
-                            <Box
-                              sx={{
-                                border: "1px dashed #d4d4d4",
-                                borderRadius: 2,
-                                bgcolor: "#fafafa",
-                                py: 4,
-                                px: 2,
-                                textAlign: "center",
-                                mb: 2,
-                              }}
-                            >
-                              <Typography
-                                variant="h6"
-                                sx={{ fontWeight: 600, mb: 1 }}
-                              >
-                                Start building!
-                              </Typography>
-                              <Typography sx={{ color: "text.secondary" }}>
-                                Drag fields from the left panel and drop here to
-                                add them to your form.
-                              </Typography>
-                            </Box>
-                          )}
-
-                          {fields.map((f, i) => (
-                            <Draggable
-                              key={f.id}
-                              draggableId={f.id}
-                              index={i}
-                            >
-                              {(dr) => {
-                                const isSelected =
-                                  selectedFieldId === f.id;
-
-                                return (
+                                {(dr) => (
                                   <Box
                                     ref={dr.innerRef}
                                     {...dr.draggableProps}
                                     {...dr.dragHandleProps}
-                                    onClick={() =>
-                                      setSelectedFieldId(f.id)
-                                    }
+                                    onClick={() => {
+                                      const tmpl =
+                                        findTemplateByType(it.type);
+                                      if (!tmpl) return;
+                                      const newField = makeField(tmpl);
+                                      setFields((prev) => [
+                                        ...prev,
+                                        newField,
+                                      ]);
+                                      setSelectedFieldId(newField.id);
+                                    }}
                                     sx={{
-                                      py: 3,
-                                      px: 1,
-                                      borderBottom: "1px solid #eee",
-                                      backgroundColor: isSelected
-                                        ? "#f9fffc"
-                                        : "#ffffff",
+                                      height: 90,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      flexDirection: "column",
                                       cursor: "grab",
+                                      borderRadius: 2,
+                                      border: "1px solid #e5e7eb",
+                                      backgroundColor: "#ffffff",
+                                      p: 1,
+                                      textAlign: "center",
+                                      transition: "all 150ms ease",
+                                      "&:hover": {
+                                        borderColor: "#2563eb",
+                                        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+                                        transform: "translateY(-2px)",
+                                      },
                                     }}
                                     style={dr.draggableProps.style}
                                   >
-                                    <Typography
-                                      sx={{
-                                        fontWeight: 600,
-                                        mb: 1.5,
-                                      }}
-                                    >
-                                      {f.label}
-                                    </Typography>
-
-                                    {renderFieldInput(f)}
-
-                                    <Box
-                                      sx={{
-                                        mt: 1.5,
-                                        display: "flex",
-                                        justifyContent: "flex-end",
-                                        gap: 1,
-                                      }}
-                                    >
-                                      {/* Edit pencil icon */}
-                                      <Tooltip title="Edit field">
-                                        <IconButton
-                                          size="small"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            openEdit(f);
-                                          }}
-                                          sx={{
-                                            border: "1px solid #e5e7eb",
-                                            borderRadius: 2,
-                                          }}
-                                        >
-                                          <EditOutlinedIcon fontSize="small" />
-                                        </IconButton>
-                                      </Tooltip>
-
-                                      {/* Red outlined delete icon */}
-                                      <Tooltip title="Delete field">
-                                        <IconButton
-                                          size="small"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setFields((x) =>
-                                              x.filter(
-                                                (ff) => ff.id !== f.id
-                                              )
-                                            );
-                                            if (
-                                              selectedFieldId === f.id
-                                            ) {
-                                              setSelectedFieldId(null);
-                                            }
-                                          }}
-                                          sx={{
-                                            border: "1px solid #ef4444",
-                                            borderRadius: 2,
-                                            color: "#ef4444",
-                                            "&:hover": {
-                                              backgroundColor: "#fee2e2",
-                                            },
-                                          }}
-                                        >
-                                          <DeleteIcon fontSize="small" />
-                                        </IconButton>
-                                      </Tooltip>
+                                    <Box sx={{ mb: 1 }}>
+                                      <IconSvg name={it.icon} size={22} />
                                     </Box>
+                                    <Typography
+                                      variant="caption"
+                                      sx={{ fontSize: 13, color: "#475569" }}
+                                    >
+                                      {it.label}
+                                    </Typography>
                                   </Box>
-                                );
-                              }}
-                            </Draggable>
-                          ))}
-
-                          {provided.placeholder}
-                        </Box>
-                      )}
-                    </Droppable>
-                  </Paper>
-                </Box>
-              </Grid>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                          </Box>
+                        )}
+                      </Droppable>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
             </Grid>
-          </DragDropContext>
 
-          {/* Edit field dialog */}
-          <Dialog
-            open={!!editingField}
-            onClose={closeEdit}
-            fullWidth
-            maxWidth="sm"
-          >
-            <DialogTitle>Edit Field</DialogTitle>
-            <DialogContent>
-              {editingField && (
-                <Box sx={{ mt: 1 }}>
-                  {/* LABEL - common */}
+            {/* RIGHT CANVAS */}
+            <Grid item xs={12} md={9}>
+              <Box
+                sx={{
+                  maxHeight: "calc(100vh - 160px)",
+                  overflowY: "scroll",
+                  pr: 1,
+                  display: "block",
+                  width: "100%",
+                }}
+              >
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 4,
+                    minHeight: "calc(100vh - 160px)",
+                    mx: "auto",
+                    height: "auto",
+                    width: "100%",
+                    maxWidth: 800, // Keep width constrained nicely on desktop
+                    display: "flex",
+                    flexDirection: "column",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 3,
+                    backgroundColor: "#ffffff",
+                    boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
+                  }}
+                >
+                  {/* Form title input */}
+                  <Box sx={{ display: "flex", gap: 2, alignItems: "center", mb: 2 }}>
+                    <TextField
+                      fullWidth
+                      placeholder="Enter form name"
+                      value={formTitle}
+                      onChange={(e) => setFormTitle(e.target.value)}
+                      sx={{
+                        "& .MuiOutlinedInput-root": {
+                          fontSize: "1.25rem",
+                          fontWeight: 600,
+                        },
+                      }}
+                    />
+                    <IconButton
+                      onClick={(e) => setSettingsAnchorEl(e.currentTarget)}
+                      sx={{
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 2,
+                      }}
+                    >
+                      <EditOutlinedIcon />
+                    </IconButton>
+
+                    <Popover
+                      open={Boolean(settingsAnchorEl)}
+                      anchorEl={settingsAnchorEl}
+                      onClose={() => setSettingsAnchorEl(null)}
+                      anchorOrigin={{
+                        vertical: "bottom",
+                        horizontal: "right",
+                      }}
+                      transformOrigin={{
+                        vertical: "top",
+                        horizontal: "right",
+                      }}
+                    >
+                      <Box sx={{ p: 2, width: 250 }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                          Title Color
+                        </Typography>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+                          <input
+                            type="color"
+                            value={formTitleColor}
+                            onChange={(e) => setFormTitleColor(e.target.value)}
+                            style={{
+                              width: "100%",
+                              height: 40,
+                              cursor: "pointer",
+                              border: "1px solid #e5e7eb",
+                              borderRadius: 4,
+                            }}
+                          />
+                        </Box>
+
+                        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                          Alignment
+                        </Typography>
+                        <Box sx={{ display: "flex", gap: 1, bgcolor: "#f3f4f6", p: 0.5, borderRadius: 1 }}>
+                          {[
+                            { val: "left", icon: <FormatAlignLeftIcon /> },
+                            { val: "center", icon: <FormatAlignCenterIcon /> },
+                            { val: "right", icon: <FormatAlignRightIcon /> },
+                          ].map((opt) => (
+                            <IconButton
+                              key={opt.val}
+                              size="small"
+                              onClick={() => setTitleAlignment(opt.val)}
+                              sx={{
+                                flex: 1,
+                                bgcolor: titleAlignment === opt.val ? "#fff" : "transparent",
+                                boxShadow: titleAlignment === opt.val ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
+                                "&:hover": { bgcolor: "#fff" },
+                              }}
+                            >
+                              {opt.icon}
+                            </IconButton>
+                          ))}
+                        </Box>
+                      </Box>
+                    </Popover>
+                  </Box>
+
+
+
+
+
+
+                  <Droppable droppableId="canvas">
+                    {(provided, snapshot) => (
+                      <Box
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        sx={{
+                          minHeight: 400,
+                          display: "flex",
+                          flexDirection: "column",
+                          flexGrow: 1,
+                          width: "100%",
+                          borderRadius: 2,
+                          transition: "background 0.2s ease",
+                          background: snapshot.isDraggingOver
+                            ? "#f5f7ff"
+                            : "transparent",
+                        }}
+                      >
+                        {fields.length === 0 && (
+                          <Box
+                            sx={{
+                              border: "1px dashed #d4d4d4",
+                              borderRadius: 2,
+                              bgcolor: "#fafafa",
+                              py: 4,
+                              px: 2,
+                              textAlign: "center",
+                              mb: 2,
+                            }}
+                          >
+                            <Typography
+                              variant="h6"
+                              sx={{ fontWeight: 600, mb: 1 }}
+                            >
+                              Start building!
+                            </Typography>
+                            <Typography sx={{ color: "text.secondary" }}>
+                              Drag fields from the left panel and drop here to
+                              add them to your form.
+                            </Typography>
+                          </Box>
+                        )}
+
+                        {fields.map((f, i) => (
+                          <Draggable
+                            key={f.id}
+                            draggableId={f.id}
+                            index={i}
+                          >
+                            {(dr) => {
+                              const isSelected =
+                                selectedFieldId === f.id;
+
+                              return (
+                                <Box
+                                  ref={dr.innerRef}
+                                  {...dr.draggableProps}
+                                  {...dr.dragHandleProps}
+                                  onClick={() =>
+                                    setSelectedFieldId(f.id)
+                                  }
+                                  sx={{
+                                    py: 3,
+                                    px: 1,
+                                    borderBottom: "1px solid #eee",
+                                    backgroundColor: isSelected
+                                      ? "#f9fffc"
+                                      : "#ffffff",
+                                    cursor: "grab",
+                                    width: "100%",
+                                    boxSizing: "border-box"
+                                  }}
+                                  style={dr.draggableProps.style}
+                                >
+                                  <Typography
+                                    sx={{
+                                      fontWeight: 600,
+                                      mb: 1.5,
+                                    }}
+                                  >
+                                    {f.type === "section_header" ? (
+                                      f.subheading || "Section Header"
+                                    ) : (
+                                      f.label
+                                    )}
+                                  </Typography>
+
+                                  {renderFieldInput(f)}
+
+                                  <Box
+                                    sx={{
+                                      mt: 1.5,
+                                      display: "flex",
+                                      justifyContent: "flex-end",
+                                      gap: 1,
+                                    }}
+                                  >
+                                    {/* Edit pencil icon */}
+                                    <Tooltip title="Edit field">
+                                      <IconButton
+                                        size="small"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openEdit(f);
+                                        }}
+                                        sx={{
+                                          border: "1px solid #e5e7eb",
+                                          borderRadius: 2,
+                                        }}
+                                      >
+                                        <EditOutlinedIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+
+                                    {/* Red outlined delete icon */}
+                                    <Tooltip title="Delete field">
+                                      <IconButton
+                                        size="small"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setFields((x) =>
+                                            x.filter(
+                                              (ff) => ff.id !== f.id
+                                            )
+                                          );
+                                          if (
+                                            selectedFieldId === f.id
+                                          ) {
+                                            setSelectedFieldId(null);
+                                          }
+                                        }}
+                                        sx={{
+                                          border: "1px solid #ef4444",
+                                          borderRadius: 2,
+                                          color: "#ef4444",
+                                          "&:hover": {
+                                            backgroundColor: "#fee2e2",
+                                          },
+                                        }}
+                                      >
+                                        <DeleteIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </Box>
+                                </Box>
+                              );
+                            }}
+                          </Draggable>
+                        ))}
+
+                        {provided.placeholder}
+                      </Box>
+                    )}
+                  </Droppable>
+                </Paper>
+              </Box>
+            </Grid>
+          </Grid>
+        </DragDropContext>
+
+        {/* Edit field dialog */}
+        <Dialog
+          open={!!editingField}
+          onClose={closeEdit}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>Edit Field</DialogTitle>
+          <DialogContent>
+            {editingField && (
+              <Box sx={{ mt: 1 }}>
+                {/* LABEL - common (Hide for Section Header) */}
+                {editingField.type !== "section_header" && (
                   <TextField
                     label="Field Label"
                     fullWidth
@@ -913,271 +959,365 @@ export default function FormBuilderPage() {
                       })
                     }
                   />
+                )}
 
-                  {/* TEXT + TEXTAREA: only label -> nothing else needed */}
+                {/* TEXT + TEXTAREA: only label -> nothing else needed */}
 
-                  {/* DROPDOWN / RADIO / CHECKBOX / MULTIPLE / IMAGE_CHOICES: options editing */}
-                  {(editingField.type === "select" ||
-                    editingField.type === "radio" ||
-                    editingField.type === "checkbox" ||
-                    editingField.type === "multiple" ||
-                    editingField.type === "image_choices") && (
-                      <>
-                        <Typography sx={{ fontWeight: 600, mb: 1 }}>
-                          Options
-                        </Typography>
+                {/* DROPDOWN / RADIO / CHECKBOX / MULTIPLE / IMAGE_CHOICES: options editing */}
+                {(editingField.type === "select" ||
+                  editingField.type === "radio" ||
+                  editingField.type === "checkbox" ||
+                  editingField.type === "multiple" ||
+                  editingField.type === "image_choices") && (
+                    <>
+                      <Typography sx={{ fontWeight: 600, mb: 1 }}>
+                        Options
+                      </Typography>
 
-                        {(editingField.options || []).map((opt) => (
-                          <Stack
-                            key={opt.id}
-                            direction="row"
-                            spacing={2}
-                            sx={{ mb: 1 }}
+                      {(editingField.options || []).map((opt) => (
+                        <Stack
+                          key={opt.id}
+                          direction="row"
+                          spacing={2}
+                          sx={{ mb: 1 }}
+                        >
+                          <TextField
+                            size="small"
+                            fullWidth
+                            label="Option label"
+                            value={opt.label}
+                            onChange={(e) =>
+                              updateOption(opt.id, {
+                                label: e.target.value,
+                                value: `${opt.id}_${e.target.value
+                                  .toLowerCase()
+                                  .replace(/\s+/g, "_")}`,
+
+                              })
+                            }
+                          />
+                          <IconButton
+                            onClick={() => removeOptionEditing(opt.id)}
+                            sx={{
+                              border: "1px solid #ef4444",
+                              borderRadius: 2,
+                              color: "#ef4444",
+                              "&:hover": {
+                                backgroundColor: "#fee2e2",
+                              },
+                            }}
                           >
-                            <TextField
-                              size="small"
-                              fullWidth
-                              label="Option label"
-                              value={opt.label}
-                              onChange={(e) =>
-                                updateOption(opt.id, {
-                                  label: e.target.value,
-                                  value: `${opt.id}_${e.target.value
-                                    .toLowerCase()
-                                    .replace(/\s+/g, "_")}`,
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Stack>
+                      ))}
 
-                                })
-                              }
-                            />
-                            <IconButton
-                              onClick={() => removeOptionEditing(opt.id)}
-                              sx={{
-                                border: "1px solid #ef4444",
-                                borderRadius: 2,
-                                color: "#ef4444",
-                                "&:hover": {
-                                  backgroundColor: "#fee2e2",
-                                },
-                              }}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </Stack>
-                        ))}
+                      <Button
+                        variant="outlined"
+                        onClick={addOption}
+                        sx={{
+                          mt: 1,
+                          borderRadius: 2,
+                          textTransform: "none",
+                        }}
+                      >
+                        + Add Option
+                      </Button>
+                    </>
+                  )}
 
-                        <Button
-                          variant="outlined"
-                          onClick={addOption}
+                {/* SECTION HEADER EDITING */}
+                {editingField.type === "section_header" && (
+                  <Box sx={{ mt: 2 }}>
+                    <TextField
+                      label="Subheading"
+                      fullWidth
+                      multiline
+                      sx={{ mb: 2 }}
+                      value={editingField.subheading || ""}
+                      onChange={(e) =>
+                        setEditingField({
+                          ...editingField,
+                          subheading: e.target.value,
+                        })
+                      }
+                    />
+
+                    <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                      Text Color
+                    </Typography>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+                      <input
+                        type="color"
+                        value={editingField.color || "#000000"}
+                        onChange={(e) =>
+                          setEditingField({
+                            ...editingField,
+                            color: e.target.value,
+                          })
+                        }
+                        style={{
+                          width: "100%",
+                          height: 40,
+                          cursor: "pointer",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 4,
+                        }}
+                      />
+                    </Box>
+
+                    <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                      Alignment
+                    </Typography>
+                    <Box sx={{ display: "flex", gap: 1, bgcolor: "#f3f4f6", p: 0.5, borderRadius: 1 }}>
+                      {[
+                        { val: "left", icon: <FormatAlignLeftIcon /> },
+                        { val: "center", icon: <FormatAlignCenterIcon /> },
+                        { val: "right", icon: <FormatAlignRightIcon /> },
+                      ].map((opt) => (
+                        <IconButton
+                          key={opt.val}
+                          size="small"
+                          onClick={() =>
+                            setEditingField({
+                              ...editingField,
+                              alignment: opt.val,
+                            })
+                          }
                           sx={{
-                            mt: 1,
-                            borderRadius: 2,
-                            textTransform: "none",
+                            flex: 1,
+                            bgcolor:
+                              editingField.alignment === opt.val
+                                ? "#fff"
+                                : "transparent",
+                            boxShadow:
+                              editingField.alignment === opt.val
+                                ? "0 1px 2px rgba(0,0,0,0.1)"
+                                : "none",
+                            "&:hover": { bgcolor: "#fff" },
                           }}
                         >
-                          + Add Option
-                        </Button>
-                      </>
-                    )}
-                </Box>
-              )}
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={closeEdit}>Cancel</Button>
-              <Button variant="contained" onClick={saveEdit}>
-                Save
-              </Button>
-            </DialogActions>
-          </Dialog>
-
-          {/* Preview dialog with mobile / desktop toggle */}
-          <Dialog
-            open={previewOpen}
-            onClose={() => setPreviewOpen(false)}
-            fullWidth
-            maxWidth="md"
-          >
-            <DialogTitle sx={{ pb: 1 }}>
-              {/* ROW 1: Preview label + icons */}
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  mb: 1,
-                }}
-              >
-                <Typography sx={{ fontWeight: 600 }}>
-                  Form Preview
-                </Typography>
-
-                <Box sx={{ display: "flex", gap: 1 }}>
-                  <Tooltip title="Mobile view">
-                    <IconButton
-                      size="small"
-                      onClick={() => setPreviewMode("mobile")}
-                      sx={{
-                        borderRadius: 2,
-                        border:
-                          previewMode === "mobile"
-                            ? "1px solid #2563eb"
-                            : "1px solid transparent",
-                        backgroundColor:
-                          previewMode === "mobile"
-                            ? "rgba(37,99,235,0.08)"
-                            : "transparent",
-                      }}
-                    >
-                      <SmartphoneIcon
-                        fontSize="small"
-                        sx={{
-                          color:
-                            previewMode === "mobile"
-                              ? "#2563eb"
-                              : "#6b7280",
-                        }}
-                      />
-                    </IconButton>
-                  </Tooltip>
-
-                  <Tooltip title="Desktop view">
-                    <IconButton
-                      size="small"
-                      onClick={() => setPreviewMode("desktop")}
-                      sx={{
-                        borderRadius: 2,
-                        border:
-                          previewMode === "desktop"
-                            ? "1px solid #2563eb"
-                            : "1px solid transparent",
-                        backgroundColor:
-                          previewMode === "desktop"
-                            ? "rgba(37,99,235,0.08)"
-                            : "transparent",
-                      }}
-                    >
-                      <LaptopMacIcon
-                        fontSize="small"
-                        sx={{
-                          color:
-                            previewMode === "desktop"
-                              ? "#2563eb"
-                              : "#6b7280",
-                        }}
-                      />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
+                          {opt.icon}
+                        </IconButton>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
               </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closeEdit}>Cancel</Button>
+            <Button variant="contained" onClick={saveEdit}>
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
 
-              {/* ROW 2: Form title BELOW */}
+        {/* Preview dialog with mobile / desktop toggle */}
+        <Dialog
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          fullWidth
+          maxWidth="md"
+        >
+          <DialogTitle sx={{ pb: 1 }}>
+            {/* ROW 1: Preview label + icons */}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                mb: 1,
+              }}
+            >
+              <Typography sx={{ fontWeight: 600 }}>
+                Form Preview
+              </Typography>
 
-            </DialogTitle>
-
-
-            <DialogContent>
-              <Box
-                sx={{
-                  mt: 2,
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "flex-start",
-                  pb: 2,
-                  backgroundColor:
-                    previewMode === "mobile" ? "#f3f4f6" : "transparent",
-                }}
-              >
-                <Box
-                  sx={{
-                    width: previewMode === "mobile" ? 375 : "100%",
-                    maxWidth: previewMode === "desktop" ? 800 : "none",
-                    borderRadius: previewMode === "mobile" ? 3 : 1,
-                    border:
-                      previewMode === "mobile"
-                        ? "1px solid #e5e7eb"
-                        : "1px solid transparent",
-                    boxShadow:
-                      previewMode === "mobile"
-                        ? "0 10px 25px rgba(15,23,42,0.15)"
-                        : "none",
-                    p: previewMode === "mobile" ? 2 : 0,
-                    backgroundColor: "#ffffff",
-                  }}
-                >
-                  <Typography
+              <Box sx={{ display: "flex", gap: 1 }}>
+                <Tooltip title="Mobile view">
+                  <IconButton
+                    size="small"
+                    onClick={() => setPreviewMode("mobile")}
                     sx={{
-                      fontWeight: 700,
-                      fontSize: "1.35rem",
-                      lineHeight: 1.2,
-                      mb: 3,
-                      color: formTitleColor,
-                      textAlign: titleAlignment,
+                      borderRadius: 2,
+                      border:
+                        previewMode === "mobile"
+                          ? "1px solid #2563eb"
+                          : "1px solid transparent",
+                      backgroundColor:
+                        previewMode === "mobile"
+                          ? "rgba(37,99,235,0.08)"
+                          : "transparent",
                     }}
                   >
-                    {formTitle || "Untitled Form"}
-                  </Typography>
-                  {canvasPreview.map((f) => (
-                    <Box key={f.id} sx={{ mb: 3 }}>
-                      <Typography sx={{ fontWeight: 600, mb: 1 }}>
-                        {f.label} {f.required && "*"}
-                      </Typography>
-                      {renderFieldInput(f)}
-                    </Box>
-                  ))}
-                </Box>
+                    <SmartphoneIcon
+                      fontSize="small"
+                      sx={{
+                        color:
+                          previewMode === "mobile"
+                            ? "#2563eb"
+                            : "#6b7280",
+                      }}
+                    />
+                  </IconButton>
+                </Tooltip>
+
+                <Tooltip title="Desktop view">
+                  <IconButton
+                    size="small"
+                    onClick={() => setPreviewMode("desktop")}
+                    sx={{
+                      borderRadius: 2,
+                      border:
+                        previewMode === "desktop"
+                          ? "1px solid #2563eb"
+                          : "1px solid transparent",
+                      backgroundColor:
+                        previewMode === "desktop"
+                          ? "rgba(37,99,235,0.08)"
+                          : "transparent",
+                    }}
+                  >
+                    <LaptopMacIcon
+                      fontSize="small"
+                      sx={{
+                        color:
+                          previewMode === "desktop"
+                            ? "#2563eb"
+                            : "#6b7280",
+                      }}
+                    />
+                  </IconButton>
+                </Tooltip>
               </Box>
-            </DialogContent>
+            </Box>
+
+            {/* ROW 2: Form title BELOW */}
+
+          </DialogTitle>
 
 
-
-            <DialogActions>
-              <Button onClick={() => setPreviewOpen(false)}>Close</Button>
-            </DialogActions>
-          </Dialog>
-
-
-          {/* ✅ SUCCESS DIALOG (ROOT LEVEL) */}
-          <Dialog open={successOpen} maxWidth="xs" fullWidth>
-            <DialogTitle sx={{ fontWeight: 700 }}>
-              Form Saved Successfully 🎉
-            </DialogTitle>
-
-            <DialogContent>
-              <Typography>
-                Your form has been saved successfully.
-              </Typography>
-            </DialogContent>
-
-            <DialogActions sx={{ px: 3, pb: 2 }}>
-              <Button
-                variant="contained"
-                sx={{ textTransform: "none" }}
-                onClick={() => {
-                  // Close dialog
-                  setSuccessOpen(false);
-
-                  // Clear builder state
-                  setFormTitle("");
-                  setFormTitleColor("#000000");
-                  setTitleAlignment("left");
-                  setFields([]);
-
-                  localStorage.removeItem("formbuilder_title");
-                  localStorage.removeItem("formbuilder_titleColor");
-                  localStorage.removeItem("formbuilder_titleAlignment");
-                  localStorage.removeItem("formbuilder_form");
-
-                  // Redirect
-                  navigate("/forms");
+          <DialogContent sx={{ bgcolor: "#f8fafc", pt: 3 }}>
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "flex-start",
+                pb: 4,
+              }}
+            >
+              <Box
+                sx={{
+                  width: previewMode === "mobile" ? 375 : "100%",
+                  maxWidth: previewMode === "desktop" ? 800 : "none",
+                  borderRadius: previewMode === "mobile" ? "32px" : "16px",
+                  border:
+                    previewMode === "mobile"
+                      ? "8px solid #1e293b"
+                      : "1px solid #e2e8f0",
+                  boxShadow:
+                    previewMode === "mobile"
+                      ? "0 20px 40px rgba(15,23,42,0.2)"
+                      : "0 10px 30px rgba(0,0,0,0.05)",
+                  p: previewMode === "mobile" ? 3 : 5,
+                  backgroundColor: "#ffffff",
+                  minHeight: previewMode === "mobile" ? 700 : "auto",
+                  transition: "all 0.3s ease",
                 }}
               >
-                Go to Forms
-              </Button>
-            </DialogActions>
-          </Dialog>
+                <Typography
+                  sx={{
+                    fontWeight: 800,
+                    fontSize: "1.75rem",
+                    lineHeight: 1.2,
+                    mb: 4,
+                    color: formTitleColor || "#0f172a",
+                    textAlign: titleAlignment || "left",
+                    borderBottom: "2px solid #f1f5f9",
+                    paddingBottom: 2,
+                  }}
+                >
+                  {formTitle || "Untitled Form"}
+                </Typography>
+                {canvasPreview.map((f) => (
+                  <Box key={f.id} sx={{ mb: 4 }}>
+                    {f.type !== "section_header" && (
+                      <Typography sx={{ fontWeight: 600, mb: 1.5, color: "#334155" }}>
+                        {f.label} {f.required && <span style={{ color: "#ef4444" }}>*</span>}
+                      </Typography>
+                    )}
+                    {renderFieldInput(f)}
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          </DialogContent>
 
-        </Container>
-      </Box>
-    </>
+
+
+          <DialogActions sx={{ px: 3, py: 2, bgcolor: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
+            <Button
+              variant="contained"
+              onClick={() => setPreviewOpen(false)}
+              sx={{
+                borderRadius: "10px",
+                textTransform: "none",
+                fontWeight: 600,
+                px: 3,
+                bgcolor: "#E89F17",
+                "&:hover": { bgcolor: "#d97706" },
+              }}
+            >
+              Close Preview
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+
+        {/* ✅ SUCCESS DIALOG (ROOT LEVEL) */}
+        <Dialog open={successOpen} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ fontWeight: 700 }}>
+            Form Saved Successfully 🎉
+          </DialogTitle>
+
+          <DialogContent>
+            <Typography>
+              Your form has been saved successfully.
+            </Typography>
+          </DialogContent>
+
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              variant="contained"
+              sx={{ textTransform: "none" }}
+              onClick={() => {
+                // Close dialog
+                setSuccessOpen(false);
+
+                // Clear builder state
+                setFormTitle("");
+                setFormTitleColor("#000000");
+                setTitleAlignment("left");
+                setFields([]);
+
+                localStorage.removeItem("formbuilder_title");
+                localStorage.removeItem("formbuilder_titleColor");
+                localStorage.removeItem("formbuilder_titleAlignment");
+                localStorage.removeItem("formbuilder_form");
+
+                // Redirect
+                navigate("/forms");
+              }}
+            >
+              Go to Forms
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+      </Container>
+    </Layout>
   );
 }
 

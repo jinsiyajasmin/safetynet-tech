@@ -25,11 +25,13 @@ import {
   OpenInNew as OpenInNewIcon,
   Add as AddIcon,
   MoreVert as MoreVertIcon,
+  Close as CloseIcon,
+  CloudUpload as UploadIcon,
 } from "@mui/icons-material";
-import { useNavigate } from "react-router-dom";
-import Sidebar from "../components/Sidebar.jsx";
-import TopNav from "../components/TopNav";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../services/api";
+import Layout from "../components/Layout";
+import { useTheme as useAppTheme } from "../context/ThemeContext";
 
 // helper to build absolute URL for logos saved as /uploads/filename
 const computeLogoUrl = (logo) => {
@@ -37,15 +39,18 @@ const computeLogoUrl = (logo) => {
   if (/^https?:\/\//i.test(logo)) return logo;
   // If we have a relative path, prepend the backend URL
   // We can grab it from import.meta.env.VITE_BACKEND_URL or rely on a helper
-  const host = import.meta.env.VITE_BACKEND_URL || "https://safetynet-tech.vercel.app";
+  const host = import.meta.env.VITE_BACKEND_URL || "https://api-site-mateai.co.uk";
   return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
 };
 
 export default function ClientsPage() {
   const theme = useTheme();
+  const { isDarkMode } = useAppTheme();
   const navigate = useNavigate();
-  const CARD_WIDTH = 300;
-  const CARD_HEIGHT = 220;
+  const [searchParams] = useSearchParams();
+  const searchQuery = searchParams.get("search") || "";
+  const CARD_WIDTH = 320;
+  const CARD_HEIGHT = 170;
 
   const [clients, setClients] = useState([]);
   const [loadingClients, setLoadingClients] = useState(true);
@@ -58,8 +63,15 @@ export default function ClientsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // snackbar
-  const [successMsg, setSuccessMsg] = useState("");
-  const [openSnackbar, setOpenSnackbar] = useState(false);
+  const [snack, setSnack] = useState({
+    open: false,
+    message: "",
+    severity: "success",
+  });
+
+  const handleCloseSnack = () => {
+    setSnack((prev) => ({ ...prev, open: false }));
+  };
 
   // create / edit modal
   const [openModal, setOpenModal] = useState(false);
@@ -73,7 +85,7 @@ export default function ClientsPage() {
   // navigate to users of a client
   const onOpen = (client) => {
     const id = client?._id ?? client?.id;
-    if (id) navigate(`/clients/${id}/users`);
+    if (id) navigate(`/clients/${id}/users`, { state: { clientName: client.name } });
   };
 
   // fetch clients
@@ -100,6 +112,11 @@ export default function ClientsPage() {
       }
     };
   }, []);
+
+  // Filtered clients list
+  const filteredClients = clients.filter((client) =>
+    client.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   // ---- modal open for create ----
   const openCreateModal = () => {
@@ -210,8 +227,7 @@ export default function ClientsPage() {
         // add new client to top of list
         setClients((prev) => [normalized, ...prev]);
 
-        setSuccessMsg("Client created successfully!");
-        setOpenSnackbar(true);
+        setSnack({ open: true, message: "Client created successfully!", severity: "success" });
       } else {
         // fallback: refetch
         await fetchClients();
@@ -228,8 +244,7 @@ export default function ClientsPage() {
       const data = err?.response?.data;
       const errorMsg = data?.message || "Failed to create client";
       setErrors((p) => ({ ...p, form: errorMsg }));
-      setSuccessMsg(`Error: ${errorMsg}`);
-      setOpenSnackbar(true);
+      setSnack({ open: true, message: `Error: ${errorMsg}`, severity: "error" });
     } finally {
       setSubmitting(false);
     }
@@ -251,8 +266,7 @@ export default function ClientsPage() {
         setClients((prev) =>
           prev.map((c) => (c.id === id || c._id === id ? updated : c))
         );
-        setSuccessMsg("Client updated successfully!");
-        setOpenSnackbar(true);
+        setSnack({ open: true, message: "Client updated successfully!", severity: "success" });
       } else {
         await fetchClients();
       }
@@ -260,8 +274,7 @@ export default function ClientsPage() {
     } catch (err) {
       console.error("Update client failed", err);
       const msg = err.response?.data?.message || "Update failed";
-      setSuccessMsg(`Error: ${msg}`);
-      setOpenSnackbar(true);
+      setSnack({ open: true, message: `Error: ${msg}`, severity: "error" });
     } finally {
       setSubmitting(false);
     }
@@ -290,16 +303,14 @@ export default function ClientsPage() {
       const res = await api.delete(`/clients/${id}`);
       if (res?.data?.success) {
         setClients((prev) => prev.filter((c) => c.id !== id && c._id !== id));
-        setSuccessMsg("Client deleted successfully!");
-        setOpenSnackbar(true);
+        setSnack({ open: true, message: "Client deleted successfully!", severity: "success" });
       } else {
         // optional: show backend message if any
         console.warn("Delete returned:", res?.data);
       }
     } catch (err) {
       console.error("Delete client failed:", err);
-      setSuccessMsg("Failed to delete client");
-      setOpenSnackbar(true);
+      setSnack({ open: true, message: "Failed to delete client", severity: "error" });
     } finally {
       setDeleteDialogOpen(false);
       setSelectedClient(null);
@@ -327,148 +338,325 @@ export default function ClientsPage() {
     (currentUser?.companyname || currentUser?.company || "").trim().toLowerCase() === "safetynett";
 
   return (
-    <>
-      <TopNav />
-      <Box sx={{ display: "flex", height: "calc(100vh - 0px)", bgcolor: "#ffffff" }}>
-        {/* Sidebar (sticky) */}
-        <Box
-          component="aside"
-          sx={{
-            width: { xs: 0, md: 260 },
-            flexShrink: 0,
-            alignSelf: "flex-start",         // allow sticky to work correctly
-            position: "sticky",
-            top: "64px",                      // adjust if your TopNav height is different
-            height: "calc(100vh - 64px)",     // keep sidebar full height minus nav
-            overflow: "visible",              // DO NOT make the aside itself the scroll container
-            p: 0,
-          }}
-        >
-          <Sidebar sx={{ height: "100%" }} />
+    <Layout>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 600, color: isDarkMode ? "#F9FAFB" : "inherit" }}>All Clients</Typography>
+          <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "text.secondary" }}>Manage your client accounts</Typography>
         </Box>
 
-        {/* Main */}
-        <Box
-          component="main"
-          sx={{
-            flex: 1,
-            overflow: "auto",                 // main area scrolls
-            px: { xs: 2, sm: 3, md: 6 },
-            py: { xs: 4, md: 6 },
-            height: "calc(100vh - 64px)",     // match top offset so scroll region is correct
-          }}
-        >
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
-            <Typography variant="h4" sx={{ fontWeight: 800 }}>Clients</Typography>
-
-            {isSafetynettOrAdmin && (
-              <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateModal} sx={{ textTransform: "none", borderRadius: 2, bgcolor: "#013a63", "&:hover": { bgcolor: "#075692" } }}>
-                Create new client
-              </Button>
-            )}
-          </Box>
-
-          {loadingClients ? (
-            <Box sx={{ display: "grid", placeItems: "center", py: 12 }}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <Grid container spacing={3}>
-              {clients.map((client) => (
-                <Grid key={client.id ?? client._id ?? client.name} item xs={12} sm={6} md={4} lg={3}>
-                  <Card variant="outlined" sx={{ width: CARD_WIDTH, height: CARD_HEIGHT, display: "flex", flexDirection: "column", justifyContent: "space-between", borderRadius: 2, boxShadow: "0 6px 18px rgba(2,6,23,0.04)", transition: "transform .15s ease, box-shadow .15s ease", "&:hover": { transform: "translateY(-6px)", boxShadow: "0 14px 28px rgba(2,6,23,0.10)" }, position: "relative" }}>
-
-                    {isSafetynettOrAdmin && (
-                      <IconButton sx={{ position: "absolute", top: 4, right: 4, color: "gray" }} onClick={(e) => handleMenuOpen(e, client)}>
-                        <MoreVertIcon />
-                      </IconButton>
-                    )}
-
-                    <CardContent sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", flexGrow: 1, textAlign: "center", gap: 1.5 }}>
-                      <Box sx={{ width: 72, height: 72, borderRadius: 1.5, display: "grid", placeItems: "center", background: "rgba(2,6,23,0.03)", overflow: "hidden" }}>
-                        {client?.logo ? (
-                          <Box component="img" src={computeLogoUrl(client.logo)} alt="logo" sx={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} onError={(e) => (e.currentTarget.style.display = "none")} />
-                        ) : (
-                          <Avatar sx={{ width: 56, height: 56, bgcolor: theme.palette.primary.light, color: "white", fontWeight: 700 }}>{firstChar(client?.name)}</Avatar>
-                        )}
-                      </Box>
-
-                      <Typography variant="h6" sx={{ fontWeight: 700, textAlign: "center" }} noWrap>{client?.name}</Typography>
-                    </CardContent>
-
-                    <CardActions sx={{ justifyContent: "flex-start", pb: 2 }}>
-                      {/* Safetynett users can open ANY client. Others can open only non-Safetynett clients (logic preserved, but Safetynett override added) */}
-                      {(isSafetynettOrAdmin || String(client.name).toLowerCase() !== "safetynett") && (
-                        <Button variant="outlined" startIcon={<OpenInNewIcon />} onClick={() => onOpen(client)} sx={{ textTransform: "none", borderRadius: 1.5, px: 3, py: 0.5, fontSize: "1rem" }}>
-                          Open
-                        </Button>
-                      )}
-                    </CardActions>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-          )}
-        </Box>
+        {isSafetynettOrAdmin && (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={openCreateModal}
+            sx={{
+              textTransform: "none",
+              borderRadius: 3,
+              boxShadow: "none",
+              bgcolor: "hsl(38, 70%, 55%)",
+              "&:hover": { bgcolor: "hsl(38, 70%, 45%)", boxShadow: "none" },
+            }}
+          >
+            Create new client
+          </Button>
+        )}
       </Box>
 
+      {loadingClients ? (
+        <Box sx={{ display: "grid", placeItems: "center", py: 12 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <Grid container spacing={3}>
+          {filteredClients.map((client) => (
+            <Grid key={client.id ?? client._id ?? client.name} item xs={12} sm={6} md={4} lg={3}>
+              <Card
+                variant="outlined"
+                sx={{
+                  width: CARD_WIDTH,
+                  height: CARD_HEIGHT,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  justifyContent: "center",
+                  borderRadius: 2,
+                  bgcolor: isDarkMode ? "#1B212C" : "#F4F3F1",
+                  borderColor: isDarkMode ? "#374151" : "rgba(0,0,0,0.12)",
+                  boxShadow: isDarkMode ? "0 6px 18px rgba(0,0,0,0.4)" : "0 6px 18px rgba(2,6,23,0.04)",
+                  transition: "transform .15s ease, box-shadow .15s ease",
+                  "&:hover": {
+                    transform: "translateY(-6px)",
+                    boxShadow: isDarkMode ? "0 14px 28px rgba(0,0,0,0.5)" : "0 14px 28px rgba(2,6,23,0.10)"
+                  },
+                  position: "relative",
+                  p: 2,
+                  gap: 1
+                }}
+              >
+
+                {isSafetynettOrAdmin && (
+                  <IconButton sx={{ position: "absolute", top: 4, right: 4, color: "gray" }} onClick={(e) => handleMenuOpen(e, client)}>
+                    <MoreVertIcon />
+                  </IconButton>
+                )}
+
+                <Box sx={{ width: 48, height: 48, borderRadius: 1.5, display: "grid", placeItems: "center", background: "#FDF0D5", overflow: "hidden", mb: 0.5 }}>
+                  {client?.logo ? (
+                    <Box component="img" src={computeLogoUrl(client.logo)} alt="logo" sx={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} onError={(e) => (e.currentTarget.style.display = "none")} />
+                  ) : (
+                    <Avatar sx={{ width: 40, height: 40, bgcolor: theme.palette.primary.light, color: "white", fontWeight: 700 }}>{firstChar(client?.name)}</Avatar>
+                  )}
+                </Box>
+
+                <Typography variant="h6" sx={{ fontWeight: 500, fontSize: "0.9rem", textAlign: "left", color: isDarkMode ? "#F9FAFB" : "inherit" }} noWrap>{client?.name}</Typography>
+
+                {/* Safetynett users can open ANY client. Others can open only non-Safetynett clients */}
+                {(isSafetynettOrAdmin || String(client.name).toLowerCase() !== "safetynett") && (
+                  <Button
+                    variant="outlined"
+                    startIcon={<OpenInNewIcon sx={{ fontSize: "1.1rem" }} />}
+                    onClick={() => onOpen(client)}
+                    sx={{
+                      textTransform: "none",
+                      borderRadius: 50,
+                      px: 2,
+                      py: 0.5,
+                      fontSize: "0.75rem",
+                      mt: 1,
+                      borderColor: isDarkMode ? "#60A5FA" : "#0B4DA6",
+                      color: isDarkMode ? "#60A5FA" : "#0B4DA6",
+                      "&:hover": {
+                        bgcolor: isDarkMode ? "rgba(96, 165, 250, 0.1)" : "#EDF5FF",
+                        borderColor: isDarkMode ? "#60A5FA" : "#0B4DA6"
+                      }
+                    }}
+                  >
+                    Open
+                  </Button>
+                )}
+
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+
       {/* Menu */}
-      <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={handleMenuClose}>
-        <MenuItem onClick={() => { handleMenuClose(); openEditModal(selectedClient); }}>Edit</MenuItem>
-        <MenuItem onClick={confirmDelete} sx={{ color: "red" }}>Delete</MenuItem>
+      <Menu
+        anchorEl={menuAnchor}
+        open={Boolean(menuAnchor)}
+        onClose={handleMenuClose}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+        PaperProps={{
+          sx: {
+            boxShadow: isDarkMode ? "0px 4px 20px rgba(0, 0, 0, 0.5)" : "none",
+            bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+            border: isDarkMode ? "1px solid #374151" : "1px solid rgba(0,0,0,0.08)",
+            borderRadius: 3,
+            minWidth: 180,
+            color: isDarkMode ? "#F9FAFB" : "inherit",
+          }
+        }}
+      >
+        <MenuItem
+          onClick={() => { handleMenuClose(); openEditModal(selectedClient); }}
+          sx={{ borderRadius: 2, mb: 0.5, py: 1, fontSize: "0.95rem", color: isDarkMode ? "#F9FAFB" : "#1F2937", "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" } }}
+        >
+          Edit
+        </MenuItem>
+        <MenuItem
+          onClick={confirmDelete}
+          sx={{ borderRadius: 2, py: 1, color: "#EF4444", fontSize: "0.95rem", "&:hover": { bgcolor: isDarkMode ? "rgba(239, 68, 68, 0.15)" : "rgba(239, 68, 68, 0.05)" } }}
+        >
+          Delete
+        </MenuItem>
       </Menu>
 
       {/* Delete confirm */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Delete Client</DialogTitle>
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 4, bgcolor: isDarkMode ? "#111827" : "#FFFFFF", color: isDarkMode ? "#F9FAFB" : "inherit" } }}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Delete Client</DialogTitle>
         <DialogContent>
-          <Typography>Are you sure you want to delete <b>{selectedClient?.name || "this client"}</b>? This action cannot be undone.</Typography>
+          <Typography sx={{ color: isDarkMode ? "#9CA3AF" : "inherit" }}>Are you sure you want to delete <b style={{ color: isDarkMode ? "#F9FAFB" : "inherit" }}>{selectedClient?.name || "this client"}</b>? This action cannot be undone.</Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" color="error" onClick={handleDelete} sx={{ textTransform: "none" }}>Delete</Button>
+          <Button onClick={() => setDeleteDialogOpen(false)} sx={{ color: isDarkMode ? "#9CA3AF" : "inherit" }}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleDelete} sx={{ textTransform: "none", borderRadius: 50, px: 3 }}>Delete</Button>
         </DialogActions>
       </Dialog>
 
       {/* Create / Edit modal */}
-      <Dialog open={openModal} onClose={closeModal} maxWidth="xs" fullWidth>
-        <DialogTitle>{isEditMode ? "Edit client" : "Create new client"}</DialogTitle>
-        <DialogContent>
-          <TextField label="Client name" fullWidth margin="dense" value={form.name} onChange={(e) => handleChange("name")(e)} error={!!errors.name} helperText={errors.name} />
+      <Dialog
+        open={openModal}
+        onClose={closeModal}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 6, // approx 24px-32px
+            bgcolor: isDarkMode ? "#111827" : "#F4F3F1",
+            p: 1.5,
+            px: 2,
+            position: "relative",
+            color: isDarkMode ? "#F9FAFB" : "inherit",
+          }
+        }}
+      >
+        <IconButton
+          onClick={closeModal}
+          sx={{ position: "absolute", top: 16, right: 16, color: "text.secondary" }}
+        >
+          <CloseIcon fontSize="small" />
+        </IconButton>
 
-          <Box sx={{ mt: 1, display: "flex", gap: 2, alignItems: "center" }}>
-            <Box>
-              <input id="client-logo-file" type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleChange("file")(e)} />
-              <label htmlFor="client-logo-file">
-                <Button variant="outlined" component="span" size="small">Choose logo</Button>
-              </label>
-            </Box>
+        <Box sx={{ p: 1 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, color: isDarkMode ? "#F9FAFB" : "#1e293b", lineHeight: 1.2 }}>
+            {isEditMode ? "Edit Client" : "Create New Client"}
+          </Typography>
+          <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#64748b", mb: 3 }}>
+            {isEditMode ? "Modify the client details below." : "Add a new client to your account."}
+          </Typography>
 
-            {/* show new preview if selected, otherwise show existingLogo if editing */}
-            {form.preview ? (
-              <Box component="img" src={form.preview} alt="preview" sx={{ width: 72, height: 72, objectFit: "cover", borderRadius: 1 }} />
-            ) : form.existingLogo ? (
-              <Box component="img" src={computeLogoUrl(form.existingLogo)} alt="existing logo" sx={{ width: 72, height: 72, objectFit: "cover", borderRadius: 1 }} />
-            ) : (
-              <Typography color="text.secondary">No image selected</Typography>
-            )}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: isDarkMode ? "#E5E7EB" : "#1e293b" }}>
+              Client Name
+            </Typography>
+            <TextField
+              fullWidth
+              placeholder="Enter client name"
+              value={form.name}
+              onChange={(e) => handleChange("name")(e)}
+              error={!!errors.name}
+              helperText={errors.name}
+              variant="outlined"
+              sx={{
+                "& .MuiOutlinedInput-root": {
+                  borderRadius: 50,
+                  bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.02)",
+                  px: 1,
+                  color: isDarkMode ? "#F9FAFB" : "inherit",
+                  "& fieldset": { borderColor: isDarkMode ? "#374151" : "rgba(0,0,0,0.1)" },
+                  "&.Mui-focused fieldset": { borderColor: "#0B4DA6", borderWidth: 2 },
+                },
+                "& .MuiInputBase-input": { py: 1.5, px: 2 },
+                "& .MuiInputBase-input::placeholder": { color: isDarkMode ? "#9CA3AF" : "inherit" }
+              }}
+            />
           </Box>
 
-          {errors.file && (<Typography color="error" sx={{ mt: 1 }}>{errors.file}</Typography>)}
-          {errors.form && (<Typography color="error" sx={{ mt: 1 }}>{errors.form}</Typography>)}
-        </DialogContent>
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: isDarkMode ? "#E5E7EB" : "#1e293b" }}>
+              Client Logo
+            </Typography>
 
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={closeModal} disabled={submitting}>Cancel</Button>
-          <Button variant="contained" onClick={() => { isEditMode ? handleUpdate(selectedClient?.id || selectedClient?._id) : handleCreate(); }} disabled={submitting} sx={{ textTransform: "none", bgcolor: "#013a63", "&:hover": { bgcolor: "#075692" } }}>
-            {submitting ? <CircularProgress size={20} /> : isEditMode ? "Save changes" : "Create"}
-          </Button>
-        </DialogActions>
+            <input
+              id="client-logo-file"
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={(e) => handleChange("file")(e)}
+            />
+
+            <label htmlFor="client-logo-file">
+              <Box
+                sx={{
+                  border: isDarkMode ? "2px dashed #374151" : "2px dashed rgba(0,0,0,0.1)",
+                  borderRadius: 4,
+                  p: 4,
+                  textAlign: "center",
+                  cursor: "pointer",
+                  bgcolor: isDarkMode ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.012)",
+                  transition: "background 0.2s",
+                  "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)" },
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 1
+                }}
+              >
+                {form.preview || form.existingLogo ? (
+                  <Box
+                    component="img"
+                    src={form.preview || computeLogoUrl(form.existingLogo)}
+                    alt="logo preview"
+                    sx={{ width: 80, height: 80, objectFit: "contain", borderRadius: 2 }}
+                  />
+                ) : (
+                  <>
+                    <Box sx={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(0,0,0,0.05)", display: "grid", placeItems: "center", mb: 1 }}>
+                      <UploadIcon sx={{ color: "#64748b" }} />
+                    </Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: isDarkMode ? "#9CA3AF" : "#64748b" }}>
+                      Click to upload logo
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: isDarkMode ? "#6B7280" : "#94a3b8" }}>
+                      PNG, JPG up to 5MB
+                    </Typography>
+                  </>
+                )}
+              </Box>
+            </label>
+            {errors.file && (<Typography color="error" variant="caption" sx={{ mt: 1, display: "block" }}>{errors.file}</Typography>)}
+          </Box>
+
+          <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 2 }}>
+            <Button
+              onClick={closeModal}
+              disabled={submitting}
+              sx={{
+                textTransform: "none",
+                borderRadius: 4,
+                px: 4,
+                py: 1.2,
+                color: isDarkMode ? "#F9FAFB" : "#1e293b",
+                fontWeight: 600,
+                bgcolor: isDarkMode ? "#1B212C" : "white",
+                border: isDarkMode ? "1px solid #374151" : "1px solid rgba(0,0,0,0.1)",
+                "&:hover": { bgcolor: isDarkMode ? "#374151" : "#f8fafc" }
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              onClick={() => { isEditMode ? handleUpdate(selectedClient?.id || selectedClient?._id) : handleCreate(); }}
+              disabled={submitting || !form.name.trim() || (!form.file && !form.existingLogo)}
+              sx={{
+                textTransform: "none",
+                borderRadius: 4,
+                px: 4,
+                py: 1.2,
+                bgcolor: "hsl(38, 70%, 55%)",
+                color: "white",
+                fontWeight: 600,
+                boxShadow: "none",
+                "&:hover": { bgcolor: "hsl(38, 70%, 45%)", boxShadow: "none" }
+              }}
+            >
+              {submitting ? <CircularProgress size={20} color="inherit" /> : isEditMode ? "Save changes" : "Create Client"}
+            </Button>
+          </Box>
+        </Box>
+
+        {errors.form && (<Typography color="error" textAlign="center" sx={{ mt: 2 }}>{errors.form}</Typography>)}
       </Dialog>
 
-      <Snackbar open={openSnackbar} autoHideDuration={3000} onClose={() => setOpenSnackbar(false)} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
-        <Alert onClose={() => setOpenSnackbar(false)} severity="success" sx={{ width: "100%" }}>{successMsg}</Alert>
+      <Snackbar
+        open={snack.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnack}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert
+          onClose={handleCloseSnack}
+          severity={snack.severity}
+          sx={{ width: "100%" }}
+        >
+          {snack.message}
+        </Alert>
       </Snackbar>
-    </>
+    </Layout>
   );
 }

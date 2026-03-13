@@ -3,7 +3,7 @@ import { createTheme } from "@mui/material/styles";
 
 const Theme = createTheme({
   typography: {
-    fontFamily: "Aeonik, Arial, sans-serif",
+    fontFamily: "Inter, sans-serif",
   },
 });
 

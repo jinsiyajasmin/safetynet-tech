@@ -1,23 +1,26 @@
 // src/controllers/clientsController.js
 const asyncHandler = require('express-async-handler');
-const Client = require('../models/Client');
+const prisma = require("../prismaClient");
 const fs = require('fs');
 const path = require('path');
-const User = require("../models/User");
-const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid'); // If generating UUIDs manually, otherwise Prisma does it
 
 exports.listClients = asyncHandler(async (req, res) => {
   const { name } = req.query;
-  let query = {};
+  const where = {};
 
   if (name) {
     // Case-insensitive search
-    query.name = { $regex: new RegExp(`^${name}$`, "i") };
+    where.name = { contains: name, mode: 'insensitive' };
   }
 
-  const clients = await Client.find(query).sort({ createdAt: -1 }).lean();
+  const clients = await prisma.client.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+  });
+
   const normalized = clients.map((c) => ({
-    id: c._id.toString(),
+    id: c.id,
     name: c.name,
     logo: c.logo || null,
     createdAt: c.createdAt,
@@ -39,13 +42,17 @@ exports.createClient = asyncHandler(async (req, res) => {
 
     const logoUrl = req.file ? req.file.path : (req.body.logo || null);
 
-    const client = new Client({ name: name.trim(), logo: logoUrl || null });
-    await client.save();
+    const client = await prisma.client.create({
+      data: {
+        name: name.trim(),
+        logo: logoUrl || null
+      }
+    });
 
     res.status(201).json({
       success: true,
       message: 'Client created',
-      client: { id: client._id.toString(), name: client.name, logo: client.logo || null },
+      client: { id: client.id, name: client.name, logo: client.logo || null },
     });
   } catch (err) {
     console.error('CREATE CLIENT ERROR:', err);
@@ -56,20 +63,21 @@ exports.createClient = asyncHandler(async (req, res) => {
     });
   }
 });
-// src/controllers/clientsController.js
+
 exports.deleteClient = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
     console.log(`🗑️ DELETE REQUEST RECEIVED for ID: ${id}`);
     console.log(`User requesting delete:`, req.user);
 
-    const client = await Client.findById(id);
+    // Check if client exists first
+    const client = await prisma.client.findUnique({ where: { id } });
     if (!client) {
       console.log("❌ Client not found in DB");
       return res.status(404).json({ success: false, message: "Client not found" });
     }
 
-    await client.deleteOne();
+    await prisma.client.delete({ where: { id } });
     console.log(`✅ Client deleted successfully: ${id}`);
 
     return res.json({ success: true, message: "Client deleted successfully", id });
@@ -87,33 +95,34 @@ exports.updateClient = asyncHandler(async (req, res) => {
     console.log(`UPDATE CLIENT - id: ${id}, body:`, req.body);
     if (req.file) console.log(`UPDATE CLIENT - file received:`, req.file.path);
 
-    const client = await Client.findById(id);
+    const client = await prisma.client.findUnique({ where: { id } });
     if (!client) {
       return res.status(404).json({ success: false, message: 'Client not found' });
     }
 
+    const data = {};
+
     // update name if provided (trim)
     if (typeof name === 'string' && name.trim().length) {
-      client.name = name.trim();
+      data.name = name.trim();
     }
 
     // if a new file uploaded, use the Cloudinary URL
     if (req.file) {
       const newLogo = req.file.path;
-
       // OPTIONAL: Delete old image from Cloudinary if needed.
-      // For now, we just update the URL. To delete from Cloudinary, 
-      // we'd need to extract the public_id and use cloudinary.uploader.destroy()
-
-      client.logo = newLogo;
+      data.logo = newLogo;
     }
 
-    await client.save();
+    const updatedClient = await prisma.client.update({
+      where: { id },
+      data
+    });
 
     res.json({
       success: true,
       message: 'Client updated',
-      client: { id: client._id.toString(), name: client.name, logo: client.logo || null },
+      client: { id: updatedClient.id, name: updatedClient.name, logo: updatedClient.logo || null },
     });
   } catch (err) {
     console.error('UPDATE CLIENT ERROR:', err);
@@ -122,7 +131,7 @@ exports.updateClient = asyncHandler(async (req, res) => {
 });
 
 exports.getClient = asyncHandler(async (req, res) => {
-  const client = await Client.findById(req.params.id).lean();
+  const client = await prisma.client.findUnique({ where: { id: req.params.id } });
   if (!client) {
     return res.status(404).json({ success: false, message: "Client not found" });
   }
@@ -134,12 +143,13 @@ exports.getUsersByClient = asyncHandler(async (req, res) => {
   const { id } = req.params;
   console.log("GET /clients/:id/users -> id:", id);
 
-  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+  // Prisma doesn't strictly need validation, checking existence is enough
+  if (!id) {
     console.warn("Invalid client id:", id);
     return res.status(400).json({ success: false, message: "Invalid client id" });
   }
 
-  const client = await Client.findById(id).lean();
+  const client = await prisma.client.findUnique({ where: { id } });
   if (!client) {
     console.warn("Client not found for id:", id);
     return res.status(404).json({ success: false, message: "Client not found" });
@@ -148,11 +158,26 @@ exports.getUsersByClient = asyncHandler(async (req, res) => {
   // if client name is 'safetynett' (case-insensitive) return all users
   if (String(client.name || "").trim().toLowerCase() === "safetynett") {
     console.log("Client is safetynett — returning all users");
-    const users = await User.find({}).select("-password").lean();
+    const users = await prisma.user.findMany({
+      select: {
+        id: true, username: true, firstName: true, lastName: true, email: true,
+        jobTitle: true, companyname: true, mobile: true, role: true, active: true,
+        clientId: true, createdAt: true, updatedAt: true
+        // Exclude password
+      }
+    });
     return res.json({ success: true, users, allUsers: true });
   }
 
   // otherwise return only users with this clientId
-  const users = await User.find({ clientId: id }).select("-password").lean();
+  const users = await prisma.user.findMany({
+    where: { clientId: id },
+    select: {
+      id: true, username: true, firstName: true, lastName: true, email: true,
+      jobTitle: true, companyname: true, mobile: true, role: true, active: true,
+      clientId: true, createdAt: true, updatedAt: true
+      // Exclude password
+    }
+  });
   return res.json({ success: true, users, allUsers: false });
 });

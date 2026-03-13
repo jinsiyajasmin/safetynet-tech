@@ -22,9 +22,12 @@ import {
   DialogTitle,
   DialogActions,
   Button,
-
-
-
+  TableSortLabel,
+  TextField,
+  Grid,
+  Autocomplete,
+  TablePagination,
+  Divider
 } from "@mui/material";
 import {
   ToggleOff as ToggleOffIcon,
@@ -33,28 +36,157 @@ import {
   MoreVert as MoreVertIcon,
   OpenInNew as OpenInNewIcon,
   Delete as DeleteIcon,
+  Edit as EditIcon,
+  Email as EmailIcon,
+  MoreHoriz as MoreHorizIcon
 } from "@mui/icons-material";
-import { useParams } from "react-router-dom";
-import Sidebar from "../components/Sidebar.jsx";
-import TopNav from "../components/TopNav";
+import {
+  Eye,
+  Pencil,
+  UserX,
+  UserCheck,
+  Trash2
+} from "lucide-react";
+import { useParams, useLocation, useSearchParams } from "react-router-dom";
+import Layout from "../components/Layout";
 import api from "../services/api";
+import { useTheme } from "../context/ThemeContext";
 
 /* Helper to compute avatar/url */
 const computeAvatarUrl = (avatar) => {
   if (!avatar) return null;
   if (/^https?:\/\//i.test(avatar)) return avatar;
-  const host = "https://safetynet-tech-zavg.vercel.app";
+  const host = import.meta.env.VITE_BACKEND_URL || "https://api-site-mateai.co.uk";
   return `${host.replace(/\/$/, "")}${avatar.startsWith("/") ? "" : "/"}${avatar}`;
 };
 
+function descendingComparator(a, b, orderBy) {
+  // Handle nested properties or fallbacks
+  let valA = a[orderBy];
+  let valB = b[orderBy];
+
+  if (orderBy === 'name') {
+    valA = a.firstName || a.username || "";
+    valB = b.firstName || b.username || "";
+  } else if (orderBy === 'site') {
+    valA = a.companyname || a.company || "";
+    valB = b.companyname || b.company || "";
+  }
+
+  if (typeof valA === 'string') valA = valA.toLowerCase();
+  if (typeof valB === 'string') valB = valB.toLowerCase();
+
+  if (valB < valA) return -1;
+  if (valB > valA) return 1;
+  return 0;
+}
+
+function getComparator(order, orderBy) {
+  return order === 'desc'
+    ? (a, b) => descendingComparator(a, b, orderBy)
+    : (a, b) => -descendingComparator(a, b, orderBy);
+}
+
+function stableSort(array, comparator) {
+  const stabilizedThis = array.map((el, index) => [el, index]);
+  stabilizedThis.sort((a, b) => {
+    const order = comparator(a[0], b[0]);
+    if (order !== 0) return order;
+    return a[1] - b[1];
+  });
+  return stabilizedThis.map((el) => el[0]);
+}
+
+const headCells = [
+  { id: 'name', label: 'Name', sortable: true },
+  { id: 'email', label: 'Email', sortable: true },
+  { id: 'site', label: 'Site', sortable: true }, // Mapped from companyname
+  { id: 'role', label: 'Role', sortable: true },
+  { id: 'active', label: 'Status', sortable: true },
+  { id: 'actions', label: 'Action', sortable: false },
+];
+
 export default function UsersPage() {
+  const { isDarkMode } = useTheme();
   const { id } = useParams(); // optional client id
+  const location = useLocation();
+  const clientName = location.state?.clientName;
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isSafetynettUser, setIsSafetynettUser] = useState(false);
+
+  // Sorting State
+  const [order, setOrder] = useState('desc');
+  const [orderBy, setOrderBy] = useState('createdAt');
+
+  const [searchParams] = useSearchParams();
+  const searchQuery = searchParams.get("search") || "";
+
+  // Search State
+  const [searchName, setSearchName] = useState(searchQuery);
+  const [searchCompany, setSearchCompany] = useState("");
+  const [searchStatus, setSearchStatus] = useState("all");
+  const [searchRole, setSearchRole] = useState("all");
+
+  // Pagination State
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  // Sync searchName with URL search query
+  useEffect(() => {
+    setSearchName(searchQuery);
+  }, [searchQuery]);
+
   const [anchorEl, setAnchorEl] = useState(null);
+
+  // ... (existing state)
+
+  // Derived filtered list
+  const filteredUsers = users.filter((u) => {
+    // 1. Name/Email Filter
+    const query = searchName.toLowerCase();
+    const fullName = `${u.firstName || ""} ${u.lastName || ""} ${u.username || ""}`.toLowerCase();
+    const email = (u.email || "").toLowerCase();
+    const matchesName = !query || fullName.includes(query) || email.includes(query);
+
+    // 2. Company Filter
+    const companyQuery = searchCompany ? searchCompany.toLowerCase() : "";
+    const company = (u.companyname || u.company || "").toLowerCase();
+    const matchesCompany = !companyQuery || company.includes(companyQuery);
+
+    // 3. Status Filter
+    let matchesStatus = true;
+    if (searchStatus === "active") matchesStatus = u.active === true;
+    if (searchStatus === "inactive") matchesStatus = u.active === false;
+
+    // 4. Role Filter
+    const matchesRole = searchRole === "all" || (u.role && u.role === searchRole);
+
+    return matchesName && matchesCompany && matchesStatus && matchesRole;
+  });
+
+  const paginatedUsers = stableSort(filteredUsers, getComparator(order, orderBy)).slice(
+    page * rowsPerPage,
+    page * rowsPerPage + rowsPerPage
+  );
+
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
+  };
+
+  // Get unique companies for dropdown
+  const uniqueCompanies = Array.from(new Set(users.map(u => u.companyname || u.company).filter(Boolean))).sort();
+
+  // Modify render to use filteredUsers instead of users
+
   const [menuUser, setMenuUser] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailUser, setDetailUser] = useState(null);
+
+  // Edit User State
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editUser, setEditUser] = useState(null);
+  const [editForm, setEditForm] = useState({});
 
   // Access Management State
   const [accessDialogOpen, setAccessDialogOpen] = useState(false);
@@ -67,15 +199,11 @@ export default function UsersPage() {
 
   const [snack, setSnack] = useState({ open: false, msg: "", severity: "info" });
 
-  // get current user (try localStorage then fallback to /auth/me)
+  // get current user
   const getCurrentUser = async () => {
     const raw = localStorage.getItem("user");
     if (raw) {
-      try {
-        return JSON.parse(raw);
-      } catch {
-        /* ignore */
-      }
+      try { return JSON.parse(raw); } catch { }
     }
     try {
       const res = await api.get("/auth/me");
@@ -92,12 +220,10 @@ export default function UsersPage() {
       const isSuper = current?.role === "superadmin";
       // Check if Safetynett
       const isSafetynett = (current?.companyname || current?.company || "")
-        .toString()
-        .trim()
-        .toLowerCase() === "safetynett";
+        .toString().trim().toLowerCase() === "safetynett";
+      setIsSafetynettUser(isSafetynett);
 
-      // If regular user (not admin/super), show nothing? Or handling logic:
-      if (current?.role === "user") {
+      if (current?.role === "worker") {
         setUsers([]);
         setLoading(false);
         return;
@@ -105,35 +231,25 @@ export default function UsersPage() {
 
       let res;
       if (id) {
-        // fetching by client ID
         res = await api.get(`/clients/${id}/users`);
       } else {
-        // fetch all users (backend usually gives all)
         res = await api.get("/users");
       }
 
       let list = res?.data?.users ?? res?.data ?? [];
 
-      // FILTERS:
-      // 1. If NOT SuperAdmin AND NOT Safetynett => Filter by my company
+      // FILTERS: If NOT SuperAdmin AND NOT Safetynett => Filter by my company
       if (!isSuper && !isSafetynett) {
         const myCompany = (current?.companyname || current?.company || "").trim().toLowerCase();
-
-        console.log("Filtering users for company:", myCompany); // Debug log
-
         list = list.filter(u => {
           const uCompany = (u.companyname || u.company || "").trim().toLowerCase();
           return uCompany === myCompany;
         });
       }
 
-      // stable sort by creation so id numbers are consistent (oldest first)
-      const sorted = [...list].sort((a, b) => {
-        const ta = new Date(a.createdAt || a._id);
-        const tb = new Date(b.createdAt || b._id);
-        return ta - tb;
-      });
-      setUsers(sorted);
+      // Default sort by createdAt initially to keep consistent ID order if needed, 
+      // but UI sort state controls display
+      setUsers(list);
     } catch (err) {
       console.error("Failed to fetch users:", err);
       setSnack({ open: true, msg: "Failed to load users", severity: "error" });
@@ -147,6 +263,12 @@ export default function UsersPage() {
     fetchUsers();
     // eslint-disable-next-line
   }, [id]);
+
+  const handleRequestSort = (property) => {
+    const isAsc = orderBy === property && order === 'asc';
+    setOrder(isAsc ? 'desc' : 'asc');
+    setOrderBy(property);
+  };
 
   const openMenu = (event, user) => {
     setAnchorEl(event.currentTarget);
@@ -162,7 +284,6 @@ export default function UsersPage() {
     try {
       const newActive = !user.active;
       const res = await api.put(`/users/${user._id ?? user.id}/status`, { active: newActive });
-
       if (res?.data?.success) {
         setUsers((prev) => prev.map((u) => ((u._id ?? u.id) === (user._id ?? user.id) ? { ...u, active: newActive } : u)));
         setSnack({ open: true, msg: newActive ? "User activated" : "User deactivated", severity: "success" });
@@ -177,9 +298,9 @@ export default function UsersPage() {
     }
   };
 
+  // VIEW User
   const handleView = async (user) => {
     try {
-
       const id = user._id ?? user.id;
       const res = await api.get(`/users/${id}`);
       const fullUser = res?.data?.user ?? user;
@@ -192,13 +313,53 @@ export default function UsersPage() {
     closeMenu();
   };
 
-
   const closeDetails = () => {
     setDetailOpen(false);
     setDetailUser(null);
   };
 
-  // Manage Access Handlers
+  // EDIT User
+  const handleEdit = (user) => {
+    setEditUser(user);
+    setEditForm({
+      firstName: user.firstName || "",
+      lastName: user.lastName || "",
+      email: user.email || "",
+      mobile: user.mobile || "",
+      jobTitle: user.jobTitle || "",
+      companyname: user.companyname || user.company || ""
+    });
+    setEditDialogOpen(true);
+    closeMenu();
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editUser) return;
+    try {
+      const id = editUser._id ?? editUser.id;
+      const res = await api.put(`/users/${id}`, editForm);
+      if (res?.data?.success) {
+        setUsers(prev => prev.map(u => (u._id ?? u.id) === id ? { ...u, ...editForm } : u));
+        setSnack({ open: true, msg: "User updated successfully", severity: "success" });
+        setEditDialogOpen(false);
+        setEditUser(null);
+      } else {
+        throw new Error(res?.data?.message || "Failed to update user");
+      }
+    } catch (err) {
+      console.error("Update user error:", err);
+      setSnack({ open: true, msg: "Failed to update user", severity: "error" });
+    }
+  };
+
+  // RESEND INVITE
+  const handleResendInvite = async (user) => {
+    // Mock logic for now
+    setSnack({ open: true, msg: `Invitation sent to ${user.email}`, severity: "success" });
+    closeMenu();
+  };
+
+  // ACCESS
   const handleManageAccess = (user) => {
     setAccessUser(user);
     setSelectedRole(user.role || "user");
@@ -209,18 +370,10 @@ export default function UsersPage() {
   const handleSaveAccess = async () => {
     if (!accessUser) return;
     try {
-      const res = await api.put(`/users/${accessUser._id ?? accessUser.id}`, {
-        role: selectedRole
-      });
-
+      const res = await api.put(`/users/${accessUser._id ?? accessUser.id}`, { role: selectedRole });
       if (res?.data?.success) {
         setSnack({ open: true, msg: "User role updated", severity: "success" });
-        // update local list
-        setUsers(prev => prev.map(u =>
-          (u._id ?? u.id) === (accessUser._id ?? accessUser.id)
-            ? { ...u, role: selectedRole }
-            : u
-        ));
+        setUsers(prev => prev.map(u => (u._id ?? u.id) === (accessUser._id ?? accessUser.id) ? { ...u, role: selectedRole } : u));
         setAccessDialogOpen(false);
         setAccessUser(null);
       } else {
@@ -232,6 +385,7 @@ export default function UsersPage() {
     }
   };
 
+  // DELETE
   const handleDelete = async () => {
     if (!deleteUser) return;
     try {
@@ -252,468 +406,626 @@ export default function UsersPage() {
   };
 
   return (
-    <>
-      <TopNav />
-      <Box sx={{ display: "flex", height: "calc(100vh - 0px)", bgcolor: "#ffffff" }}>
-        {/* Sidebar */}
-        <Box
-          component="aside"
-          sx={{
-            width: { xs: 0, md: 260 },
-            flexShrink: 0,
-            alignSelf: "flex-start",
-            position: "sticky",
-            top: "64px",
-            height: "calc(100vh - 64px)",
-            overflow: "visible",
-            p: 0,
-          }}
-        >
-          <Sidebar sx={{ height: "100%" }} />
-        </Box>
+    <Layout>
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="h5" sx={{ fontWeight: 600, color: isDarkMode ? "#F9FAFB" : "#111827", }}>
+          {clientName ? `Users - ${clientName}` : "All Users"}
+        </Typography>
+        <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280" }}>
+          Manage user accounts and permissions
+        </Typography>
+        <Typography sx={{ mt: 1, display: "inline-block", px: 1.5, py: 0.5, fontSize: "0.7rem", fontWeight: 500, color: "#0B4DA6", backgroundColor: "rgba(11, 77, 166, 0.1)", borderRadius: "12px" }}>
+          {filteredUsers.length} members
+        </Typography>
+      </Box>
 
-        {/* Main */}
-        <Box
-          component="main"
-          sx={{
-            flex: 1,
-            overflow: "auto",
-            px: { xs: 2, sm: 3, md: 6 },
-            py: { xs: 4, md: 6 },
-          }}
-        >
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="h4" sx={{ fontWeight: 800 }}>
-              Users
-            </Typography>
-            <Typography
-              sx={{
-                mt: 0.5,
-                display: "inline-block",
-                px: 1.5,
-                py: 0.5,
-                fontSize: "0.9rem",
-                fontWeight: 500,
-                color: "#0B4DA6", // dark blue text
-                backgroundColor: "rgba(11, 77, 166, 0.1)", // light transparent blue background
-                borderRadius: "12px", // rounded badge look
-              }}
-            >
-              {users.length} members
-            </Typography>
+      {/* Search Filters */}
+      <Grid container spacing={2} sx={{ mb: 4 }}>
+        {/* Search row */}
+        <Grid item xs={12}>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Search by name or email..."
+            value={searchName}
+            onChange={(e) => setSearchName(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <Box component="span" sx={{ color: '#6B7280', mr: 1, display: 'flex', ml: 1 }}>
+                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                </Box>
+              )
+            }}
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 4,
+                width: 400,
+                bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                "& fieldset": { borderColor: isDarkMode ? "#374151" : "#E5E7EB" },
+                "&.Mui-focused fieldset": { borderColor: "#0B4DA6", borderWidth: 1.5 },
+                px: 1,
+                minHeight: 44,
+                display: "flex",
+                alignItems: "center",
+                "& .MuiInputBase-input": {
+                  fontSize: "0.85rem",
+                  py: 0,
+                  color: isDarkMode ? "#F9FAFB" : "inherit"
+                },
+                "& .MuiInputBase-input::placeholder": {
+                  fontSize: "0.80rem",
+                  color: isDarkMode ? "#9CA3AF" : "inherit",
+                  opacity: 1
+                },
+              }
+            }}
+          />
+        </Grid>
 
-          </Box>
+        {/* Dropdowns row */}
+        {isSafetynettUser && (
+          <Grid item xs={12} md={4}>
+          <Autocomplete
+            fullWidth
+            freeSolo
+            options={uniqueCompanies}
+            value={searchCompany}
+            onInputChange={(event, newInputValue) => {
+              setSearchCompany(newInputValue);
+            }}
+            slotProps={{
+              paper: {
+                sx: {
+                  borderRadius: 4,
+                  mt: 1,
+                  boxShadow: isDarkMode ? "0 4px 20px rgba(0,0,0,0.5)" : "0 4px 20px rgba(0,0,0,0.08)",
+                  bgcolor: isDarkMode ? "#1B212C" : "#fff",
+                  color: isDarkMode ? "#F9FAFB" : "inherit",
+                  border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
+                  p: 1
+                }
+              }
+            }}
+            renderOption={(props, option) => (
+              <Box
+                component="li"
+                {...props}
+                sx={{
+                  borderRadius: 50,
+                  mx: 0.5, my: 0.2, px: 2, py: 1, fontSize: "0.85rem", color: isDarkMode ? "#9CA3AF" : "#4B5563",
+                  "&:hover, &.Mui-focused": {
+                    bgcolor: isDarkMode ? "rgba(255,255,255,0.05) !important" : "#FEF7EC !important",
+                    color: isDarkMode ? "#F9FAFB !important" : "#A16207 !important"
+                  },
+                  "&[aria-selected='true']": {
+                    bgcolor: isDarkMode ? "rgba(11, 77, 166, 0.2) !important" : "#FEF7EC !important",
+                    color: isDarkMode ? "#60A5FA !important" : "#A16207 !important"
+                  }
+                }}
+              >
+                {option}
+              </Box>
+            )}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                size="small"
+                placeholder="All Companies"
+                fullWidth
+                sx={{
+                  "& .MuiOutlinedInput-root": {
+                    borderRadius: 4,
+                    width: 200,
+                    bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                    "& fieldset": { borderColor: isDarkMode ? "#374151" : "#E5E7EB" },
+                    "&.Mui-focused fieldset": { borderColor: "#0B4DA6", borderWidth: 1.5 },
+                    px: 1.5,
+                    minHeight: 44,
+                    display: "flex",
+                    alignItems: "center",
+                    "& .MuiInputBase-input": {
+                      fontSize: "0.85rem",
+                      py: 0,
+                      color: isDarkMode ? "#F9FAFB" : "inherit"
+                    },
+                    "& .MuiInputBase-input::placeholder": {
+                      fontSize: "0.8rem",
+                      color: isDarkMode ? "#9CA3AF" : "inherit",
+                      opacity: 1
+                    },
+                  }
+                }}
+              />
+            )}
+          />
+        </Grid>
+        )}
+        <Grid item xs={12} md={4}>
+          <TextField
+            select
+            fullWidth
+            size="small"
+            value={searchRole}
+            onChange={(e) => setSearchRole(e.target.value)}
+            SelectProps={{
+              displayEmpty: true,
+              MenuProps: {
+                PaperProps: {
+                  sx: {
+                    borderRadius: 5,
+                    mt: 1,
+                    boxShadow: isDarkMode ? "0 4px 20px rgba(0,0,0,0.5)" : "0 4px 20px rgba(0,0,0,0.08)",
+                    bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                    border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
+                    p: 1,
+                    color: isDarkMode ? "#F9FAFB" : "inherit"
+                  }
+                }
+              }
+            }}
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 4,
+                width: 200,
+                bgcolor: isDarkMode ? "#111827" : "#FFFFFF",
+                fontSize: "0.85rem",
+                minHeight: 44,
+                display: "flex",
+                alignItems: "center",
+                "& fieldset": { borderColor: isDarkMode ? "#374151" : "#E5E7EB" },
+                "&.Mui-focused fieldset": { borderColor: "#0B4DA6", borderWidth: 1.5 },
+                "& .MuiSelect-select": { color: isDarkMode ? "#F9FAFB" : "inherit" },
+                "& .MuiSelect-icon": { color: isDarkMode ? "#9CA3AF" : "inherit" }
+              }
+            }}
+          >
+            <MenuItem value="all" sx={{ borderRadius: 4, mx: 0.5, my: 0.2, fontSize: "0.85rem", "&:hover, &.Mui-selected, &.Mui-selected:hover": { bgcolor: isDarkMode ? "rgba(11, 77, 166, 0.2) !important" : "#FEF7EC !important", color: isDarkMode ? "#60A5FA !important" : "#A16207 !important" } }}>All Roles</MenuItem>
+            <MenuItem value="superadmin" sx={{ borderRadius: 4, mx: 0.5, my: 0.2, fontSize: "0.85rem", "&:hover, &.Mui-selected, &.Mui-selected:hover": { bgcolor: isDarkMode ? "rgba(11, 77, 166, 0.2) !important" : "#FEF7EC !important", color: isDarkMode ? "#60A5FA !important" : "#A16207 !important" } }}>Super Admin</MenuItem>
+            <MenuItem value="company_admin" sx={{ borderRadius: 4, mx: 0.5, my: 0.2, fontSize: "0.85rem", "&:hover, &.Mui-selected, &.Mui-selected:hover": { bgcolor: isDarkMode ? "rgba(11, 77, 166, 0.2) !important" : "#FEF7EC !important", color: isDarkMode ? "#60A5FA !important" : "#A16207 !important" } }}>Company Admin</MenuItem>
+            <MenuItem value="site_manager" sx={{ borderRadius: 4, mx: 0.5, my: 0.2, fontSize: "0.85rem", "&:hover, &.Mui-selected, &.Mui-selected:hover": { bgcolor: isDarkMode ? "rgba(11, 77, 166, 0.2) !important" : "#FEF7EC !important", color: isDarkMode ? "#60A5FA !important" : "#A16207 !important" } }}>Site Manager</MenuItem>
+            <MenuItem value="supervisor" sx={{ borderRadius: 4, mx: 0.5, my: 0.2, fontSize: "0.85rem", "&:hover, &.Mui-selected, &.Mui-selected:hover": { bgcolor: isDarkMode ? "rgba(11, 77, 166, 0.2) !important" : "#FEF7EC !important", color: isDarkMode ? "#60A5FA !important" : "#A16207 !important" } }}>Supervisor</MenuItem>
+            <MenuItem value="worker" sx={{ borderRadius: 4, mx: 0.5, my: 0.2, fontSize: "0.85rem", "&:hover, &.Mui-selected, &.Mui-selected:hover": { bgcolor: isDarkMode ? "rgba(11, 77, 166, 0.2) !important" : "#FEF7EC !important", color: isDarkMode ? "#60A5FA !important" : "#A16207 !important" } }}>Worker</MenuItem>
+          </TextField>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <TextField
+            select
+            fullWidth
+            size="small"
+            value={searchStatus}
+            onChange={(e) => setSearchStatus(e.target.value)}
+            SelectProps={{
+              displayEmpty: true,
+              MenuProps: {
+                PaperProps: {
+                  sx: {
+                    borderRadius: 4,
+                    width: 200,
+                    mt: 1,
+                    boxShadow: isDarkMode ? "0 4px 20px rgba(0,0,0,0.5)" : "0 4px 20px rgba(0,0,0,0.08)",
+                    bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                    border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
+                    p: 1,
+                    color: isDarkMode ? "#F9FAFB" : "inherit"
+                  }
+                }
+              }
+            }}
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 4,
+                width: 200,
+                bgcolor: isDarkMode ? "#111827" : "#FFFFFF",
+                fontSize: "0.85rem",
+                minHeight: 44,
+                display: "flex",
+                alignItems: "center",
+                "& fieldset": { borderColor: isDarkMode ? "#374151" : "#E5E7EB" },
+                "&.Mui-focused fieldset": { borderColor: "#0B4DA6", borderWidth: 1.5 },
+                "& .MuiSelect-select": { color: isDarkMode ? "#F9FAFB" : "inherit" },
+                "& .MuiSelect-icon": { color: isDarkMode ? "#9CA3AF" : "inherit" }
+              }
+            }}
+          >
+            <MenuItem value="all" sx={{ borderRadius: 4, mx: 0.5, my: 0.2, fontSize: "0.85rem", "&:hover, &.Mui-selected, &.Mui-selected:hover": { bgcolor: isDarkMode ? "rgba(11, 77, 166, 0.2) !important" : "#FEF7EC !important", color: isDarkMode ? "#60A5FA !important" : "#A16207 !important" } }}>All Status</MenuItem>
+            <MenuItem value="active" sx={{ borderRadius: 4, mx: 0.5, my: 0.2, fontSize: "0.85rem", "&:hover, &.Mui-selected, &.Mui-selected:hover": { bgcolor: isDarkMode ? "rgba(11, 77, 166, 0.2) !important" : "#FEF7EC !important", color: isDarkMode ? "#60A5FA !important" : "#A16207 !important" } }}>Active</MenuItem>
+            <MenuItem value="inactive" sx={{ borderRadius: 4, mx: 0.5, my: 0.2, fontSize: "0.85rem", "&:hover, &.Mui-selected, &.Mui-selected:hover": { bgcolor: isDarkMode ? "rgba(11, 77, 166, 0.2) !important" : "#FEF7EC !important", color: isDarkMode ? "#60A5FA !important" : "#A16207 !important" } }}>Inactive</MenuItem>
+          </TextField>
+        </Grid>
+      </Grid>
 
-          {loading ? (
-            <Box sx={{ display: "grid", placeItems: "center", py: 10 }}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <TableContainer component={Paper} elevation={0}>
+      {
+        loading ? (
+          <Box sx={{ display: "grid", placeItems: "center", py: 10 }} >
+            <CircularProgress />
+          </Box >
+        ) : (
+          <Box>
+            <TableContainer component={Paper} elevation={0} sx={{ border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB", borderRadius: 4, overflow: "hidden", bgcolor: isDarkMode ? "#111827" : "#FFFFFF" }}>
               <Table>
                 <TableHead>
-                  <TableRow sx={{ bgcolor: "#fafafa" }}>
-                    <TableCell sx={{ fontWeight: 700 }}>#</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Company</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Role</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700 }}>
-                      Action
-                    </TableCell>
+                  <TableRow sx={{ bgcolor: isDarkMode ? "#1B212C" : "#F9FAFB" }}>
+                    <TableCell sx={{ fontWeight: 500, color: isDarkMode ? "#9CA3AF" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>SL No</TableCell>
+                    <TableCell sx={{ fontWeight: 500, color: isDarkMode ? "#F9FAFB" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>Name</TableCell>
+                    <TableCell sx={{ fontWeight: 500, color: isDarkMode ? "#F9FAFB" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>Email</TableCell>
+                    {isSafetynettUser && <TableCell sx={{ fontWeight: 500, color: isDarkMode ? "#F9FAFB" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>Company</TableCell>}
+                    <TableCell sx={{ fontWeight: 500, color: isDarkMode ? "#F9FAFB" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>Role</TableCell>
+                    <TableCell sx={{ fontWeight: 500, color: isDarkMode ? "#F9FAFB" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>Status</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 500, color: isDarkMode ? "#F9FAFB" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>Action</TableCell>
                   </TableRow>
                 </TableHead>
 
                 <TableBody>
-                  {users.map((user, idx) => (
-                    <TableRow key={user._id ?? user.id} hover>
-                      <TableCell>{idx + 1}</TableCell>
+                  {paginatedUsers.map((user, idx) => {
+                    const slNo = page * rowsPerPage + idx + 1;
+                    return (
+                      <TableRow key={user._id ?? user.id} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                        <TableCell sx={{ color: isDarkMode ? "#F9FAFB" : "#111827", fontWeight: 500, borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>{slNo}</TableCell>
 
-                      <TableCell>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                          {user.avatar ? (
-                            <Box
-                              component="img"
-                              src={computeAvatarUrl(user.avatar)}
-                              alt="avatar"
-                              sx={{ width: 40, height: 40, borderRadius: 1, objectFit: "cover" }}
-                            />
-                          ) : (
-                            <Avatar sx={{ width: 40, height: 40 }}>
-                              {(user.firstName || user.username || user.name || "?").charAt(0).toUpperCase()}
-                            </Avatar>
-                          )}
+                        <TableCell sx={{ borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>
+                          <Typography sx={{ fontWeight: 400, color: isDarkMode ? "#F9FAFB" : "#111827", fontSize: "0.95rem" }}>
+                            {user.firstName ? `${user.firstName} ${user.lastName ?? ""}` : user.username ?? "(no name)"}
+                          </Typography>
+                        </TableCell>
 
-                          <Box>
-                            <Typography sx={{ fontWeight: 700 }}>{user.firstName ? `${user.firstName} ${user.lastName ?? ""}` : user.username ?? "(no name)"}</Typography>
-                            <Typography color="text.secondary" sx={{ fontSize: "0.9rem" }}>
-                              @{(user.username || (user.email?.split?.("@")?.[0]) || "").toString()}
-                            </Typography>
+                        <TableCell sx={{ borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>
+                          <Typography sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280", fontWeight: 400, fontSize: "0.95rem" }}>{user.email ?? "-"}</Typography>
+                        </TableCell>
+
+                        {isSafetynettUser && (
+                          <TableCell sx={{ borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>
+                            <Typography sx={{ color: isDarkMode ? "#F9FAFB" : "#111827", fontWeight: 400, fontSize: "0.95rem" }}>{user.companyname ?? "-"}</Typography>
+                          </TableCell>
+                        )}
+
+                        <TableCell sx={{ borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>
+                          <Box
+                            sx={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              px: 1.5,
+                              py: 0.5,
+                              borderRadius: '9999px',
+                              bgcolor:
+                                user.role === 'superadmin' || user.role === 'company_admin' ? 'rgba(34, 197, 94, 0.15)' :
+                                  user.role === 'site_manager' ? 'rgba(251, 191, 36, 0.15)' :
+                                    user.role === 'supervisor' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                              color:
+                                user.role === 'superadmin' || user.role === 'company_admin' ? (isDarkMode ? '#4ADE80' : '#16A34A') :
+                                  user.role === 'site_manager' ? (isDarkMode ? '#FBBF24' : '#B45309') :
+                                    user.role === 'supervisor' ? (isDarkMode ? '#818CF8' : '#4F46E5') : (isDarkMode ? '#60A5FA' : '#1D4ED8'),
+                              fontSize: '0.75rem',
+                              fontWeight: 400,
+                              textTransform: 'capitalize'
+                            }}
+                          >
+                            {(user.role || 'worker').replace('_', ' ')}
                           </Box>
-                        </Box>
-                      </TableCell>
+                        </TableCell>
 
-                      <TableCell>
-                        <Typography sx={{ fontWeight: 500 }}>{user.email ?? "-"}</Typography>
-                      </TableCell>
+                        <TableCell sx={{ borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>
+                          <Box
+                            sx={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              px: 1.5,
+                              py: 0.5,
+                              borderRadius: '9999px',
+                              bgcolor: user.active ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                              color: user.active ? '#22C55E' : '#EF4444',
+                              fontSize: '0.75rem',
+                              fontWeight: 400,
+                              textTransform: 'capitalize'
+                            }}
+                          >
+                            {user.active ? "Active" : "Inactive"}
+                          </Box>
+                        </TableCell>
 
-                      <TableCell>
-                        <Typography sx={{ fontWeight: 500 }}>{user.companyname ?? "-"}</Typography>
-                      </TableCell>
-
-                      <TableCell>
-                        <Chip
-                          label={user.role || 'user'}
-                          size="small"
-                          sx={{
-                            textTransform: "capitalize",
-                            fontWeight: 600,
-                            bgcolor: user.role === 'admin' || user.role === 'superadmin' ? 'rgba(11, 77, 166, 0.1)' : 'rgba(0,0,0,0.06)',
-                            color: user.role === 'admin' || user.role === 'superadmin' ? '#0B4DA6' : 'inherit'
-                          }}
-                        />
-                      </TableCell>
-
-                      <TableCell>
-                        <Chip
-                          label={user.active ? "active" : "inactive"}
-                          size="small"
-                          sx={{
-                            textTransform: "lowercase",
-                            borderRadius: "9999px",
-                            fontWeight: 600,
-                            px: 1,
-                            bgcolor: user.active ? "rgba(34, 197, 94, 0.15)" : "rgba(0,0,0,0.06)",
-                            color: user.active ? "rgb(22, 163, 74)" : "rgb(107, 114, 128)",
-                          }}
-                        />
-                      </TableCell>
-
-                      <TableCell align="right">
-                        <IconButton size="small" onClick={(e) => openMenu(e, user)}>
-                          <MoreVertIcon />
-                        </IconButton>
-                      </TableCell>
+                        <TableCell align="right" sx={{ borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>
+                          <IconButton size="small" onClick={(e) => openMenu(e, user)} sx={{ color: isDarkMode ? "#9CA3AF" : "inherit" }}>
+                            <MoreHorizIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {filteredUsers.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={isSafetynettUser ? 7 : 6} align="center" sx={{ py: 4, color: isDarkMode ? "#9CA3AF" : "inherit", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>No users found.</TableCell>
                     </TableRow>
-                  ))}
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
-          )}
-        </Box>
-      </Box>
 
-      {/* actions menu */}
-      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={closeMenu}>
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280" }}>
+                Showing {filteredUsers.length === 0 ? 0 : page * rowsPerPage + 1} to {Math.min(page * rowsPerPage + rowsPerPage, filteredUsers.length)} of {filteredUsers.length} users
+              </Typography>
+              <TablePagination
+                component="div"
+                count={filteredUsers.length}
+                page={page}
+                onPageChange={handleChangePage}
+                rowsPerPage={rowsPerPage}
+                rowsPerPageOptions={[10]}
+                labelRowsPerPage=""
+                sx={{
+                  border: 'none',
+                  color: isDarkMode ? "#F9FAFB" : "inherit",
+                  '& .MuiTablePagination-toolbar': { p: 0 },
+                  '& .MuiTablePagination-actions': { ml: 1, color: isDarkMode ? "#F9FAFB" : "inherit" },
+                  '& .MuiTablePagination-select': { color: isDarkMode ? "#F9FAFB" : "inherit" },
+                  '& .MuiTablePagination-selectIcon': { color: isDarkMode ? "#9CA3AF" : "inherit" },
+                }}
+              />
+            </Box>
+          </Box>
+        )
+      }
+
+      {/* Actions Menu */}
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={closeMenu}
+        PaperProps={{
+          sx: {
+            borderRadius: 5,
+            mt: 1,
+            boxShadow: isDarkMode ? "0 4px 20px rgba(0,0,0,0.5)" : "0 4px 20px rgba(0,0,0,0.08)",
+            bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+            border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
+            p: 1,
+            minWidth: 180,
+            color: isDarkMode ? "#F9FAFB" : "inherit"
+          }
+        }}
+      >
         <MenuItem
-          onClick={() => {
-            if (!menuUser) return closeMenu();
-            toggleActive(menuUser);
-          }}
+          onClick={() => { if (!menuUser) return; handleView(menuUser); }}
+          sx={{ borderRadius: 2, mb: 0.5, py: 1, fontSize: "0.95rem", color: isDarkMode ? "#F9FAFB" : "#1F2937", "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" } }}
+        >
+          <Eye size={18} style={{ marginRight: 12, color: isDarkMode ? "#9CA3AF" : "#374151" }} /> View Details
+        </MenuItem>
+
+        <MenuItem
+          onClick={() => { if (!menuUser) return; handleEdit(menuUser); }}
+          sx={{ borderRadius: 2, mb: 0.5, py: 1, fontSize: "0.95rem", color: isDarkMode ? "#F9FAFB" : "#1F2937", "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" } }}
+        >
+          <Pencil size={18} style={{ marginRight: 12, color: isDarkMode ? "#9CA3AF" : "#374151" }} /> Edit User
+        </MenuItem>
+
+        <MenuItem
+          onClick={() => { if (!menuUser) return; toggleActive(menuUser); }}
+          sx={{ borderRadius: 2, mb: 0.5, py: 1, fontSize: "0.95rem", color: isDarkMode ? "#F9FAFB" : "#1F2937", "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" } }}
         >
           {menuUser?.active ? (
-            <>
-              <ToggleOffIcon fontSize="small" sx={{ mr: 1 }} /> Make inactive
-            </>
+            <><UserX size={18} style={{ marginRight: 12, color: isDarkMode ? "#9CA3AF" : "#374151" }} /> Make Inactive</>
           ) : (
-            <>
-              <ToggleOnIcon fontSize="small" sx={{ mr: 1 }} /> Make active
-            </>
+            <><UserCheck size={18} style={{ marginRight: 12, color: isDarkMode ? "#9CA3AF" : "#374151" }} /> Make Active</>
           )}
         </MenuItem>
 
         <MenuItem
-          onClick={() => {
-            if (!menuUser) return closeMenu();
-            handleView(menuUser);
-          }}
+          onClick={() => { if (!menuUser) return; handleManageAccess(menuUser); }}
+          sx={{ borderRadius: 2, mb: 0.5, py: 1, fontSize: "0.95rem", color: isDarkMode ? "#F9FAFB" : "#1F2937", "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" } }}
         >
-          <OpenInNewIcon fontSize="small" sx={{ mr: 1 }} /> View details
+          <AdminPanelSettingsIcon fontSize="small" sx={{ mr: 1.5, color: isDarkMode ? "#9CA3AF" : "#374151" }} /> Manage access
         </MenuItem>
 
-        <MenuItem
-          onClick={() => {
-            if (!menuUser) return closeMenu();
-            handleManageAccess(menuUser);
-          }}
-        >
-          <AdminPanelSettingsIcon fontSize="small" sx={{ mr: 1 }} /> Manage user access
-        </MenuItem>
+        <Divider sx={{ my: 1, borderColor: isDarkMode ? "#374151" : "#F3F4F6" }} />
 
         <MenuItem
-          onClick={() => {
-            if (!menuUser) return closeMenu();
-            setDeleteUser(menuUser);
-            setDeleteDialogOpen(true);
-            closeMenu();
-          }}
-          sx={{ color: "error.main" }}
+          onClick={() => { if (!menuUser) return; setDeleteUser(menuUser); setDeleteDialogOpen(true); closeMenu(); }}
+          sx={{ borderRadius: 2, py: 1, color: "#EF4444", fontSize: "0.95rem", "&:hover": { bgcolor: isDarkMode ? "rgba(239, 68, 68, 0.15)" : "rgba(239, 68, 68, 0.05)" } }}
         >
-          <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Delete user
+          <Trash2 size={18} style={{ marginRight: 12, color: "#EF4444" }} /> Delete User
         </MenuItem>
       </Menu>
 
-      {/* details dialog */}
-      {/* details dialog */}
-      <Dialog
-        open={detailOpen}
-        onClose={closeDetails}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 2, // rounded modal
-            overflow: "hidden",
-          },
-        }}
-      >
-        {/* custom header with grey bg and close icon */}
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", bgcolor: "#f5f6f8", px: 3, py: 1.5 }}>
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 800 }}>
-              User details
-            </Typography>
-
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 4, bgcolor: isDarkMode ? "#111827" : "#FFFFFF", color: isDarkMode ? "#F9FAFB" : "inherit" } }}>
+        <DialogTitle sx={{ fontWeight: 700, borderBottom: isDarkMode ? "1px solid #374151" : "none" }}>Edit User</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2, display: 'grid', gap: 2 }}>
+            <Grid container spacing={2}>
+              <Grid item xs={6}>
+                <TextField
+                  label="First Name"
+                  fullWidth
+                  size="small"
+                  value={editForm.firstName}
+                  onChange={e => setEditForm({ ...editForm, firstName: e.target.value })}
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      borderRadius: 3,
+                      bgcolor: isDarkMode ? "#1B212C" : "transparent",
+                      "& fieldset": { borderColor: isDarkMode ? "#374151" : "#E5E7EB" },
+                      "& .MuiInputBase-input": { color: isDarkMode ? "#F9FAFB" : "inherit" }
+                    },
+                    "& .MuiInputLabel-root": { color: isDarkMode ? "#9CA3AF" : "inherit" }
+                  }}
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  label="Last Name"
+                  fullWidth
+                  size="small"
+                  value={editForm.lastName}
+                  onChange={e => setEditForm({ ...editForm, lastName: e.target.value })}
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      borderRadius: 3,
+                      bgcolor: isDarkMode ? "#1B212C" : "transparent",
+                      "& fieldset": { borderColor: isDarkMode ? "#374151" : "#E5E7EB" },
+                      "& .MuiInputBase-input": { color: isDarkMode ? "#F9FAFB" : "inherit" }
+                    },
+                    "& .MuiInputLabel-root": { color: isDarkMode ? "#9CA3AF" : "inherit" }
+                  }}
+                />
+              </Grid>
+            </Grid>
+            <TextField
+              label="Email"
+              fullWidth
+              size="small"
+              value={editForm.email}
+              onChange={e => setEditForm({ ...editForm, email: e.target.value })}
+              sx={{
+                "& .MuiOutlinedInput-root": {
+                  borderRadius: 3,
+                  bgcolor: isDarkMode ? "#1B212C" : "transparent",
+                  "& fieldset": { borderColor: isDarkMode ? "#374151" : "#E5E7EB" },
+                  "& .MuiInputBase-input": { color: isDarkMode ? "#F9FAFB" : "inherit" }
+                },
+                "& .MuiInputLabel-root": { color: isDarkMode ? "#9CA3AF" : "inherit" }
+              }}
+            />
+            <TextField
+              label="Mobile"
+              fullWidth
+              size="small"
+              value={editForm.mobile}
+              onChange={e => setEditForm({ ...editForm, mobile: e.target.value })}
+              sx={{
+                "& .MuiOutlinedInput-root": {
+                  borderRadius: 3,
+                  bgcolor: isDarkMode ? "#1B212C" : "transparent",
+                  "& fieldset": { borderColor: isDarkMode ? "#374151" : "#E5E7EB" },
+                  "& .MuiInputBase-input": { color: isDarkMode ? "#F9FAFB" : "inherit" }
+                },
+                "& .MuiInputLabel-root": { color: isDarkMode ? "#9CA3AF" : "inherit" }
+              }}
+            />
+            <TextField
+              label="Job Title"
+              fullWidth
+              size="small"
+              value={editForm.jobTitle}
+              onChange={e => setEditForm({ ...editForm, jobTitle: e.target.value })}
+              sx={{
+                "& .MuiOutlinedInput-root": {
+                  borderRadius: 3,
+                  bgcolor: isDarkMode ? "#1B212C" : "transparent",
+                  "& fieldset": { borderColor: isDarkMode ? "#374151" : "#E5E7EB" },
+                  "& .MuiInputBase-input": { color: isDarkMode ? "#F9FAFB" : "inherit" }
+                },
+                "& .MuiInputLabel-root": { color: isDarkMode ? "#9CA3AF" : "inherit" }
+              }}
+            />
+            <TextField
+              label="Site (Company)"
+              fullWidth
+              size="small"
+              value={editForm.companyname}
+              onChange={e => setEditForm({ ...editForm, companyname: e.target.value })}
+              sx={{
+                "& .MuiOutlinedInput-root": {
+                  borderRadius: 3,
+                  bgcolor: isDarkMode ? "#1B212C" : "transparent",
+                  "& fieldset": { borderColor: isDarkMode ? "#374151" : "#E5E7EB" },
+                  "& .MuiInputBase-input": { color: isDarkMode ? "#F9FAFB" : "inherit" }
+                },
+                "& .MuiInputLabel-root": { color: isDarkMode ? "#9CA3AF" : "inherit" }
+              }}
+            />
           </Box>
-          <IconButton onClick={closeDetails} aria-label="close">
-            {/* use MUI Close icon */}
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M18 6L6 18" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M6 6L18 18" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </IconButton>
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, borderTop: isDarkMode ? "1px solid #374151" : "none" }}>
+          <Button onClick={() => setEditDialogOpen(false)} sx={{ borderRadius: 50, px: 3, textTransform: "none", color: isDarkMode ? "#9CA3AF" : "inherit" }}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveEdit} sx={{ borderRadius: 50, px: 3, textTransform: "none", bgcolor: isDarkMode ? "#3B82F6" : "#0B4DA6", boxShadow: "none", "&:hover": { bgcolor: isDarkMode ? "#2563EB" : "#083D86", boxShadow: "none" } }}>Save Changes</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* View Dialog */}
+      <Dialog open={detailOpen} onClose={closeDetails} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 4, overflow: "hidden", bgcolor: isDarkMode ? "#111827" : "#FFFFFF", color: isDarkMode ? "#F9FAFB" : "inherit" } }}>
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", bgcolor: isDarkMode ? "#1B212C" : "#f5f6f8", px: 3, py: 1.5, borderBottom: isDarkMode ? "1px solid #374151" : "none" }}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>User details</Typography>
+          <IconButton onClick={closeDetails} sx={{ color: isDarkMode ? "#9CA3AF" : "inherit" }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg></IconButton>
         </Box>
-
-        <DialogContent dividers sx={{ p: 3 }}>
-          {detailUser ? (
-            <Box sx={{ display: "grid", gap: 3 }}>
-              {/* top: avatar + summary */}
+        <DialogContent p={3}>
+          {detailUser && (
+            <Box sx={{ display: "grid", gap: 3, py: 2 }}>
               <Box sx={{ display: "flex", gap: 3, alignItems: "center" }}>
-                {detailUser.avatar ? (
-                  <Box component="img" src={computeAvatarUrl(detailUser.avatar)} alt="avatar" sx={{ width: 96, height: 96, borderRadius: 2, objectFit: "cover" }} />
-                ) : (
-                  <Avatar sx={{ width: 96, height: 96 }}>{(detailUser.firstName || detailUser.username || "?").charAt(0).toUpperCase()}</Avatar>
-                )}
-
+                <Avatar sx={{ width: 96, height: 96, fontSize: '2rem', bgcolor: isDarkMode ? "#1B212C" : "#F3F4F6", color: isDarkMode ? "#F9FAFB" : "#111827" }}>{(detailUser.firstName || detailUser.username || "?").charAt(0).toUpperCase()}</Avatar>
                 <Box>
-                  <Typography variant="h5" sx={{ fontWeight: 800 }}>
-                    {detailUser.firstName ? `${detailUser.firstName} ${detailUser.lastName ?? ""}` : detailUser.username ?? "(no name)"}
-                  </Typography>
-                  <Chip
-                    label={detailUser.active ? "active" : "inactive"}
-                    size="small"
-                    sx={{
-                      mt: 1,
-                      textTransform: "lowercase",
-                      borderRadius: "9999px",
-                      fontWeight: 700,
-                      bgcolor: detailUser.active ? "rgba(34,197,94,0.12)" : "rgba(220,38,38,0.06)",
-                      color: detailUser.active ? "rgb(22,163,74)" : "rgb(220,38,38)",
-                      px: 1.25,
-                    }}
-                  />
-                  <Typography color="text.secondary" sx={{ mt: 1 }}>{detailUser.jobTitle ?? "-"}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 800, color: isDarkMode ? "#F9FAFB" : "inherit" }}>{detailUser.firstName} {detailUser.lastName}</Typography>
+                  <Chip label={detailUser.active ? "active" : "inactive"} size="small" sx={{ mt: 1, borderRadius: 50, fontWeight: 600, bgcolor: detailUser.active ? "rgba(34,197,94,0.12)" : "rgba(220,38,38,0.06)", color: detailUser.active ? "rgb(22,163,74)" : "rgb(220,38,38)" }} />
+                  <Typography sx={{ mt: 1, color: isDarkMode ? "#9CA3AF" : "text.secondary" }}>{detailUser.jobTitle}</Typography>
                 </Box>
               </Box>
-
-              {/* contact / activity boxed area styled similar to your example */}
-              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 3 }}>
-                <Box sx={{ p: 2, borderRadius: 2, bgcolor: "#fff", boxShadow: "0 6px 18px rgba(2,6,23,0.04)" }}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Contact information</Typography>
-
-                  <Box sx={{ display: "grid", gap: 1.25 }}>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Email</Typography>
-                      <Typography sx={{ fontWeight: 600 }}>{detailUser.email ?? "-"}</Typography>
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Paper sx={{ p: 2, borderRadius: 3, bgcolor: isDarkMode ? "#1B212C" : "transparent", borderColor: isDarkMode ? "#374151" : "#E5E7EB" }} variant="outlined">
+                    <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 700, color: isDarkMode ? "#9CA3AF" : "text.secondary" }}>Contact Information</Typography>
+                    <Box sx={{ display: "grid", gap: 1 }}>
+                      <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#4B5563" }}>Email: <b style={{ color: isDarkMode ? "#F9FAFB" : "#111827" }}>{detailUser.email}</b></Typography>
+                      <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#4B5563" }}>Phone: <b style={{ color: isDarkMode ? "#F9FAFB" : "#111827" }}>{detailUser.mobile}</b></Typography>
+                      <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#4B5563" }}>Site: <b style={{ color: isDarkMode ? "#F9FAFB" : "#111827" }}>{detailUser.companyname}</b></Typography>
                     </Box>
-
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Phone</Typography>
-                      <Typography sx={{ fontWeight: 600 }}>{detailUser.mobile ?? "-"}</Typography>
-                    </Box>
-
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Company</Typography>
-                      <Typography sx={{ fontWeight: 600 }}>{detailUser.companyname ?? "-"}</Typography>
-                    </Box>
-                  </Box>
-                </Box>
-
-                <Box sx={{ p: 2, borderRadius: 2, bgcolor: "#fff", boxShadow: "0 6px 18px rgba(2,6,23,0.04)" }}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Activity information</Typography>
-
-                  <Box sx={{ display: "grid", gap: 1.25 }}>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Joined</Typography>
-                      <Typography sx={{ fontWeight: 600 }}>{detailUser.createdAt ? new Date(detailUser.createdAt).toLocaleString() : "-"}</Typography>
-                    </Box>
-
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">Role</Typography>
-                      <Typography sx={{ fontWeight: 600 }}>{detailUser.role ?? "-"}</Typography>
-                    </Box>
-                  </Box>
-                </Box>
-              </Box>
-
-              {/* full detail table (spaced cells) */}
-
-            </Box>
-          ) : (
-            <Box sx={{ display: "grid", placeItems: "center", py: 4 }}>
-              <CircularProgress />
+                  </Paper>
+                </Grid>
+              </Grid>
             </Box>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Access Management Dialog */}
-      <Dialog
-        open={accessDialogOpen}
-        onClose={() => setAccessDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{ sx: { borderRadius: 2 } }}
-      >
-        <Box sx={{ bgcolor: "#f5f6f8", px: 3, py: 2, borderBottom: "1px solid #e0e0e0" }}>
-          <Typography variant="h6" sx={{ fontWeight: 800 }}>
-            Manage User Access
-          </Typography>
-        </Box>
-
-        <DialogContent sx={{ p: 4 }}>
-          <Typography sx={{ mb: 3 }}>
-            Select the role for <strong>{accessUser?.firstName || accessUser?.username}</strong>.
-          </Typography>
-
-          <Box sx={{ display: 'grid', gap: 2 }}>
-            {/* Admin Option */}
-            <Paper
-              variant="outlined"
-              sx={{
-                p: 2,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-                cursor: 'pointer',
-                borderColor: selectedRole === 'admin' ? '#0B4DA6' : 'divider',
-                bgcolor: selectedRole === 'admin' ? 'rgba(11,77,166,0.04)' : 'transparent',
-                transition: 'all 0.2s',
-                '&:hover': { borderColor: '#0B4DA6' }
-              }}
-              onClick={() => setSelectedRole('admin')}
-            >
-              <Box sx={{
-                width: 20, height: 20, borderRadius: '50%', border: '2px solid',
-                borderColor: selectedRole === 'admin' ? '#0B4DA6' : '#9ca3af',
-                display: 'grid', placeItems: 'center'
-              }}>
-                {selectedRole === 'admin' && <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#0B4DA6' }} />}
-              </Box>
-              <Box>
-                <Typography sx={{ fontWeight: 700 }}>Admin</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Full access to manage users, reports, and settings.
-                </Typography>
-              </Box>
-            </Paper>
-
-            {/* User Option */}
-            <Paper
-              variant="outlined"
-              sx={{
-                p: 2,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-                cursor: 'pointer',
-                borderColor: selectedRole === 'user' ? '#0B4DA6' : 'divider',
-                bgcolor: selectedRole === 'user' ? 'rgba(11,77,166,0.04)' : 'transparent',
-                transition: 'all 0.2s',
-                '&:hover': { borderColor: '#0B4DA6' }
-              }}
-              onClick={() => setSelectedRole('user')}
-            >
-              <Box sx={{
-                width: 20, height: 20, borderRadius: '50%', border: '2px solid',
-                borderColor: selectedRole === 'user' ? '#0B4DA6' : '#9ca3af',
-                display: 'grid', placeItems: 'center'
-              }}>
-                {selectedRole === 'user' && <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#0B4DA6' }} />}
-              </Box>
-              <Box>
-                <Typography sx={{ fontWeight: 700 }}>User</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Limited access based on assigned permissions.
-                </Typography>
-              </Box>
-            </Paper>
-          </Box>
-
-          <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 2, mt: 4 }}>
-            <Button onClick={() => setAccessDialogOpen(false)} color="inherit">
-              Cancel
-            </Button>
-            <Button onClick={handleSaveAccess} variant="contained" color="primary">
-              Save Changes
-            </Button>
-          </Box>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{ sx: { borderRadius: 2 } }}
-      >
-        <DialogTitle>Delete User</DialogTitle>
+      {/* Access Dialog */}
+      <Dialog open={accessDialogOpen} onClose={() => setAccessDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 4, bgcolor: isDarkMode ? "#111827" : "#FFFFFF", color: isDarkMode ? "#F9FAFB" : "inherit" } }}>
+        <DialogTitle sx={{ fontWeight: 700, borderBottom: isDarkMode ? "1px solid #374151" : "none" }}>Manage Access</DialogTitle>
         <DialogContent>
-          <Typography>
-            Are you sure you want to delete <strong>{deleteUser?.firstName} {deleteUser?.lastName}</strong>? This action cannot be undone.
-          </Typography>
+          <Box sx={{ display: 'grid', gap: 1.5, mt: 1 }}>
+            {["superadmin", "company_admin", "site_manager", "supervisor", "worker"].map((role) => (
+              <Paper
+                key={role}
+                variant="outlined"
+                sx={{
+                  p: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 2,
+                  cursor: 'pointer',
+                  borderRadius: 3,
+                  transition: "all 0.2s",
+                  borderColor: selectedRole === role ? (isDarkMode ? '#60A5FA' : '#0B4DA6') : (isDarkMode ? '#374151' : '#E5E7EB'),
+                  bgcolor: selectedRole === role ? (isDarkMode ? 'rgba(96,165,250,0.1)' : 'rgba(11,77,166,0.04)') : 'transparent',
+                  "&:hover": {
+                    bgcolor: selectedRole === role ? (isDarkMode ? 'rgba(96,165,250,0.15)' : 'rgba(11,77,166,0.06)') : (isDarkMode ? 'rgba(255,255,255,0.03)' : '#FAFAFA')
+                  }
+                }}
+                onClick={() => setSelectedRole(role)}
+              >
+                <Box sx={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid', borderColor: selectedRole === role ? (isDarkMode ? '#60A5FA' : '#0B4DA6') : (isDarkMode ? '#4B5563' : '#D1D5DB'), display: 'grid', placeItems: 'center' }}>
+                  {selectedRole === role && <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: isDarkMode ? '#60A5FA' : '#0B4DA6' }} />}
+                </Box>
+                <Typography sx={{ fontWeight: 600, textTransform: 'capitalize', color: selectedRole === role ? (isDarkMode ? "#F9FAFB" : "#111827") : (isDarkMode ? "#9CA3AF" : "#4B5563") }}>{role.replace('_', ' ')}</Typography>
+              </Paper>
+            ))}
+          </Box>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setDeleteDialogOpen(false)} color="inherit">Cancel</Button>
-          <Button onClick={handleDelete} variant="contained" color="error">Delete</Button>
+        <DialogActions sx={{ p: 2.5, borderTop: isDarkMode ? "1px solid #374151" : "none" }}>
+          <Button onClick={() => setAccessDialogOpen(false)} sx={{ borderRadius: 50, px: 3, textTransform: "none", color: isDarkMode ? "#9CA3AF" : "inherit" }}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveAccess} sx={{ borderRadius: 50, px: 3, textTransform: "none", bgcolor: isDarkMode ? "#3B82F6" : "#0B4DA6", boxShadow: "none", "&:hover": { bgcolor: isDarkMode ? "#2563EB" : "#083D86", boxShadow: "none" } }}>Update Access</Button>
         </DialogActions>
       </Dialog>
 
+      {/* Delete Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 4, bgcolor: isDarkMode ? "#111827" : "#FFFFFF", color: isDarkMode ? "#F9FAFB" : "inherit" } }}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Delete User</DialogTitle>
+        <DialogContent><Typography sx={{ color: isDarkMode ? "#9CA3AF" : "inherit" }}>Are you sure you want to delete <b style={{ color: isDarkMode ? "#F9FAFB" : "inherit" }}>{deleteUser?.firstName}</b>?</Typography></DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setDeleteDialogOpen(false)} sx={{ color: isDarkMode ? "#9CA3AF" : "inherit" }}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleDelete} sx={{ borderRadius: 50, px: 3 }}>Delete</Button>
+        </DialogActions>
+      </Dialog>
 
-      {/* snackbar */}
-      <Snackbar
-        open={snack.open}
-        autoHideDuration={3000}
-        onClose={() => setSnack({ open: false, msg: "" })}
-        anchorOrigin={{ vertical: "top", horizontal: "right" }} // ✅ top-right corner
-        sx={{
-          mt: 8, // pushes it slightly below the navbar
-          mr: 2, // a little right margin
-        }}
-      >
-        <Alert
-          onClose={() => setSnack({ open: false, msg: "" })}
-          severity={snack.severity || "info"}
-          elevation={6}
-          variant="filled"
-          sx={{
-            width: "100%",
-            borderRadius: "12px",
-            backdropFilter: "blur(10px)",
-            backgroundColor: "rgba(23, 176, 97, 0.15)", // ✅ transparent blue tone
-            color: "#026f3eff", // text color matching your brand blue  // ✅ rounded corners
-            fontWeight: 500,
-            boxShadow: "0 4px 20px rgba(0,0,0,0.08)", // soft shadow for elegance
-          }}
-
-        >
-          {snack.msg}
-        </Alert>
+      <Snackbar open={snack.open} autoHideDuration={3000} onClose={() => setSnack({ ...snack, open: false })} anchorOrigin={{ vertical: "top", horizontal: "right" }} sx={{ mt: 8, mr: 2 }}>
+        <Alert severity={snack.severity || "info"} sx={{ width: "100%", borderRadius: "12px" }}>{snack.msg}</Alert>
       </Snackbar>
-
-    </>
+    </Layout >
   );
 }
