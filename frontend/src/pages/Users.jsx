@@ -56,7 +56,7 @@ import { useTheme } from "../context/ThemeContext";
 const computeAvatarUrl = (avatar) => {
   if (!avatar) return null;
   if (/^https?:\/\//i.test(avatar)) return avatar;
-  const host = import.meta.env.VITE_BACKEND_URL || "https://api-site-mateai.co.uk";
+  const host = import.meta.env.VITE_BACKEND_URL || "http://api.site-mateai.co.uk";
   return `${host.replace(/\/$/, "")}${avatar.startsWith("/") ? "" : "/"}${avatar}`;
 };
 

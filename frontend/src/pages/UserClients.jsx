@@ -19,7 +19,7 @@ export default function ClientsPage() {
     const computeLogoUrl = (logo) => {
         if (!logo) return null;
         if (/^https?:\/\//i.test(logo)) return logo;
-        const host = import.meta.env.VITE_BACKEND_URL || "https://api-site-mateai.co.uk";
+        const host = import.meta.env.VITE_BACKEND_URL || "http://api.site-mateai.co.uk";
         return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
     };
 

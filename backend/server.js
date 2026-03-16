@@ -25,7 +25,7 @@ app.use(
   })
 );
 
-const allowedOrigin = process.env.CLIENT_URL || "https://site-mateai.co.uk";
+const allowedOrigin = process.env.CLIENT_URL || "http://site-mateai.co.uk";
 
 app.use(
   cors({
@@ -34,8 +34,8 @@ app.use(
       if (!origin) return callback(null, true);
 
       const allowedOrigins = [
-        "https://site-mateai.co.uk",         // Main frontend
-        "https://api-site-mateai.co.uk",     // Backend itself
+        "http://site-mateai.co.uk",         // Main frontend
+        "http://api.site-mateai.co.uk",     // Backend itself
         "http://localhost:5173",             // Local dev
         "http://localhost:3000",             // Alternative local dev
       ];

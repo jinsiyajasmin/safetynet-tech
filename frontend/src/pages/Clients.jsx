@@ -39,7 +39,7 @@ const computeLogoUrl = (logo) => {
   if (/^https?:\/\//i.test(logo)) return logo;
   // If we have a relative path, prepend the backend URL
   // We can grab it from import.meta.env.VITE_BACKEND_URL or rely on a helper
-  const host = import.meta.env.VITE_BACKEND_URL || "https://api-site-mateai.co.uk";
+  const host = import.meta.env.VITE_BACKEND_URL || "http://api.site-mateai.co.uk";
   return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
 };
 
