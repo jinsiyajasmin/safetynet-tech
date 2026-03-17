@@ -34,8 +34,13 @@ app.use(
       if (!origin) return callback(null, true);
 
       const allowedOrigins = [
-        "http://site-mateai.co.uk",         // Main frontend
-        "http://api.site-mateai.co.uk",     // Backend itself
+        "http://site-mateai.co.uk",         // Main frontend (HTTP)
+        "https://site-mateai.co.uk",        // Main frontend (HTTPS)
+        "http://www.site-mateai.co.uk",     // Main frontend (WWW HTTP)
+        "https://www.site-mateai.co.uk",    // Main frontend (WWW HTTPS)
+        "http://api.site-mateai.co.uk",     // Backend itself (HTTP)
+        "https://api.site-mateai.co.uk",    // Backend itself (HTTPS)
+        "https://api-site-mateai.co.uk",    // Hyphenated api backend
         "http://localhost:5173",             // Local dev
         "http://localhost:3000",             // Alternative local dev
       ];

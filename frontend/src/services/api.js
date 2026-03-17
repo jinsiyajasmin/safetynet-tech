@@ -1,6 +1,6 @@
 // src/api.js
 import axios from "axios";
-const base = import.meta.env.VITE_BACKEND_URL || "http://api.site-mateai.co.uk";
+const base = import.meta.env.VITE_BACKEND_URL || "https://api.site-mateai.co.uk";
 
 console.log("🚀 API Base URL:", base);
 
