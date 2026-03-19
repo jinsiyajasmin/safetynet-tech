@@ -43,6 +43,8 @@ const computeLogoUrl = (logo) => {
 };
 
 export default function GenericReportPage({ pageTitle }) {
+    const [searchParams] = useSearchParams();
+    const search = searchParams.get("search") || "";
     const [dialogOpen, setDialogOpen] = useState(false);
     const [selectedForm, setSelectedForm] = useState(null);
     const [formValues, setFormValues] = useState({});
@@ -371,7 +373,12 @@ export default function GenericReportPage({ pageTitle }) {
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
-                                        {submissions.map((row) => (
+                                        {submissions
+                                            .filter((row) => {
+                                                const title = row.form?.title || row.formId?.title || "Untitled";
+                                                return title.toLowerCase().includes(search.toLowerCase());
+                                            })
+                                            .map((row) => (
                                             <TableRow key={row.id || row._id}>
                                                 <TableCell>{row.form?.title || row.formId?.title || "Untitled"}</TableCell>
                                                 <TableCell>{new Date(row.createdAt).toLocaleDateString()}</TableCell>

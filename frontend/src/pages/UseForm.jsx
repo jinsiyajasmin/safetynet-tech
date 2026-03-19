@@ -15,15 +15,24 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-
 } from "@mui/material";
-import { useParams, useNavigate } from "react-router-dom";
+
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../services/api";
 import Layout from "../components/Layout";
+import { downloadPdfFromRef } from "../utils/pdfGenerator";
+import { useRef } from "react";
 
 export default function UseForm() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const siteId = searchParams.get("siteId");
+  const category = searchParams.get("category");
+  const action = searchParams.get("action");
+  const containerRef = useRef(null);
+  
+  const [downloading, setDownloading] = useState(false);
 
   const [form, setForm] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -47,6 +56,18 @@ export default function UseForm() {
     };
     fetchForm();
   }, [id]);
+
+  useEffect(() => {
+    if (!loading && action === "download" && form) {
+        setDownloading(true);
+        setTimeout(() => {
+            downloadPdfFromRef(containerRef, `CustomForm_${form.title.replace(/\s+/g, '_')}`, () => {
+                setDownloading(false);
+                window.close();
+            });
+        }, 800);
+    }
+  }, [loading, action, form]);
 
   const handleChange = (fieldId, value) => {
     setValues((prev) => ({ ...prev, [fieldId]: value }));
@@ -88,10 +109,15 @@ export default function UseForm() {
         }
       }
 
-      await api.post(`/forms/${id}/responses`, {
+      if (siteId) processedAnswers.siteId = siteId;
+
+      const payload = {
         formId: id,
         answers: processedAnswers,
-      });
+      };
+      if (category) payload.category = category;
+
+      await api.post(`/forms/${id}/responses`, payload);
 
       // ✅ Show success modal instead of alert
       setSuccessOpen(true);
@@ -123,7 +149,7 @@ export default function UseForm() {
       <Box sx={{ flex: 1, px: { xs: 2, md: 5 }, py: 4, overflowY: "auto" }}>
 
 
-        <Paper sx={{ p: 3, maxWidth: 900 }}>
+        <Paper ref={containerRef} sx={{ p: 3, maxWidth: 900 }}>
           <Typography variant="h4" sx={{ fontWeight: 700, mb: 3, color: form.titleColor, textAlign: form.titleAlignment || "left" }}>
             {form.title}
           </Typography>
@@ -293,10 +319,10 @@ export default function UseForm() {
             sx={{ textTransform: "none" }}
             onClick={() => {
               setSuccessOpen(false);
-              navigate("/forms");
+              navigate(siteId ? "/sitepack-management" : "/forms");
             }}
           >
-            Go to Forms
+            {siteId ? "Back to Site Pack" : "Go to Forms"}
           </Button>
         </DialogActions>
       </Dialog>

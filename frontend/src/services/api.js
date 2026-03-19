@@ -1,6 +1,19 @@
 // src/api.js
 import axios from "axios";
-const base = import.meta.env.VITE_BACKEND_URL || "https://api.site-mateai.co.uk";
+
+// Dynamically determine the base URL
+const isLocalhost = Boolean(
+  window.location.hostname === "localhost" ||
+    window.location.hostname === "[::1]" ||
+    window.location.hostname.match(
+      /^127(?:\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$/
+    )
+);
+
+// If local, use localhost:4000, else use the production domain.
+const base = isLocalhost 
+  ? "http://localhost:4000" 
+  : (import.meta.env.VITE_BACKEND_URL || "https://api-site-mateai.co.uk");
 
 console.log("🚀 API Base URL:", base);
 

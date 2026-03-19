@@ -8,6 +8,7 @@ import {
     Avatar,
 } from "@mui/material";
 import Layout from "../components/Layout";
+import { useSearchParams } from "react-router-dom";
 import {
     AreaChart,
     Area,
@@ -181,6 +182,19 @@ const CustomAreaTooltip = ({ active, payload, label }) => {
 };
 
 export default function ConcernReportDashboard() {
+    const [searchParams] = useSearchParams();
+    const search = searchParams.get("search") || "";
+
+    const filteredActions = recentActions.filter(a => 
+        a.title.toLowerCase().includes(search.toLowerCase()) || 
+        a.subtitle.toLowerCase().includes(search.toLowerCase())
+    );
+
+    const filteredSites = activeSites.filter(s => 
+        s.name.toLowerCase().includes(search.toLowerCase()) || 
+        s.assignee.toLowerCase().includes(search.toLowerCase())
+    );
+
     return (
         <Layout disablePadding={true}>
             <Box sx={{ py: { xs: 2, md: 4 }, px: { xs: 2, md: 4 }, bgcolor: "#fafafa", minHeight: "100vh" }}>
@@ -293,7 +307,7 @@ export default function ConcernReportDashboard() {
                                     <Typography variant="subtitle1" fontWeight={700}>Recent Actions</Typography>
                                 </Box>
                                 <Box display="flex" flexDirection="column" gap={2}>
-                                    {recentActions.map((action, index) => (
+                                    {filteredActions.map((action, index) => (
                                         <Paper
                                             key={index}
                                             elevation={0}
@@ -365,7 +379,7 @@ export default function ConcernReportDashboard() {
                             <Typography variant="subtitle1" fontWeight={700}>Active Sites</Typography>
                         </Box>
                         <Grid container spacing={3}>
-                            {activeSites.map((site, index) => (
+                            {filteredSites.map((site, index) => (
                                 <Grid item xs={12} sm={6} md={3} key={index}>
                                     <Paper
                                         elevation={0}

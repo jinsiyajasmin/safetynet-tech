@@ -19,7 +19,7 @@ import {
 } from "@mui/material";
 import { Eye, Trash2 } from "lucide-react";
 
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import ViewModuleIcon from "@mui/icons-material/ViewModule";
 import ViewListIcon from "@mui/icons-material/ViewList";
 import SearchIcon from "@mui/icons-material/Search";
@@ -43,7 +43,8 @@ export default function ViewForms() {
 
   const [forms, setForms] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [searchParams] = useSearchParams();
+  const search = searchParams.get("search") || "";
   const [deleteId, setDeleteId] = useState(null);
   const [deleteSuccessOpen, setDeleteSuccessOpen] = useState(false);
 
@@ -87,8 +88,12 @@ export default function ViewForms() {
   const fetchForms = async () => {
     try {
       const res = await api.get("/forms");
-      if (res?.data?.success) {
-        setForms(res.data.data || []);
+      if (res?.data?.success && Array.isArray(res.data.data)) {
+        // Filter out dummy template forms created by getOrCreateTemplateForm
+        const userCreatedForms = res.data.data.filter(f => 
+             !(f.fields?.length === 1 && f.fields[0].id === "custom_hardcoded_form_data")
+        );
+        setForms(userCreatedForms);
       } else {
         setForms([]);
       }
@@ -176,7 +181,7 @@ export default function ViewForms() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {forms
+                {filteredForms
                   .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                   .map((form) => (
                     <TableRow

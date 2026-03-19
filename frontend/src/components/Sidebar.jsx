@@ -56,6 +56,7 @@ const MENU_GROUPS = [
       { id: "enable-user", label: "Enable user access", to: "/enable-user" },
     ],
   },
+  { id: "general-forms", heading: "General forms", icon: <FileText size={20} />, to: "/general-forms" },
   {
     id: "form-build",
     heading: "Form Builder",
@@ -116,15 +117,14 @@ const MENU_GROUPS = [
     ],
   },
   {
-    id: "life-sector",
-    heading: "Life sector dashboard",
+    id: "lift-sector",
+    heading: "Lift sector dashboard",
     icon: <TrendingUp size={20} />,
     items: [
       { id: "client-level", label: "Client level analysis", to: "/lift-sector-client" },
       { id: "site-level", label: "Site level analysis", to: "/lift-sector-site" },
     ],
   },
-  { id: "friday-forms", heading: "Friday pack forms", icon: <FileText size={20} />, to: "/frida-forms" },
 ];
 
 export default function Sidebar({ sx = {} }) {

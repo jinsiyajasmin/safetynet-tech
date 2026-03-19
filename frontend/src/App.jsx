@@ -27,6 +27,16 @@ import CreateSitesPage from './pages/CreateSitesPage';
 import SitepackManagement from './pages/SitepackManagement';
 import ConcernReportDashboard from './pages/ConcernReportDashboard';
 import AuditReportDashboard from './pages/AuditReportDashboard';
+import GeneralFormsList from './pages/GeneralFormsList';
+import ToolBoxTalkForm from './pages/ToolBoxTalkForm';
+import RamsBriefingForm from './pages/RamsBriefingForm';
+import SiteInductionForm from './pages/SiteInductionForm';
+import ManagementSiteInspectionForm from './pages/ManagementSiteInspectionForm';
+import DailySafeStartBriefingForm from './pages/DailySafeStartBriefingForm';
+import AuditActionForm from './pages/AuditActionForm';
+import SiteInductionRecordForm from './pages/SiteInductionRecordForm';
+import LolerInspectionForm from './pages/LolerInspectionForm';
+import PuwerInspectionForm from './pages/PuwerInspectionForm';
 
 
 import { ThemeProvider } from './context/ThemeContext';
@@ -99,6 +109,34 @@ function App() {
           <Route path="/sitepack-management" element={<RequireAuth><SitepackManagement /></RequireAuth>} />
 
 
+          <Route path="/general-forms" element={<RequireAuth><GeneralFormsList /></RequireAuth>} />
+          
+          <Route path="/general-forms/tool-box-talk" element={<RequireAuth><ToolBoxTalkForm /></RequireAuth>} />
+          <Route path="/general-forms/tool-box-talk/:id" element={<RequireAuth><ToolBoxTalkForm /></RequireAuth>} />
+          
+          <Route path="/general-forms/rams-briefing" element={<RequireAuth><RamsBriefingForm /></RequireAuth>} />
+          <Route path="/general-forms/rams-briefing/:id" element={<RequireAuth><RamsBriefingForm /></RequireAuth>} />
+
+          <Route path="/general-forms/site-induction" element={<RequireAuth><SiteInductionForm /></RequireAuth>} />
+          <Route path="/general-forms/site-induction/:id" element={<RequireAuth><SiteInductionForm /></RequireAuth>} />
+
+          <Route path="/general-forms/daily-safe-start-briefing" element={<RequireAuth><DailySafeStartBriefingForm /></RequireAuth>} />
+          <Route path="/general-forms/daily-safe-start-briefing/:id" element={<RequireAuth><DailySafeStartBriefingForm /></RequireAuth>} />
+
+          <Route path="/general-forms/audit-action-form" element={<RequireAuth><AuditActionForm /></RequireAuth>} />
+          <Route path="/general-forms/audit-action-form/:id" element={<RequireAuth><AuditActionForm /></RequireAuth>} />
+
+          <Route path="/general-forms/site-induction-form" element={<RequireAuth><SiteInductionRecordForm /></RequireAuth>} />
+          <Route path="/general-forms/site-induction-form/:id" element={<RequireAuth><SiteInductionRecordForm /></RequireAuth>} />
+
+          <Route path="/general-forms/management-site-inspection" element={<RequireAuth><ManagementSiteInspectionForm /></RequireAuth>} />
+          <Route path="/general-forms/management-site-inspection/:id" element={<RequireAuth><ManagementSiteInspectionForm /></RequireAuth>} />
+          
+          <Route path="/general-forms/loler-inspection-form" element={<RequireAuth><LolerInspectionForm /></RequireAuth>} />
+          <Route path="/general-forms/loler-inspection-form/:id" element={<RequireAuth><LolerInspectionForm /></RequireAuth>} />
+          
+          <Route path="/general-forms/puwer-inspection-form" element={<RequireAuth><PuwerInspectionForm /></RequireAuth>} />
+          <Route path="/general-forms/puwer-inspection-form/:id" element={<RequireAuth><PuwerInspectionForm /></RequireAuth>} />
           <Route path="/frida-forms" element={<RequireAuth><GenericReportPage pageTitle="Friday pack forms" /></RequireAuth>} />
 
           {/* Dashboards */}

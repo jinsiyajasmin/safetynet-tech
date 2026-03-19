@@ -42,6 +42,11 @@ export default function TopNav({ pageTitle, onMobileMenuClick }) {
     if (path === "/sites" || path === "/create-sites") return "Sites";
     if (path === "/enable-user") return "User Access";
     if (path === "/sitepack-management") return "Site Pack Management";
+    if (path.includes("/general-forms/tool-box-talk")) return "Tool Box Talk Register";
+    if (path.includes("/general-forms/rams-briefing")) return "RAMS Briefing Form";
+    if (path.includes("/general-forms/site-induction")) return "Site Induction Register";
+    if (path.includes("/general-forms/management-site-inspection")) return "Management Site Inspection Report";
+    if (path === "/general-forms") return "General forms";
     if (path === "/forms" || path === "/form-build") return "Form Builder";
     return "Dashboard";
   };

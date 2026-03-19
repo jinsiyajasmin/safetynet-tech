@@ -41,6 +41,7 @@ import LaunchOutlinedIcon from '@mui/icons-material/LaunchOutlined';
 import AddIcon from '@mui/icons-material/Add';
 
 
+
 import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined'; // RAMS
 import VerifiedUserOutlinedIcon from '@mui/icons-material/VerifiedUserOutlined'; // Inductions
 import DesignServicesOutlinedIcon from '@mui/icons-material/DesignServicesOutlined'; // Toolbox?
@@ -54,9 +55,70 @@ import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined'; // Meeting 
 import PolicyOutlinedIcon from '@mui/icons-material/PolicyOutlined'; // Audit
 
 import Layout from '../components/Layout';
-import { fetchSites, uploadDocument, fetchDocuments, fetchDocumentCounts, deleteDocument } from "../services/api";
+import api, { fetchSites, uploadDocument, fetchDocuments, fetchDocumentCounts, deleteDocument } from "../services/api";
 import { useTheme } from "../context/ThemeContext";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
+import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutline';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
+
+const TEMPLATES = [
+    {
+        id: "tool-box-talk",
+        title: "Tool Box Talk Register",
+        description: "Official TBT attendance and sign-off",
+        path: "/general-forms/tool-box-talk",
+    },
+    {
+        id: "rams-briefing",
+        title: "RAMS Briefing Form",
+        description: "Risk Assessment & Method Statement",
+        path: "/general-forms/rams-briefing",
+    },
+    {
+        id: "site-induction",
+        title: "Site Induction Register",
+        description: "Sign-off register for site inductions",
+        path: "/general-forms/site-induction",
+    },
+    {
+        id: "management-site-inspection",
+        title: "Management Site Inspection Report",
+        description: "Comprehensive site H&S walkthrough",
+        path: "/general-forms/management-site-inspection",
+    },
+    {
+        id: "daily-safe-start-briefing",
+        title: "Daily Safe Start Briefing Sheet",
+        description: "Start Right Daily Safety Briefing",
+        path: "/general-forms/daily-safe-start-briefing",
+    },
+    {
+        id: "audit-action-form",
+        title: "Audit Action Form",
+        description: "Review and report observations & assigned actions",
+        path: "/general-forms/audit-action-form",
+    },
+    {
+        id: "site-induction-form",
+        title: "Site Induction Form",
+        description: "Personal and comprehensive 3-page site induction record",
+        path: "/general-forms/site-induction-form",
+    },
+    {
+        id: "loler-inspection-form",
+        title: "LOLER Inspection Form",
+        description: "Official Equipment inspection and certification",
+        path: "/general-forms/loler-inspection-form",
+    },
+    {
+        id: "puwer-inspection-form",
+        title: "PUWER Inspection Form",
+        description: "Plant equipment formal maintenance certification",
+        path: "/general-forms/puwer-inspection-form",
+    }
+];
 
 const MODULES_CONFIG = [
     { title: "Friday Pack Forms", icon: <ClipboardList size={32} /> },
@@ -74,16 +136,36 @@ export default function SitepackManagement() {
     const [sites, setSites] = useState([]);
     const [loading, setLoading] = useState(false);
     const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
     const search = searchParams.get("search") || "";
     const [selectedSite, setSelectedSite] = useState(null);
     const [selectedModule, setSelectedModule] = useState(null);
     const [modules, setModules] = useState(MODULES_CONFIG.map(m => ({ ...m, count: '0 documents', id: m.title })));
+    const location = useLocation();
+
+    // Persist View State
+    useEffect(() => {
+        if (sites.length > 0 && location.state?.siteId) {
+            const site = sites.find(s => (s._id || s.id) === location.state.siteId);
+            if (site) {
+                setSelectedSite(site);
+                if (location.state.moduleTitle) {
+                    const mod = modules.find(m => m.title === location.state.moduleTitle);
+                    if (mod) setSelectedModule(mod);
+                }
+                window.history.replaceState({}, document.title);
+            }
+        }
+    }, [sites, location.state, modules]);
 
     // Document State
     const [docs, setDocs] = useState([]);
 
     // UI State
     const [uploadModalOpen, setUploadModalOpen] = useState(false);
+    const [createFormModalOpen, setCreateFormModalOpen] = useState(false);
+    const [graphModalOpen, setGraphModalOpen] = useState(false);
+    const [formBuilderForms, setFormBuilderForms] = useState([]);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [viewModalOpen, setViewModalOpen] = useState(false);
     const [viewDocUrl, setViewDocUrl] = useState(null);
@@ -95,6 +177,14 @@ export default function SitepackManagement() {
         file: null, title: "", version: "", validFrom: "", validUntil: "", tags: ""
     });
     const [formErrors, setFormErrors] = useState({});
+
+    // Graph Data Parsers
+    const chartData = modules.map(m => {
+        const value = parseInt(m.count.split(' ')[0]) || 0;
+        return { name: m.title, value };
+    }).filter(m => m.value > 0);
+    
+    const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6B7280'];
 
     // Load Sites
     useEffect(() => {
@@ -118,11 +208,29 @@ export default function SitepackManagement() {
             const loadCounts = async () => {
                 try {
                     const { counts } = await fetchDocumentCounts(selectedSite._id || selectedSite.id);
+
+                    let formCounts = 0;
+                    try {
+                        const res = await api.get('/forms/responses?category=Friday+Pack+Forms');
+                        if (res.data?.success) {
+                            const siteResponses = res.data.data.filter(r => r.answers?.siteId === (selectedSite._id || selectedSite.id));
+                            formCounts = siteResponses.length;
+                        }
+                    } catch (e) {
+                        console.error("Failed to load generic form counts", e);
+                    }
+
                     // Update modules with counts
-                    setModules(prev => prev.map(m => ({
-                        ...m,
-                        count: `${counts[m.title] || 0} documents`
-                    })));
+                    setModules(prev => prev.map(m => {
+                        let total = counts[m.title] || 0;
+                        if (m.title === "Friday Pack Forms") {
+                            total += formCounts;
+                        }
+                        return {
+                            ...m,
+                            count: `${total} documents`
+                        };
+                    }));
                 } catch (error) {
                     console.error("Error loading counts:", error);
                 }
@@ -136,8 +244,31 @@ export default function SitepackManagement() {
         if (selectedSite && selectedModule) {
             const loadDocs = async () => {
                 try {
+                    let allItems = [];
                     const { documents } = await fetchDocuments(selectedSite._id || selectedSite.id, selectedModule.title);
-                    setDocs(documents || []);
+                    if (documents) allItems = [...allItems, ...documents];
+
+                    // Also fetch Form Responses if this is Friday Pack Forms
+                    if (selectedModule.title === "Friday Pack Forms") {
+                        const res = await api.get('/forms/responses?category=Friday+Pack+Forms');
+                        if (res.data?.success) {
+                            const siteResponses = res.data.data.filter(r => r.answers?.siteId === (selectedSite._id || selectedSite.id));
+                            const mappedForms = siteResponses.map(r => ({
+                                id: r.id || r._id,
+                                title: r.form?.title || r.category || 'Friday Pack Form',
+                                type: 'FORM',
+                                version: '1.0',
+                                size: 'Native Form',
+                                createdAt: r.createdAt,
+                                isFormBase: true,
+                                rawResponse: r
+                            }));
+                            allItems = [...allItems, ...mappedForms];
+                        }
+                    }
+
+                    allItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                    setDocs(allItems);
                 } catch (error) {
                     console.error("Error loading docs:", error);
                 }
@@ -145,6 +276,23 @@ export default function SitepackManagement() {
             loadDocs();
         }
     }, [selectedSite, selectedModule]);
+
+    // Load custom forms for the Create Form dialog
+    useEffect(() => {
+        if (createFormModalOpen) {
+            const fetchCustomForms = async () => {
+                try {
+                    const res = await api.get('/forms');
+                    if (res.data?.success) {
+                        setFormBuilderForms(res.data.data);
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch custom forms", e);
+                }
+            };
+            fetchCustomForms();
+        }
+    }, [createFormModalOpen]);
 
     // Handlers
     const handleSiteClick = (site) => {
@@ -221,6 +369,17 @@ export default function SitepackManagement() {
         }
     };
 
+    const handleSelectForm = (formPath, isCustom = false, customFormId = null) => {
+        const siteId = selectedSite._id || selectedSite.id;
+        const category = encodeURIComponent("Friday Pack Forms");
+
+        if (isCustom) {
+            navigate(`/forms/${customFormId}/use?siteId=${siteId}&category=${category}`);
+        } else {
+            navigate(`${formPath}?siteId=${siteId}&category=${category}`);
+        }
+    };
+
     const handleMenuClick = (event, doc) => {
         setAnchorEl(event.currentTarget);
         setMenuDoc(doc);
@@ -234,6 +393,27 @@ export default function SitepackManagement() {
     const openMenu = Boolean(anchorEl);
 
     const handleView = () => {
+        if (menuDoc?.isFormBase) {
+            handleMenuClose();
+            const siteId = selectedSite._id || selectedSite.id;
+            const resId = menuDoc.id || menuDoc._id;
+            let path = "";
+            const formTitle = menuDoc.title;
+            if (formTitle === "Tool Box Talk Register") path = `/general-forms/tool-box-talk/${resId}`;
+            else if (formTitle === "RAMS Briefing Form") path = `/general-forms/rams-briefing/${resId}`;
+            else if (formTitle === "Site Induction Register") path = `/general-forms/site-induction/${resId}`;
+            else if (formTitle === "Management Site Inspection Report") path = `/general-forms/management-site-inspection/${resId}`;
+            else if (formTitle === "Daily Safe Start Briefing Sheet") path = `/general-forms/daily-safe-start-briefing/${resId}`;
+            else if (formTitle === "Audit Action Form") path = `/general-forms/audit-action-form/${resId}`;
+            else if (formTitle === "Site Induction Form") path = `/general-forms/site-induction-form/${resId}`;
+            else if (formTitle === "LOLER Inspection Form") path = `/general-forms/loler-inspection-form/${resId}`;
+            else if (formTitle === "PUWER Inspection Form") path = `/general-forms/puwer-inspection-form/${resId}`;
+            else path = `/forms/${menuDoc.rawResponse?.formId}/use?responseId=${resId}`;
+
+            navigate(`${path}?siteId=${siteId}&category=Friday+Pack+Forms`);
+            return;
+        }
+
         if (menuDoc?.url) {
             setViewDocUrl(menuDoc.url);
             setViewDocType(menuDoc.type || 'UNKNOWN');
@@ -249,6 +429,27 @@ export default function SitepackManagement() {
     };
 
     const handleDownload = () => {
+        if (menuDoc?.isFormBase) {
+            handleMenuClose();
+            const siteId = selectedSite._id || selectedSite.id;
+            const resId = menuDoc.id || menuDoc._id;
+            let path = "";
+            const formTitle = menuDoc.title;
+            if (formTitle === "Tool Box Talk Register") path = `/general-forms/tool-box-talk/${resId}`;
+            else if (formTitle === "RAMS Briefing Form") path = `/general-forms/rams-briefing/${resId}`;
+            else if (formTitle === "Site Induction Register") path = `/general-forms/site-induction/${resId}`;
+            else if (formTitle === "Management Site Inspection Report") path = `/general-forms/management-site-inspection/${resId}`;
+            else if (formTitle === "Daily Safe Start Briefing Sheet") path = `/general-forms/daily-safe-start-briefing/${resId}`;
+            else if (formTitle === "Audit Action Form") path = `/general-forms/audit-action-form/${resId}`;
+            else if (formTitle === "Site Induction Form") path = `/general-forms/site-induction-form/${resId}`;
+            else if (formTitle === "LOLER Inspection Form") path = `/general-forms/loler-inspection-form/${resId}`;
+            else if (formTitle === "PUWER Inspection Form") path = `/general-forms/puwer-inspection-form/${resId}`;
+            else path = `/forms/${menuDoc.rawResponse?.formId}/use?responseId=${resId}`;
+
+            window.open(`${path}?siteId=${siteId}&category=Friday+Pack+Forms&action=download`, '_blank');
+            return;
+        }
+
         if (menuDoc?.url) {
             window.open(menuDoc.url, '_blank');
         }
@@ -325,23 +526,52 @@ export default function SitepackManagement() {
                     </Box>
                 </Box>
 
-                {selectedModule && (
+                {selectedModule && selectedModule.title === "Friday Pack Forms" ? (
+                    <Button
+                        variant="contained"
+                        startIcon={<DriveFileRenameOutlineIcon />}
+                        onClick={() => setCreateFormModalOpen(true)}
+                        sx={{
+                            textTransform: "none",
+                            borderRadius: 3,
+                            boxShadow: "none",
+                            bgcolor: "hsl(38, 70%, 55%)",
+                            "&:hover": { bgcolor: "hsl(38, 70%, 45%)", boxShadow: "none" },
+                        }}
+                    >
+                        Create Form
+                    </Button>
+                ) : selectedModule ? (
                     <Button
                         variant="contained"
                         startIcon={<FileUploadOutlinedIcon />}
                         onClick={() => setUploadModalOpen(true)}
                         sx={{
-                            bgcolor: '#FF8D00',
-                            '&:hover': { bgcolor: '#FF8D00' },
-                            textTransform: 'none',
-                            fontWeight: 500,
-                            borderRadius: 2,
-
+                            textTransform: "none",
+                            borderRadius: 3,
+                            boxShadow: "none",
+                            bgcolor: "hsl(38, 70%, 55%)",
+                            "&:hover": { bgcolor: "hsl(38, 70%, 45%)", boxShadow: "none" },
                         }}
                     >
                         Upload
                     </Button>
-                )}
+                ) : selectedSite ? (
+                    <Button
+                        variant="contained"
+                        startIcon={<BarChartIcon />}
+                        onClick={() => setGraphModalOpen(true)}
+                        sx={{
+                            textTransform: "none",
+                            borderRadius: 3,
+                            boxShadow: "none",
+                            bgcolor: "hsl(38, 70%, 55%)",
+                            "&:hover": { bgcolor: "hsl(38, 70%, 45%)", boxShadow: "none" },
+                        }}
+                    >
+                        View Graph
+                    </Button>
+                ) : null}
             </Box>
 
             {/* Main Content Grid (Site List or Documents) */}
@@ -383,6 +613,10 @@ export default function SitepackManagement() {
                                         icon = <DescriptionOutlinedIcon sx={{ fontSize: 32 }} />;
                                         color = '#6B7280'; // Gray
                                         bgcolor = '#F3F4F6';
+                                    } else if (type === 'FORM') {
+                                        icon = <AssignmentIcon sx={{ fontSize: 32 }} />;
+                                        color = '#DB2777'; // Pink
+                                        bgcolor = '#FCE7F3';
                                     }
 
                                     return (
@@ -689,10 +923,10 @@ export default function SitepackManagement() {
                             />
                             {formData.file && formData.file.type === "application/pdf" ? (
                                 <Box sx={{ mt: 1, mb: 2, height: 180, width: '100%', overflow: 'hidden', borderRadius: 2, border: '1px solid #e5e7eb', zIndex: 1, position: 'relative' }}>
-                                    <iframe 
-                                        src={URL.createObjectURL(formData.file)} 
-                                        width="100%" 
-                                        height="100%" 
+                                    <iframe
+                                        src={URL.createObjectURL(formData.file)}
+                                        width="100%"
+                                        height="100%"
                                         style={{ border: 'none', pointerEvents: 'none' }}
                                         title="PDF Preview"
                                     />
@@ -948,13 +1182,13 @@ export default function SitepackManagement() {
                     }
                 }}
             >
-                <DialogTitle sx={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center', 
+                <DialogTitle sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
                     borderBottom: isDarkMode ? '1px solid #374151' : '1px solid #E5E7EB',
-                    p: 2, 
-                    px: 3 
+                    p: 2,
+                    px: 3
                 }}>
                     <Typography variant="h6" fontWeight={600}>Document Viewer</Typography>
                     <IconButton size="small" onClick={handleCloseViewModal}>
@@ -963,7 +1197,7 @@ export default function SitepackManagement() {
                 </DialogTitle>
                 <DialogContent sx={{ p: 0, height: '100%', overflow: 'hidden', bgcolor: isDarkMode ? "#111827" : "#F3F4F6", display: 'flex', justifyContent: 'center' }}>
                     {viewDocType === 'PDF' && (
-                        <iframe 
+                        <iframe
                             src={viewDocUrl}
                             width="100%"
                             height="100%"
@@ -988,10 +1222,10 @@ export default function SitepackManagement() {
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
                                 This file type ({viewDocType}) cannot be previewed directly in the browser.
                             </Typography>
-                            <Button 
-                                variant="contained" 
-                                href={viewDocUrl} 
-                                target="_blank" 
+                            <Button
+                                variant="contained"
+                                href={viewDocUrl}
+                                target="_blank"
                                 rel="noopener noreferrer"
                                 startIcon={<Download size={18} />}
                                 sx={{ textTransform: 'none', borderRadius: 2 }}
@@ -1002,6 +1236,229 @@ export default function SitepackManagement() {
                     )}
                 </DialogContent>
             </Dialog>
-        </Layout >
+            {/* Create Form Modal */}
+            <Dialog
+                open={createFormModalOpen}
+                onClose={() => setCreateFormModalOpen(false)}
+                maxWidth="md"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        borderRadius: 3,
+                        bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF"
+                    }
+                }}
+            >
+                <DialogTitle sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    bgcolor: "hsl(38, 70%, 55%)",
+                    color: "#FFFFFF",
+                    p: 2,
+                    px: 3
+                }}>
+                    <Typography variant="h6" fontWeight={600}>Select a Form Template</Typography>
+                    <IconButton size="small" onClick={() => setCreateFormModalOpen(false)}>
+                        <X size={20} color="#FFFFFF" />
+                    </IconButton>
+                </DialogTitle>
+                <DialogContent sx={{ p: 4, bgcolor: isDarkMode ? "#111827" : "#F9FAFB" }}>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>General Templates</Typography>
+                    <Grid container spacing={2} sx={{ mb: 4 }}>
+                        {TEMPLATES.map(template => (
+                            <Grid item xs={12} sm={6} md={4} key={template.id}>
+                                <Card
+                                    onClick={() => handleSelectForm(template.path, false)}
+                                    elevation={0}
+                                    sx={{
+                                        position: 'relative',
+                                        cursor: 'pointer',
+                                        borderRadius: 3,
+                                        width: '100%',
+                                        height: 120,
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                                        border: isDarkMode ? '1px solid #374151' : '1px solid #E5E7EB',
+                                        transition: 'all 0.2s',
+                                        '&:hover': {
+                                            borderColor: '#E89F17',
+                                            transform: 'translateY(-3px)',
+                                            boxShadow: isDarkMode ? "0 4px 12px rgba(0,0,0,0.5)" : "0 4px 12px rgba(0,0,0,0.05)"
+                                        }
+                                    }}
+                                >
+                                    <IconButton 
+                                        size="small"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleSelectForm(template.path, false);
+                                        }}
+                                        sx={{ 
+                                            position: 'absolute', 
+                                            top: 8, 
+                                            right: 8, 
+                                            color: isDarkMode ? "#60A5FA" : "#0B4DA6",
+                                            bgcolor: isDarkMode ? "rgba(55, 65, 81, 0.5)" : "rgba(243, 244, 246, 0.5)",
+                                            '&:hover': { bgcolor: isDarkMode ? "#374151" : "#E5E7EB" }
+                                        }}
+                                    >
+                                        <VisibilityOutlinedIcon fontSize="small"/>
+                                    </IconButton>
+                                    <CardContent sx={{ height: '100%', p: 2, pr: 4, display: 'flex', flexDirection: 'column' }}>
+                                        <Typography variant="subtitle1" fontWeight={700} sx={{ lineHeight: 1.2, mb: 1, color: isDarkMode ? "#F9FAFB" : "#111827" }}>
+                                            {template.title}
+                                        </Typography>
+                                        <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280", flexGrow: 1 }}>
+                                            {template.description}
+                                        </Typography>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+                        ))}
+                    </Grid>
+
+                    {formBuilderForms.length > 0 && (
+                        <>
+                            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>Custom Forms</Typography>
+                            <Grid container spacing={2}>
+                                {formBuilderForms.map(form => (
+                                    <Grid item xs={12} sm={6} md={4} key={form.id || form._id}>
+                                        <Card
+                                            onClick={() => handleSelectForm(null, true, form.id || form._id)}
+                                            elevation={0}
+                                            sx={{
+                                                position: 'relative',
+                                                cursor: 'pointer',
+                                                borderRadius: 3,
+                                                width: '100%',
+                                                height: 120,
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                                                border: isDarkMode ? '1px solid #374151' : '1px solid #E5E7EB',
+                                                transition: 'all 0.2s',
+                                                '&:hover': {
+                                                    borderColor: '#E89F17',
+                                                    transform: 'translateY(-3px)',
+                                                    boxShadow: isDarkMode ? "0 4px 12px rgba(0,0,0,0.5)" : "0 4px 12px rgba(0,0,0,0.05)"
+                                                }
+                                            }}
+                                        >
+                                            <IconButton 
+                                                size="small"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleSelectForm(null, true, form.id || form._id);
+                                                }}
+                                                sx={{ 
+                                                    position: 'absolute', 
+                                                    top: 8, 
+                                                    right: 8, 
+                                                    color: isDarkMode ? "#60A5FA" : "#0B4DA6",
+                                                    bgcolor: isDarkMode ? "rgba(55, 65, 81, 0.5)" : "rgba(243, 244, 246, 0.5)",
+                                                    '&:hover': { bgcolor: isDarkMode ? "#374151" : "#E5E7EB" }
+                                                }}
+                                            >
+                                                <VisibilityOutlinedIcon fontSize="small"/>
+                                            </IconButton>
+                                            <CardContent sx={{ height: '100%', p: 2, pr: 4, display: 'flex', flexDirection: 'column' }}>
+                                                <Typography variant="subtitle1" fontWeight={700} sx={{ lineHeight: 1.2, mb: 1, color: isDarkMode ? "#F9FAFB" : "#111827" }}>
+                                                    {form.title}
+                                                </Typography>
+                                                <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280", flexGrow: 1 }}>
+                                                    Custom Dynamic Form
+                                                </Typography>
+                                            </CardContent>
+                                        </Card>
+                                    </Grid>
+                                ))}
+                            </Grid>
+                        </>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Graph Analytics Modal */}
+            <Dialog 
+                open={graphModalOpen} 
+                onClose={() => setGraphModalOpen(false)}
+                maxWidth="md"
+                fullWidth
+                PaperProps={{
+                    sx: { borderRadius: 3, bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF" }
+                }}
+            >
+                <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 3, borderBottom: isDarkMode ? '1px solid #374151' : '1px solid #E5E7EB' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <BarChartIcon sx={{ color: "hsl(38, 70%, 55%)" }} />
+                        <Typography variant="h6" fontWeight={700} color={isDarkMode ? "#F9FAFB" : "#111827"}>
+                            {selectedSite?.name} - Document Statistics
+                        </Typography>
+                    </Box>
+                    <IconButton onClick={() => setGraphModalOpen(false)} size="small">
+                        <X size={20} color={isDarkMode ? "#9CA3AF" : "#6B7280"} />
+                    </IconButton>
+                </DialogTitle>
+                <DialogContent sx={{ p: 4, bgcolor: isDarkMode ? "#111827" : "#F9FAFB" }}>
+                    {chartData.length === 0 ? (
+                        <Box sx={{ p: 6, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                            <Typography variant="h6" color="text.secondary">No documents available to display.</Typography>
+                        </Box>
+                    ) : (
+                        <Grid container spacing={4}>
+                            <Grid item xs={12}>
+                                <Paper elevation={0} sx={{ p: 4, borderRadius: 3, bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF", border: isDarkMode ? '1px solid #374151' : '1px solid #E5E7EB', height: 400, display: 'flex', flexDirection: 'column' }}>
+                                    <Typography variant="subtitle1" fontWeight={600} mb={2} color={isDarkMode ? "#F9FAFB" : "#111827"}>Category Distribution</Typography>
+                                    <Box sx={{ flexGrow: 1, minHeight: 0 }}>
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <PieChart>
+                                                <Pie 
+                                                    data={chartData} 
+                                                    dataKey="value" 
+                                                    nameKey="name" 
+                                                    cx="50%" 
+                                                    cy="50%" 
+                                                    outerRadius="90%" 
+                                                    innerRadius="65%"
+                                                    paddingAngle={2}
+                                                >
+                                                    {chartData.map((entry, index) => (
+                                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                    ))}
+                                                </Pie>
+                                                <RechartsTooltip contentStyle={{ borderRadius: 8, backgroundColor: isDarkMode ? "#374151" : "#FFFFFF", color: isDarkMode ? "#F9FAFB" : "#111827", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)" }} />
+                                                <Legend verticalAlign="bottom" height={40} wrapperStyle={{ paddingTop: "10px", fontSize: 13, color: isDarkMode ? "#F9FAFB" : "#111827" }} />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </Box>
+                                </Paper>
+                            </Grid>
+                            <Grid item xs={12}>
+                                <Paper elevation={0} sx={{ p: 4, borderRadius: 3, bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF", border: isDarkMode ? '1px solid #374151' : '1px solid #E5E7EB', height: 400, display: 'flex', flexDirection: 'column' }}>
+                                    <Typography variant="subtitle1" fontWeight={600} mb={2} color={isDarkMode ? "#F9FAFB" : "#111827"}>Total Documents by Category</Typography>
+                                    <Box sx={{ flexGrow: 1, minHeight: 0 }}>
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 25 }}>
+                                                <XAxis dataKey="name" tick={{ fontSize: 12, fill: isDarkMode ? "#9CA3AF" : "#6B7280" }} tickLine={false} axisLine={false} angle={-15} textAnchor="end" />
+                                                <YAxis tick={{ fontSize: 12, fill: isDarkMode ? "#9CA3AF" : "#6B7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
+                                                <RechartsTooltip cursor={{ fill: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" }} contentStyle={{ borderRadius: 8, backgroundColor: isDarkMode ? "#374151" : "#FFFFFF", color: isDarkMode ? "#F9FAFB" : "#111827", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)" }} />
+                                                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                                                    {chartData.map((entry, index) => (
+                                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                    ))}
+                                                </Bar>
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </Box>
+                                </Paper>
+                            </Grid>
+                        </Grid>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+        </Layout>
     );
 }

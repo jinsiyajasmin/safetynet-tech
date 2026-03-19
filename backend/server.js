@@ -45,8 +45,13 @@ app.use(
         "http://localhost:3000",             // Alternative local dev
       ];
 
-      // Also allow Vercel preview deployments
-      if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith(".vercel.app")) {
+      // Also allow Vercel preview deployments and local development
+      if (
+        allowedOrigins.indexOf(origin) !== -1 || 
+        origin.endsWith(".vercel.app") ||
+        origin.startsWith("http://localhost:") ||
+        origin.startsWith("http://127.0.0.1:")
+      ) {
         callback(null, true);
       } else {
         console.log("Blocked by CORS:", origin);
@@ -54,7 +59,6 @@ app.use(
       }
     },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    credentials: true,
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
   })
