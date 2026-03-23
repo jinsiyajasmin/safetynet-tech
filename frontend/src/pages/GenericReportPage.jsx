@@ -392,10 +392,7 @@ export default function GenericReportPage({ pageTitle }) {
                 <Box sx={{ maxWidth: 1000, mx: "auto" }}>
                     <Box sx={{ display: "flex", justifyContent: "space-between", mb: 4, alignItems: "center" }}>
                         <Box>
-                            <Typography variant="h5" sx={{ fontWeight: 600, color: isDarkMode ? "#F9FAFB" : "#111827", }}>
-                                {pageTitle}
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280", mt: 0.5 }}>
+                            <Typography variant="subtitle1" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280" }}>
                                 {getSubheading(pageTitle)}
                             </Typography>
                         </Box>
@@ -412,8 +409,10 @@ export default function GenericReportPage({ pageTitle }) {
                                             px: 3,
                                             py: 0.8,
                                             fontWeight: 600,
+                                            bgcolor: "#EAB308",
+                                            color: "#111827",
                                             boxShadow: "none",
-                                            "&:hover": { boxShadow: "none" }
+                                            "&:hover": { bgcolor: "#CA8A04", boxShadow: "none" }
                                         }}
                                     >
                                         Download PDF
