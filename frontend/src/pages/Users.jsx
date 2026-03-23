@@ -223,7 +223,7 @@ export default function UsersPage() {
         .toString().trim().toLowerCase() === "safetynett";
       setIsSafetynettUser(isSafetynett);
 
-      if (current?.role === "worker") {
+      if (current?.role === "worker" && !isSafetynett) {
         setUsers([]);
         setLoading(false);
         return;
