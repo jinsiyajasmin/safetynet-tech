@@ -557,20 +557,36 @@ export default function GenericReportPage({ pageTitle }) {
             </Dialog>
 
             {/* Action Menu */}
-            <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
-                <MenuItem onClick={() => handleAction("view")}>
-                    <ListItemIcon><MoreVertIcon fontSize="small" /></ListItemIcon> <ListItemText>View</ListItemText>
+            <Menu 
+                anchorEl={anchorEl} 
+                open={Boolean(anchorEl)} 
+                onClose={handleMenuClose}
+                PaperProps={{
+                    sx: {
+                        borderRadius: 5,
+                        mt: 1,
+                        boxShadow: isDarkMode ? "0 4px 20px rgba(0,0,0,0.5)" : "0 4px 20px rgba(0,0,0,0.08)",
+                        bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                        border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
+                        p: 1,
+                        minWidth: 180,
+                        color: isDarkMode ? "#F9FAFB" : "inherit"
+                    }
+                }}
+            >
+                <MenuItem onClick={() => handleAction("view")} sx={{ borderRadius: 2, mb: 0.5, py: 1, fontSize: "0.95rem", color: isDarkMode ? "#F9FAFB" : "#1F2937", "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" } }}>
+                    <ListItemIcon><MoreVertIcon fontSize="small" sx={{ color: isDarkMode ? "#9CA3AF" : "#374151" }} /></ListItemIcon> <ListItemText>View</ListItemText>
                 </MenuItem>
-                <MenuItem onClick={() => handleAction("edit")}>
-                    <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon> <ListItemText>Edit</ListItemText>
+                <MenuItem onClick={() => handleAction("edit")} sx={{ borderRadius: 2, mb: 0.5, py: 1, fontSize: "0.95rem", color: isDarkMode ? "#F9FAFB" : "#1F2937", "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" } }}>
+                    <ListItemIcon><EditIcon fontSize="small" sx={{ color: isDarkMode ? "#9CA3AF" : "#374151" }} /></ListItemIcon> <ListItemText>Edit</ListItemText>
                 </MenuItem>
-                <MenuItem onClick={() => handleAction("download")}>
-                    <ListItemIcon><DownloadIcon fontSize="small" /></ListItemIcon> <ListItemText>Download PDF</ListItemText>
+                <MenuItem onClick={() => handleAction("download")} sx={{ borderRadius: 2, mb: 0.5, py: 1, fontSize: "0.95rem", color: isDarkMode ? "#F9FAFB" : "#1F2937", "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" } }}>
+                    <ListItemIcon><DownloadIcon fontSize="small" sx={{ color: isDarkMode ? "#9CA3AF" : "#374151" }} /></ListItemIcon> <ListItemText>Download PDF</ListItemText>
                 </MenuItem>
-                <MenuItem onClick={() => handleAction("email")}>
-                    <ListItemIcon><EmailIcon fontSize="small" /></ListItemIcon> <ListItemText>Sent to Mail</ListItemText>
+                <MenuItem onClick={() => handleAction("email")} sx={{ borderRadius: 2, mb: 0.5, py: 1, fontSize: "0.95rem", color: isDarkMode ? "#F9FAFB" : "#1F2937", "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" } }}>
+                    <ListItemIcon><EmailIcon fontSize="small" sx={{ color: isDarkMode ? "#9CA3AF" : "#374151" }} /></ListItemIcon> <ListItemText>Sent to Mail</ListItemText>
                 </MenuItem>
-                <MenuItem onClick={() => handleAction("delete")}>
+                <MenuItem onClick={() => handleAction("delete")} sx={{ borderRadius: 2, py: 1, fontSize: "0.95rem", color: "#EF4444", "&:hover": { bgcolor: isDarkMode ? "rgba(239, 68, 68, 0.1)" : "rgba(239, 68, 68, 0.05)" } }}>
                     <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon> <ListItemText sx={{ color: 'error.main' }}>Delete</ListItemText>
                 </MenuItem>
             </Menu>
