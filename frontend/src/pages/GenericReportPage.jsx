@@ -353,11 +353,10 @@ export default function GenericReportPage({ pageTitle }) {
     };
 
     return (
-        <Layout>
+        <Layout pageTitle={pageTitle}>
             <Box sx={{ flex: 1, px: 4, py: 4, height: "100%", overflowY: "auto" }}>
                 <Box sx={{ maxWidth: 1000, mx: "auto" }}>
-                    <Box sx={{ display: "flex", justifyContent: "space-between", mb: 4 }}>
-                        <Typography variant="h4" fontWeight={700} sx={{ color: isDarkMode ? "#F9FAFB" : "inherit" }}>{pageTitle}</Typography>
+                    <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 4 }}>
                         {(viewMode !== "initial") && (
                             <Box sx={{ display: 'flex', gap: 2 }}>
                                 {viewMode === "viewed" && (
