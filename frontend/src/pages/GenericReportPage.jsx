@@ -351,15 +351,59 @@ export default function GenericReportPage({ pageTitle }) {
                     useCORS: true,
                     scale: 2, // Improve quality
                     allowTaint: true,
-                    logging: true,
-                    // If your logo is on a different domain, make sure backend sends CORS headers for image
-                    // or handle proxy. But standard CORS usually works with useCORS: true
                 });
+                
                 const imgData = canvas.toDataURL("image/png");
+                
                 const pdf = new jsPDF("p", "mm", "a4");
                 const pdfWidth = pdf.internal.pageSize.getWidth();
-                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-                pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+                const pdfHeight = pdf.internal.pageSize.getHeight();
+                
+                // Define margins for the PDF pages
+                const margin = 10; // 10mm margins on all sides
+                const contentWidth = pdfWidth - (margin * 2);
+                
+                // Calculate the real scaled height of the image on the PDF based on contentWidth
+                const totalImgHeightInMm = (canvas.height * contentWidth) / canvas.width;
+                
+                // Define the usable height on each page for the content
+                const pageContentHeight = pdfHeight - (margin * 2);
+                
+                let heightLeft = totalImgHeightInMm;
+                let position = margin; // Start drawing at the top margin
+                let pageNum = 1;
+
+                // First page
+                pdf.addImage(imgData, "PNG", margin, position, contentWidth, totalImgHeightInMm);
+                
+                // Add page number to first page
+                pdf.setFontSize(10);
+                pdf.setTextColor(150);
+                pdf.text(`Page ${pageNum}`, pdfWidth / 2, pdfHeight - 5, { align: "center" });
+
+                heightLeft -= pageContentHeight;
+
+                // Add additional pages if needed
+                while (heightLeft > 0) {
+                    position = position - pageContentHeight; // shift the image up
+                    pdf.addPage();
+                    pageNum++;
+                    
+                    pdf.addImage(imgData, "PNG", margin, position, contentWidth, totalImgHeightInMm);
+                    
+                    // White out the top margin to prevent clipping
+                    pdf.setFillColor(255, 255, 255);
+                    pdf.rect(0, 0, pdfWidth, margin, "F");
+                    
+                    // White out the bottom margin
+                    pdf.rect(0, pdfHeight - margin, pdfWidth, margin, "F");
+                    
+                    // Add page number to subsequent pages
+                    pdf.text(`Page ${pageNum}`, pdfWidth / 2, pdfHeight - 5, { align: "center" });
+                    
+                    heightLeft -= pageContentHeight;
+                }
+
                 pdf.save(`report-${selectedForm?.title || "download"}.pdf`);
             } catch (err) {
                 console.error("PDF generation failed", err);
@@ -558,8 +602,9 @@ export default function GenericReportPage({ pageTitle }) {
                                     flexDirection: 'column',
                                     boxSizing: 'border-box',
                                     borderRadius: 4,
-                                    border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
-                                    bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                                    border: "1px solid #E5E7EB",
+                                    bgcolor: "#FFFFFF",
+                                    color: "#000000",
                                     boxShadow: isDarkMode ? "0 4px 20px rgba(0,0,0,0.5)" : "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
                                 }}
                                 ref={printRef}
