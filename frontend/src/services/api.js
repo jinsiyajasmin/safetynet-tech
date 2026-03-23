@@ -13,7 +13,7 @@ const isLocalhost = Boolean(
 // If local, use localhost:4000, else use the production domain.
 const base = isLocalhost 
   ? "http://localhost:4000" 
-  : (import.meta.env.VITE_BACKEND_URL || "https://api-site-mateai.co.uk");
+  : (import.meta.env.VITE_BACKEND_URL || "https://api.site-mateai.co.uk");
 
 console.log("🚀 API Base URL:", base);
 

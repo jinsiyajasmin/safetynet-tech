@@ -40,7 +40,6 @@ app.use(
         "https://www.site-mateai.co.uk",    // Main frontend (WWW HTTPS)
         "http://api.site-mateai.co.uk",     // Backend itself (HTTP)
         "https://api.site-mateai.co.uk",    // Backend itself (HTTPS)
-        "https://api-site-mateai.co.uk",    // Hyphenated api backend
         "http://localhost:5173",             // Local dev
         "http://localhost:3000",             // Alternative local dev
       ];
