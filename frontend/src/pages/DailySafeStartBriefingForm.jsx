@@ -425,7 +425,7 @@ export default function DailySafeStartBriefingForm() {
                         <Box sx={{ p: 1, textAlign: 'center', fontSize: '0.85rem', borderBottom: `1px solid ${borderColor}` }}>
                             Workforce Consultation (record any health & safety issues raised by the workforce after briefing)
                         </Box>
-                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{consultation || ' '}</Typography>) : (<TextField multiline 
+                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{consultation || ' '}</Typography>) : (<TextField 
                             fullWidth 
                             multiline 
                             minRows={3} 

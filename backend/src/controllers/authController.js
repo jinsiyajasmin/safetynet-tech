@@ -104,33 +104,6 @@ exports.login = asyncHandler(async (req, res) => {
             return res.status(403).json({ success: false, message: 'User is blocked.' });
         }
 
-        // 2FA Check
-        if (userObj.twoFactorEnabled) {
-            if (!otp) {
-                return res.status(200).json({ success: true, requireOtp: true, message: 'OTP required' });
-            }
-
-            // Verify OTP
-            const verified = speakeasy.totp.verify({
-                secret: user.twoFactorSecret,
-                encoding: 'base32',
-                token: otp,
-                window: 2
-            });
-
-            if (!verified) {
-                return res.status(401).json({ success: false, message: 'Invalid OTP' });
-            }
-        } else {
-            // 2FA NOT enabled -> Prompt setup
-            return res.json({
-                success: true,
-                user: { ...userObj, password: undefined },
-                token: result.token,
-                setup2Fa: true
-            });
-        }
-
         delete userObj.password;
         delete userObj.twoFactorSecret;
 

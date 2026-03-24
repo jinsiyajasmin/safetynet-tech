@@ -462,12 +462,31 @@ export default function SitepackManagement() {
             else if (formTitle === "PUWER Inspection Form") path = `/general-forms/puwer-inspection-form/${resId}`;
             else path = `/forms/${menuDoc.rawResponse?.formId}/use?responseId=${resId}`;
 
-            window.open(`${path}?siteId=${siteId}&category=Friday+Pack+Forms&action=download`, '_blank');
+            const queryChar = path.includes('?') ? '&' : '?';
+            window.open(`${path}${queryChar}siteId=${siteId}&category=Friday+Pack+Forms&action=download`, '_blank');
             return;
         }
 
         if (menuDoc?.url) {
             window.open(menuDoc.url, '_blank');
+        }
+        handleMenuClose();
+    };
+
+    const handleDownloadWord = () => {
+        if (menuDoc?.isFormBase) {
+            handleMenuClose();
+            const siteId = selectedSite._id || selectedSite.id;
+            const resId = menuDoc.id || menuDoc._id;
+            const formTitle = menuDoc.title;
+            const standardForms = ['Tool Box Talk Register', 'RAMS Briefing Form', 'Site Induction Register', 'Management Site Inspection Report', 'Daily Safe Start Briefing Sheet', 'Audit Action Form', 'Site Induction Form', 'LOLER Inspection Form', 'PUWER Inspection Form'];
+            
+            // Only supported for custom form builder forms
+            if (!standardForms.includes(formTitle)) {
+                 const path = `/forms/${menuDoc.rawResponse?.formId}/use?responseId=${resId}`;
+                 window.open(`${path}&siteId=${siteId}&category=Friday+Pack+Forms&action=download_word`, '_blank');
+            }
+            return;
         }
         handleMenuClose();
     };
@@ -1123,8 +1142,14 @@ export default function SitepackManagement() {
                 </MenuItem>
                 <MenuItem onClick={handleDownload} sx={{ gap: 1.5, py: 1.5 }}>
                     <Download size={18} color="#6B7280" />
-                    <ListItemText primary="Download" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
+                    <ListItemText primary="Download as PDF" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
                 </MenuItem>
+                {menuDoc?.isFormBase && !['Tool Box Talk Register', 'RAMS Briefing Form', 'Site Induction Register', 'Management Site Inspection Report', 'Daily Safe Start Briefing Sheet', 'Audit Action Form', 'Site Induction Form', 'LOLER Inspection Form', 'PUWER Inspection Form'].includes(menuDoc?.title) && (
+                    <MenuItem onClick={handleDownloadWord} sx={{ gap: 1.5, py: 1.5 }}>
+                        <FileText size={18} color="#6B7280" />
+                        <ListItemText primary="Download as Word" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
+                    </MenuItem>
+                )}
                 <MenuItem onClick={handleDeleteClick} sx={{ gap: 1.5, py: 1.5, color: '#EF4444' }}>
                     <Trash2 size={18} color="currentColor" />
                     <ListItemText primary="Delete" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />

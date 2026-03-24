@@ -21,6 +21,9 @@ import {
   Radio,
   FormControlLabel,
   RadioGroup,
+  useMediaQuery,
+  useTheme,
+  Drawer,
 } from "@mui/material";
 
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -183,6 +186,9 @@ function makeField(template) {
 
 
 export default function FormBuilderPage() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [toolboxOpen, setToolboxOpen] = useState(false);
 
 
 
@@ -400,12 +406,17 @@ export default function FormBuilderPage() {
       );
 
     // New: Signature Placeholder
-    if (f.type === "signature")
+    if (f.type === "signature") {
+      const alignMap = { left: 'flex-start', center: 'center', right: 'flex-end' };
+      const justifyContent = alignMap[f.alignment] || 'flex-start';
       return (
-        <Box sx={{ border: "2px dashed #cbd5e1", borderRadius: "12px", height: 120, bgcolor: "#f8fafc", display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'text.secondary', transition: "all 0.2s", "&:hover": { borderColor: "#E89F17", bgcolor: "#fffbeb" } }}>
-          <Typography variant="body2" sx={{ fontStyle: 'italic', fontWeight: 500 }}>Sign here</Typography>
+        <Box sx={{ display: 'flex', justifyContent }}>
+            <Box sx={{ border: "2px dashed #cbd5e1", borderRadius: "12px", height: 120, width: '300px', maxWidth: '100%', bgcolor: "#f8fafc", display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'text.secondary', transition: "all 0.2s", "&:hover": { borderColor: "#E89F17", bgcolor: "#fffbeb" } }}>
+            <Typography variant="body2" sx={{ fontStyle: 'italic', fontWeight: 500 }}>Sign here</Typography>
+            </Box>
         </Box>
       );
+    }
 
     if (f.type === "select")
       return (
@@ -500,6 +511,98 @@ export default function FormBuilderPage() {
     return null;
   };
 
+  const toolboxContent = (
+    <Stack spacing={2}>
+      {TOOLBOX_CATEGORIES.map((cat, i) => (
+        <Box key={cat.title || i} sx={{ p: 0 }}>
+          {cat.title && (
+            <Typography sx={{ mb: 1.5, fontWeight: 600, fontSize: "0.95rem", color: "#1e293b" }}>
+              {cat.title}
+            </Typography>
+          )}
+
+          <Droppable
+            droppableId={`toolbox-${cat.title || i}`}
+            isDropDisabled
+            direction="horizontal"
+          >
+            {(provided) => (
+              <Box
+                ref={provided.innerRef}
+                {...provided.droppableProps}
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, 1fr)",
+                  gap: 2,
+                  mb: 3,
+                }}
+              >
+                {cat.items.map((it, index) => (
+                  <Draggable
+                    key={it.type}
+                    draggableId={`tool-${it.type}`}
+                    index={index}
+                  >
+                    {(dr) => (
+                      <Box
+                        ref={dr.innerRef}
+                        {...dr.draggableProps}
+                        {...dr.dragHandleProps}
+                        onClick={() => {
+                          const tmpl =
+                            findTemplateByType(it.type);
+                          if (!tmpl) return;
+                          const newField = makeField(tmpl);
+                          setFields((prev) => [
+                            ...prev,
+                            newField,
+                          ]);
+                          setSelectedFieldId(newField.id);
+                          if (isMobile) setToolboxOpen(false);
+                        }}
+                        sx={{
+                          height: 90,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexDirection: "column",
+                          cursor: "grab",
+                          borderRadius: 2,
+                          border: "1px solid #e5e7eb",
+                          backgroundColor: "#ffffff",
+                          p: 1,
+                          textAlign: "center",
+                          transition: "all 150ms ease",
+                          "&:hover": {
+                            borderColor: "#2563eb",
+                            boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+                            transform: "translateY(-2px)",
+                          },
+                        }}
+                        style={dr.draggableProps.style}
+                      >
+                        <Box sx={{ mb: 1 }}>
+                          <IconSvg name={it.icon} size={22} />
+                        </Box>
+                        <Typography
+                          variant="caption"
+                          sx={{ fontSize: 13, color: "#475569" }}
+                        >
+                          {it.label}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+              </Box>
+            )}
+          </Droppable>
+        </Box>
+      ))}
+    </Stack>
+  );
+
   return (
     <Layout>
       <Container maxWidth="xl" sx={{ py: 0, position: "relative", height: "100%" }}>
@@ -508,10 +611,12 @@ export default function FormBuilderPage() {
           sx={{
             mb: 2,
             display: "flex",
+            flexDirection: isMobile ? "column" : "row",
             justifyContent: "flex-end",
+            gap: 2,
           }}
         >
-          <Box display="flex" gap={2}>
+          <Box display="flex" gap={2} sx={{ width: isMobile ? '100%' : 'auto', justifyContent: isMobile ? "space-between" : "flex-end" }}>
             <Button
               variant="outlined"
               startIcon={<IconSvg name="Eye" color="#E89F17" />}
@@ -523,10 +628,11 @@ export default function FormBuilderPage() {
                 fontWeight: 600,
                 px: 3,
                 py: 1,
+                flex: isMobile ? 1 : "auto",
                 "&:hover": { borderColor: "#E89F17", backgroundColor: "#fffbeb", color: "#E89F17" },
               }}
               onClick={() => {
-                setPreviewMode("desktop");
+                setPreviewMode(isMobile ? "mobile" : "desktop");
                 setPreviewOpen(true);
               }}
             >
@@ -544,6 +650,7 @@ export default function FormBuilderPage() {
                 fontWeight: 600,
                 px: 3,
                 py: 1,
+                flex: isMobile ? 1 : "auto",
                 boxShadow: "none",
                 "&:hover": { backgroundColor: "#d97706", boxShadow: "0px 4px 14px rgba(232, 159, 23, 0.4)" },
               }}
@@ -553,112 +660,49 @@ export default function FormBuilderPage() {
               {isSaving ? "Saving..." : "Save"}
             </Button>
           </Box>
+          
+          {isMobile && (
+            <Button
+              variant="outlined"
+              sx={{
+                borderRadius: "12px",
+                textTransform: "none",
+                borderColor: "#2563eb",
+                color: "#2563eb",
+                fontWeight: 600,
+                px: 3,
+                py: 1.5,
+                width: "100%",
+                borderStyle: "dashed",
+                borderWidth: "2px",
+                "&:hover": { backgroundColor: "#f0fdf4" }
+              }}
+              onClick={() => setToolboxOpen(true)}
+            >
+              + Select Field
+            </Button>
+          )}
         </Box>
 
         <DragDropContext onDragEnd={onDragEnd}>
           <Grid container spacing={3}>
             {/* LEFT TOOLBOX */}
-            <Grid item xs={12} md={3}>
-              <Box
-                sx={{
-                  maxHeight: "calc(100vh - 160px)",
-                  overflowY: "auto",
-                  pr: 1,
-                }}
-              >
-                <Stack spacing={2}>
-                  {TOOLBOX_CATEGORIES.map((cat, i) => (
-                    <Box key={cat.title || i} sx={{ p: 0 }}>
-                      {cat.title && (
-                        <Typography sx={{ mb: 1.5, fontWeight: 600, fontSize: "0.95rem", color: "#1e293b" }}>
-                          {cat.title}
-                        </Typography>
-                      )}
-
-                      <Droppable
-                        droppableId={`toolbox-${cat.title || i}`}
-                        isDropDisabled
-                        direction="horizontal"
-                      >
-                        {(provided) => (
-                          <Box
-                            ref={provided.innerRef}
-                            {...provided.droppableProps}
-                            sx={{
-                              display: "grid",
-                              gridTemplateColumns: "repeat(2, 1fr)",
-                              gap: 2,
-                              mb: 3,
-                            }}
-                          >
-                            {cat.items.map((it, index) => (
-                              <Draggable
-                                key={it.type}
-                                draggableId={`tool-${it.type}`}
-                                index={index}
-                              >
-                                {(dr) => (
-                                  <Box
-                                    ref={dr.innerRef}
-                                    {...dr.draggableProps}
-                                    {...dr.dragHandleProps}
-                                    onClick={() => {
-                                      const tmpl =
-                                        findTemplateByType(it.type);
-                                      if (!tmpl) return;
-                                      const newField = makeField(tmpl);
-                                      setFields((prev) => [
-                                        ...prev,
-                                        newField,
-                                      ]);
-                                      setSelectedFieldId(newField.id);
-                                    }}
-                                    sx={{
-                                      height: 90,
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      flexDirection: "column",
-                                      cursor: "grab",
-                                      borderRadius: 2,
-                                      border: "1px solid #e5e7eb",
-                                      backgroundColor: "#ffffff",
-                                      p: 1,
-                                      textAlign: "center",
-                                      transition: "all 150ms ease",
-                                      "&:hover": {
-                                        borderColor: "#2563eb",
-                                        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-                                        transform: "translateY(-2px)",
-                                      },
-                                    }}
-                                    style={dr.draggableProps.style}
-                                  >
-                                    <Box sx={{ mb: 1 }}>
-                                      <IconSvg name={it.icon} size={22} />
-                                    </Box>
-                                    <Typography
-                                      variant="caption"
-                                      sx={{ fontSize: 13, color: "#475569" }}
-                                    >
-                                      {it.label}
-                                    </Typography>
-                                  </Box>
-                                )}
-                              </Draggable>
-                            ))}
-                            {provided.placeholder}
-                          </Box>
-                        )}
-                      </Droppable>
-                    </Box>
-                  ))}
-                </Stack>
-              </Box>
-            </Grid>
+            {!isMobile && (
+              <Grid item xs={12} md={3}>
+                <Box
+                  sx={{
+                    maxHeight: "calc(100vh - 160px)",
+                    overflowY: "auto",
+                    pr: 1,
+                  }}
+                >
+                  {toolboxContent}
+                </Box>
+              </Grid>
+            )}
 
             {/* RIGHT CANVAS */}
-            <Grid item xs={12} md={9}>
+            <Grid item xs={12} md={isMobile ? 12 : 9}>
               <Box
                 sx={{
                   maxHeight: "calc(100vh - 160px)",
@@ -932,6 +976,25 @@ export default function FormBuilderPage() {
               </Box>
             </Grid>
           </Grid>
+
+          <Drawer
+            anchor="bottom"
+            open={toolboxOpen}
+            onClose={() => setToolboxOpen(false)}
+            PaperProps={{ sx: { borderTopLeftRadius: 16, borderTopRightRadius: 16, pb: 4 } }}
+          >
+            <Box sx={{ p: 3, maxHeight: "80vh", overflowY: "auto" }}>
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Select Field
+                </Typography>
+                <IconButton onClick={() => setToolboxOpen(false)}>
+                  <Typography variant="h5" color="textSecondary" sx={{cursor:"pointer", lineHeight: 1}}>✕</Typography>
+                </IconButton>
+              </Box>
+              {toolboxContent}
+            </Box>
+          </Drawer>
         </DragDropContext>
 
         {/* Edit field dialog */}
@@ -1065,40 +1128,30 @@ export default function FormBuilderPage() {
                         }}
                       />
                     </Box>
+                  </Box>
+                )}
 
+                {/* SECTION HEADER OR SIGNATURE ALIGNMENT */}
+                {(editingField.type === "section_header" || editingField.type === "signature") && (
+                  <Box sx={{ mt: 2 }}>
                     <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
                       Alignment
                     </Typography>
-                    <Box sx={{ display: "flex", gap: 1, bgcolor: "#f3f4f6", p: 0.5, borderRadius: 1 }}>
-                      {[
-                        { val: "left", icon: <FormatAlignLeftIcon /> },
-                        { val: "center", icon: <FormatAlignCenterIcon /> },
-                        { val: "right", icon: <FormatAlignRightIcon /> },
-                      ].map((opt) => (
-                        <IconButton
-                          key={opt.val}
-                          size="small"
+                    <Box sx={{ display: "flex", gap: 1 }}>
+                      {["left", "center", "right"].map((align) => (
+                        <Button
+                          key={align}
+                          variant={editingField.alignment === align ? "contained" : "outlined"}
                           onClick={() =>
                             setEditingField({
                               ...editingField,
-                              alignment: opt.val,
+                              alignment: align,
                             })
                           }
-                          sx={{
-                            flex: 1,
-                            bgcolor:
-                              editingField.alignment === opt.val
-                                ? "#fff"
-                                : "transparent",
-                            boxShadow:
-                              editingField.alignment === opt.val
-                                ? "0 1px 2px rgba(0,0,0,0.1)"
-                                : "none",
-                            "&:hover": { bgcolor: "#fff" },
-                          }}
+                          sx={{ textTransform: "capitalize", flex: 1 }}
                         >
-                          {opt.icon}
-                        </IconButton>
+                          {align}
+                        </Button>
                       ))}
                     </Box>
                   </Box>
@@ -1136,61 +1189,65 @@ export default function FormBuilderPage() {
               </Typography>
 
               <Box sx={{ display: "flex", gap: 1 }}>
-                <Tooltip title="Mobile view">
-                  <IconButton
-                    size="small"
-                    onClick={() => setPreviewMode("mobile")}
-                    sx={{
-                      borderRadius: 2,
-                      border:
-                        previewMode === "mobile"
-                          ? "1px solid #2563eb"
-                          : "1px solid transparent",
-                      backgroundColor:
-                        previewMode === "mobile"
-                          ? "rgba(37,99,235,0.08)"
-                          : "transparent",
-                    }}
-                  >
-                    <SmartphoneIcon
-                      fontSize="small"
-                      sx={{
-                        color:
-                          previewMode === "mobile"
-                            ? "#2563eb"
-                            : "#6b7280",
-                      }}
-                    />
-                  </IconButton>
-                </Tooltip>
+                {!isMobile && (
+                  <>
+                    <Tooltip title="Mobile view">
+                      <IconButton
+                        size="small"
+                        onClick={() => setPreviewMode("mobile")}
+                        sx={{
+                          borderRadius: 2,
+                          border:
+                            previewMode === "mobile"
+                              ? "1px solid #2563eb"
+                              : "1px solid transparent",
+                          backgroundColor:
+                            previewMode === "mobile"
+                              ? "rgba(37,99,235,0.08)"
+                              : "transparent",
+                        }}
+                      >
+                        <SmartphoneIcon
+                          fontSize="small"
+                          sx={{
+                            color:
+                              previewMode === "mobile"
+                                ? "#2563eb"
+                                : "#6b7280",
+                          }}
+                        />
+                      </IconButton>
+                    </Tooltip>
 
-                <Tooltip title="Desktop view">
-                  <IconButton
-                    size="small"
-                    onClick={() => setPreviewMode("desktop")}
-                    sx={{
-                      borderRadius: 2,
-                      border:
-                        previewMode === "desktop"
-                          ? "1px solid #2563eb"
-                          : "1px solid transparent",
-                      backgroundColor:
-                        previewMode === "desktop"
-                          ? "rgba(37,99,235,0.08)"
-                          : "transparent",
-                    }}
-                  >
-                    <LaptopMacIcon
-                      fontSize="small"
-                      sx={{
-                        color:
-                          previewMode === "desktop"
-                            ? "#2563eb"
-                            : "#6b7280",
-                      }}
-                    />
-                  </IconButton>
-                </Tooltip>
+                    <Tooltip title="Desktop view">
+                      <IconButton
+                        size="small"
+                        onClick={() => setPreviewMode("desktop")}
+                        sx={{
+                          borderRadius: 2,
+                          border:
+                            previewMode === "desktop"
+                              ? "1px solid #2563eb"
+                              : "1px solid transparent",
+                          backgroundColor:
+                            previewMode === "desktop"
+                              ? "rgba(37,99,235,0.08)"
+                              : "transparent",
+                        }}
+                      >
+                        <LaptopMacIcon
+                          fontSize="small"
+                          sx={{
+                            color:
+                              previewMode === "desktop"
+                                ? "#2563eb"
+                                : "#6b7280",
+                          }}
+                        />
+                      </IconButton>
+                    </Tooltip>
+                  </>
+                )}
               </Box>
             </Box>
 

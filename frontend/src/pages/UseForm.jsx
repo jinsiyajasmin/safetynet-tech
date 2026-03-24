@@ -21,6 +21,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../services/api";
 import Layout from "../components/Layout";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
+import { downloadWordFromForm } from "../utils/wordGenerator";
 import { useRef } from "react";
 
 // helper to build absolute URL for logos
@@ -95,8 +96,14 @@ export default function UseForm() {
                 window.close();
             });
         }, 800);
+    } else if (!loading && action === "download_word" && form) {
+        setDownloading(true);
+        downloadWordFromForm(form, values, `CustomForm_${form.title.replace(/\s+/g, '_')}`, () => {
+            setDownloading(false);
+            window.close();
+        });
     }
-  }, [loading, action, form]);
+  }, [loading, action, form, values]);
 
   const handleChange = (fieldId, value) => {
     setValues((prev) => ({ ...prev, [fieldId]: value }));
@@ -178,7 +185,7 @@ export default function UseForm() {
       <Box sx={{ flex: 1, px: { xs: 2, md: 5 }, py: 4, overflowY: "auto" }}>
 
 
-        <Paper ref={containerRef} sx={{ p: 3, maxWidth: 900, position: 'relative', display: 'flex', flexDirection: 'column', minHeight: action === "download" ? '1414px' : 'auto', boxSizing: 'border-box' }}>
+        <Paper ref={containerRef} sx={{ p: 3, maxWidth: 900, position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 'auto', boxSizing: 'border-box' }}>
           {action === "download" && (
             <Typography sx={{ position: 'absolute', top: 24, right: 24, fontWeight: 500, color: 'text.secondary', fontSize: '0.9rem' }}>
                 Date: {new Date().toLocaleDateString('en-GB')}
@@ -318,11 +325,57 @@ export default function UseForm() {
               )}
 
               {/* Signature Renderer */}
-              {f.type === "signature" && (
-                <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 2, height: 120, bgcolor: "#f8fafc", display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                  <Typography color="text.secondary">Tap to sign (Implementation pending)</Typography>
-                </Box>
-              )}
+              {f.type === "signature" && (() => {
+                const alignMap = { left: 'flex-start', center: 'center', right: 'flex-end' };
+                const justifyContent = alignMap[f.alignment] || 'flex-start';
+                return (
+                    <Box sx={{ display: 'flex', justifyContent }}>
+                        <Box sx={{ width: '300px', maxWidth: '100%' }}>
+                            {(values[f.id] || values[f.id + "_preview"]) ? (
+                                <Box sx={{ mb: 1, position: 'relative', display: 'inline-block' }}>
+                                    <Box
+                                        component="img"
+                                        src={
+                                            values[f.id + "_preview"] ||
+                                            (typeof values[f.id] === 'string' ? values[f.id] : null) ||
+                                            ""
+                                        }
+                                        alt="signature"
+                                        sx={{ maxWidth: '100%', maxHeight: 150, borderRadius: 2, border: '1px solid #ddd' }}
+                                    />
+                                    {action !== "download" && action !== "download_word" && (
+                                        <Button size="small" color="error" onClick={() => {
+                                            setValues(prev => {
+                                                const next = { ...prev };
+                                                delete next[f.id];
+                                                delete next[f.id + "_preview"];
+                                                return next;
+                                            });
+                                        }} sx={{ display: 'block', mt: 1 }}>Remove</Button>
+                                    )}
+                                </Box>
+                            ) : (
+                                action !== "download" && action !== "download_word" ? (
+                                    <Button variant="outlined" component="label" fullWidth sx={{ height: 120, borderStyle: 'dashed', borderRadius: 2 }}>
+                                        Upload Signature
+                                        <input hidden accept="image/*" type="file" onChange={(e) => {
+                                            const file = e.target.files[0];
+                                            if (file) {
+                                                const url = URL.createObjectURL(file);
+                                                setValues(prev => ({ ...prev, [f.id]: file, [f.id + "_preview"]: url }));
+                                            }
+                                        }} />
+                                    </Button>
+                                ) : (
+                                    <Box sx={{ border: "1px solid #cbd5e1", borderRadius: 2, height: 120, width: "100%", bgcolor: "#fff", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Typography color="text.secondary">Signature (Pending)</Typography>
+                                    </Box>
+                                )
+                            )}
+                        </Box>
+                    </Box>
+                );
+              })()}
             </Box>
           ))}
 

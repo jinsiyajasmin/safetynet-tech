@@ -101,7 +101,7 @@ export default function FormRenderer({
 
             {form.fields.map((f) => (
                 <Box key={f.id} sx={{ mb: 3 }}>
-                    {f.type !== "section_header" && (
+                    {f.type !== "section_header" && !(f.type === "image_upload" && readOnly) && (
                         <Typography sx={{ fontWeight: 600, mb: 1.5 }}>
                             {f.label} {f.required && !readOnly && "*"}
                         </Typography>
@@ -283,12 +283,55 @@ export default function FormRenderer({
                         </Box>
                     )}
 
-                    {/* Signature Renderer (Placeholder) */}
-                    {f.type === "signature" && (
-                        <Box sx={{ border: "1px solid #cbd5e1", borderRadius: "12px", height: 120, bgcolor: readOnly ? "#fff" : "#f8fafc", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Typography color="text.secondary">{values[f.id] ? "Signed" : "Signature (Pending)"}</Typography>
-                        </Box>
-                    )}
+                    {/* Signature Renderer */}
+                    {f.type === "signature" && (() => {
+                        const alignMap = { left: 'flex-start', center: 'center', right: 'flex-end' };
+                        const justifyContent = alignMap[f.alignment] || 'flex-start';
+                        return (
+                            <Box sx={{ display: 'flex', justifyContent }}>
+                                <Box sx={{ width: '300px', maxWidth: '100%' }}>
+                                    {(values[f.id] || values[f.id + "_preview"]) ? (
+                                        <Box sx={{ mb: 1, position: 'relative', display: 'inline-block' }}>
+                                            <Box
+                                                component="img"
+                                                src={
+                                                    values[f.id + "_preview"] ||
+                                                    (typeof values[f.id] === 'string' ? values[f.id] : null) ||
+                                                    ""
+                                                }
+                                                alt="signature"
+                                                sx={{ maxWidth: '100%', maxHeight: 150, borderRadius: 2, border: '1px solid #ddd' }}
+                                            />
+                                            {!readOnly && (
+                                                <Button size="small" color="error" onClick={() => {
+                                                    handleChange(f.id, null);
+                                                    handleChange(f.id + "_preview", null);
+                                                }} sx={{ display: 'block', mt: 1 }}>Remove</Button>
+                                            )}
+                                        </Box>
+                                    ) : (
+                                        !readOnly ? (
+                                            <Button variant="outlined" component="label" fullWidth sx={{ height: 120, borderStyle: 'dashed', borderRadius: "12px" }}>
+                                                Upload Signature
+                                                <input hidden accept="image/*" type="file" onChange={(e) => {
+                                                    const file = e.target.files[0];
+                                                    if (file) {
+                                                        const url = URL.createObjectURL(file);
+                                                        handleChange(f.id, file); // Store File object
+                                                        handleChange(f.id + "_preview", url); // Store preview URL
+                                                    }
+                                                }} />
+                                            </Button>
+                                        ) : (
+                                            <Box sx={{ border: "1px solid #cbd5e1", borderRadius: "12px", height: 120, width: "100%", bgcolor: "#fff", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <Typography color="text.secondary">Signature (Pending)</Typography>
+                                            </Box>
+                                        )
+                                    )}
+                                </Box>
+                            </Box>
+                        );
+                    })()}
 
                 </Box>
             ))}

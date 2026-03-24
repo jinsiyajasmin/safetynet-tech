@@ -25,8 +25,6 @@ export default function LoginPage() {
     password: "",
     remember: true,
     showPassword: false,
-    requireOtp: false,
-    otp: "",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -57,7 +55,6 @@ export default function LoginPage() {
       const payload = {
         email: values.email.trim().toLowerCase(),
         password: values.password,
-        otp: values.otp,
       };
 
       // DEBUG: inspect baseURL so we know final URL
@@ -74,23 +71,6 @@ export default function LoginPage() {
       // OR { success: true, setup2Fa: true, token, ... }
 
       if (res?.data?.success) {
-        if (res.data.requireOtp) {
-          setValues(v => ({ ...v, requireOtp: true }));
-          setLoading(false);
-          setSnack({ open: true, msg: "Please enter the OTP from your authenticator app.", severity: "info" });
-          return;
-        }
-
-        if (res.data.setup2Fa) {
-          // Store temp token so they can hit setup endpoint
-          if (res.data.token) {
-            if (values.remember) localStorage.setItem('token', res.data.token);
-            else sessionStorage.setItem('token', res.data.token);
-          }
-          navigate("/setup-2fa");
-          return;
-        }
-
         if (res.data.token) {
           // store token and user
           const user = res.data.user;
@@ -165,19 +145,6 @@ export default function LoginPage() {
                   ),
                 }}
               />
-
-              {values.requireOtp && (
-                <TextField
-                  label="Authenticator Code (OTP)"
-                  value={values.otp || ""}
-                  onChange={handleChange("otp")}
-                  fullWidth
-                  margin="normal"
-                  required
-                  autoFocus
-                  placeholder="123456"
-                />
-              )}
 
               <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mt: 1 }}>
                 <FormControlLabel control={<Checkbox checked={values.remember} onChange={handleChange("remember")} />} label="Remember me" sx={{ ml: 0 }} />

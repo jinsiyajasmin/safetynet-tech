@@ -490,7 +490,7 @@ export default function ManagementSiteInspectionForm() {
                                         />)}
                                     </Box>
                                     <Box sx={{ width: { xs: '100%', md: '40%' } }}>
-                                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{measures[index].comments || ' '}</Typography>) : (<TextField multiline 
+                                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{measures[index].comments || ' '}</Typography>) : (<TextField 
                                             fullWidth 
                                             multiline
                                             minRows={2}

@@ -436,7 +436,7 @@ export default function GenericReportPage({ pageTitle }) {
         <Layout pageTitle={pageTitle}>
             <Box sx={{ flex: 1, px: 4, py: 4, height: "100%", overflowY: "auto" }}>
                 <Box sx={{ maxWidth: 1000, mx: "auto" }}>
-                    <Box sx={{ display: "flex", justifyContent: "space-between", mb: 4, alignItems: "center" }}>
+                    <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, justifyContent: "space-between", mb: 4, alignItems: { xs: "flex-start", sm: "center" }, gap: { xs: 2.5, sm: 0 } }}>
                         <Box>
                             <Typography variant="h5" sx={{ fontWeight: 600, color: isDarkMode ? "#F9FAFB" : "#111827", }}>
                                 All Reports - {pageTitle}
@@ -446,7 +446,7 @@ export default function GenericReportPage({ pageTitle }) {
                             </Typography>
                         </Box>
                         {(viewMode !== "initial") && (
-                            <Box sx={{ display: 'flex', gap: 2 }}>
+                            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                                 {viewMode === "viewed" && (
                                     <Button 
                                         startIcon={<Download size={18} />} 
@@ -489,7 +489,7 @@ export default function GenericReportPage({ pageTitle }) {
                             </Box>
                         )}
                         {viewMode === "initial" && (
-                            <Box sx={{ display: "flex", gap: 2 }}>
+                            <Box sx={{ display: "flex", gap: 2, flexWrap: 'wrap' }}>
                                 <Button 
                                     variant="contained" 
                                     onClick={() => setDialogOpen(true)}

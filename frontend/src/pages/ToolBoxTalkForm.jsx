@@ -348,7 +348,7 @@ export default function ToolBoxTalkForm() {
                                 Consultation (record all consultation comments raised during the tool box talk)
                             </Typography>
                         </Box>
-                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{consultation || ' '}</Typography>) : (<TextField multiline 
+                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{consultation || ' '}</Typography>) : (<TextField 
                             fullWidth 
                             multiline 
                             minRows={4} 
