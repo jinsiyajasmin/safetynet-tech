@@ -41,7 +41,7 @@ export const downloadPdfFromRef = async (printRef, fileName = "document", onComp
         
         heightLeft -= (pageHeight - margin * 2);
 
-        while (heightLeft > 0) {
+        while (heightLeft > 2) {
             position -= (pageHeight - margin * 2);
             pdf.addPage();
             pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);

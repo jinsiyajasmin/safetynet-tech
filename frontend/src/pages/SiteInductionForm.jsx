@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useCompanyLogo } from "../hooks/useCompanyLogo";
 import { Box, Typography, Button, Paper, TextField, CircularProgress, IconButton } from "@mui/material";
 import { ArrowLeft } from "lucide-react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
@@ -10,6 +11,7 @@ import { downloadPdfFromRef } from "../utils/pdfGenerator";
 import { useRef } from "react";
 
 export default function SiteInductionForm() {
+  const logoUrl = useCompanyLogo();
     const { isDarkMode } = useTheme();
     const { id } = useParams();
     const navigate = useNavigate();
@@ -24,7 +26,11 @@ export default function SiteInductionForm() {
     const [downloading, setDownloading] = useState(false);
 
     // Header Data
-    const [docInfo, setDocInfo] = useState({ date: "", docNo: "", approvedBy: "" });
+    const [docInfo, setDocInfo] = useState({ date: "", docNo: "", approvedBy: "" ,
+        logo: ""
+,
+        logoRight: ""
+    });
     const [headerData, setHeaderData] = useState({
         projectTitle: "",
         scopeOfWork: "",
@@ -124,12 +130,12 @@ export default function SiteInductionForm() {
     const secondaryHeaderBgColor = isDarkMode ? "rgba(255,255,255,0.1)" : "#E5E7EB";
     const textColor = isDarkMode ? "#F9FAFB" : "#111827";
 
-    if (loading) return <Layout><Box sx={{display:'flex', justifyContent:'center', py:10}}><CircularProgress/></Box></Layout>;
+    if (loading) return <Layout><Box sx={{display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, justifyContent:'center', py:10}}><CircularProgress/></Box></Layout>;
 
     return (
         <Layout>
             <Box sx={{ mb: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', gap: 2 }}>
                     <IconButton onClick={() => siteId ? navigate('/sitepack-management', { state: { siteId, moduleTitle: category } }) : navigate('/general-forms')} sx={{ bgcolor: isDarkMode ? '#374151' : '#E5E7EB' }}>
                         <ArrowLeft size={20} color={isDarkMode ? '#F9FAFB' : '#111827'} />
                     </IconButton>
@@ -155,14 +161,14 @@ export default function SiteInductionForm() {
             </Box>
 
             <Box sx={{ width: '100%', overflowX: 'auto', mb: 8 }}>
-                <Box sx={{ minWidth: { xs: "1100px", md: "1100px" }, display: 'flex', justifyContent: 'center', px: { xs: 2, md: 0 } }}>
+                <Box sx={{ minWidth: (downloading || action === 'download') ? "1000px" : "100%", display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, justifyContent: 'center', px: { xs: 2, md: 0 } }}>
                     {/* Form Container */}
                     <Paper 
                         ref={containerRef}
                         elevation={3} 
                         sx={{ 
                             width: "100%", 
-                            maxWidth: "1200px", 
+                            maxWidth: "1000px", 
                             p: 4, 
                             bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF", 
                             color: textColor,
@@ -171,64 +177,94 @@ export default function SiteInductionForm() {
                         }}
                     >
                         {/* Top Header Logos and Document Info */}
-                        <Box sx={{ display: 'flex', border: `1px solid ${borderColor}`, mb: 4, width: '100%', maxWidth: '800px', mx: 'auto' }}>
-                        {/* Left Logo */}
-                        <Box sx={{ width: '30%', p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: `1px solid ${borderColor}` }}>
-                            <Box component="img" src="/Logo02.png" alt="Construct Lifts" sx={{ width: '80%', objectFit: 'contain' }} />
+                        <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, border: `1px solid ${borderColor}`, mb: 4, width: '100%', maxWidth: '800px', mx: 'auto' }}>
+                                                {/* Left Logo / Upload */}
+                        <Box sx={{ width: { xs: '100%', md: '30%' }, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRight: `1px solid ${borderColor}` }}>
+                            {docInfo.logo ? (
+                                <>
+                                    <Box component="img" src={docInfo.logo} alt="Uploaded Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: (action !== 'download') ? 1 : 0 }} />
+                                    {(action !== 'download') && (
+                                        <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
+                                            Change Logo
+                                            <input type="file" hidden accept="image/*" onChange={(e) => {
+                                                const file = e.target.files[0];
+                                                if (file) {
+                                                    const reader = new FileReader();
+                                                    reader.onload = (ev) => setDocInfo({...docInfo, logo: ev.target.result});
+                                                    reader.readAsDataURL(file);
+                                                }
+                                            }} />
+                                        </Button>
+                                    )}
+                                </>
+                            ) : (
+                                (action !== 'download') ? (
+                                    <Button variant="outlined" component="label" size="small">
+                                        Upload Logo
+                                        <input type="file" hidden accept="image/*" onChange={(e) => {
+                                            const file = e.target.files[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onload = (ev) => setDocInfo({...docInfo, logo: ev.target.result});
+                                                reader.readAsDataURL(file);
+                                            }
+                                        }} />
+                                    </Button>
+                                ) : (
+                                    <Typography variant="caption" color="text.secondary">No Logo</Typography>
+                                )
+                            )}
                         </Box>
                         
                         {/* Center Info */}
-                        <Box sx={{ width: '40%', display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
-                            <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', p: 1, borderBottom: `1px solid ${borderColor}` }}>
+                        <Box sx={{ width: { xs: '100%', md: '40%' }, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
+                            <Box sx={{ flex: 1, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', p: 1, borderBottom: `1px solid ${borderColor}` }}>
                                 SITE INDUCTION REGISTER
                             </Box>
-                            <Box sx={{ display: 'flex', borderBottom: `1px solid ${borderColor}` }}>
-                                <Box sx={{ width: '60%', p: 1, borderRight: `1px solid ${borderColor}` }}>Date</Box>
-                                <Box sx={{ width: '40%', p: 0 }}>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.date} onChange={e => setDocInfo({...docInfo, date: e.target.value})} />
+                            <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
+                                <Box sx={{ width: { xs: '100%', md: '60%' }, p: 1, borderRight: `1px solid ${borderColor}` }}>Date</Box>
+                                <Box sx={{ width: { xs: '100%', md: '40%' }, p: 0 }}>
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.date || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.date} onChange={e => setDocInfo({...docInfo, date: e.target.value})} />)}
                                 </Box>
                             </Box>
-                            <Box sx={{ display: 'flex', borderBottom: `1px solid ${borderColor}` }}>
-                                <Box sx={{ width: '60%', p: 1, borderRight: `1px solid ${borderColor}` }}>Document No. & Rev</Box>
-                                <Box sx={{ width: '40%', p: 0 }}>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.docNo} onChange={e => setDocInfo({...docInfo, docNo: e.target.value})} />
+                            <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
+                                <Box sx={{ width: { xs: '100%', md: '60%' }, p: 1, borderRight: `1px solid ${borderColor}` }}>Document No. & Rev</Box>
+                                <Box sx={{ width: { xs: '100%', md: '40%' }, p: 0 }}>
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.docNo || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.docNo} onChange={e => setDocInfo({...docInfo, docNo: e.target.value})} />)}
                                 </Box>
                             </Box>
-                            <Box sx={{ display: 'flex' }}>
-                                <Box sx={{ width: '60%', p: 0, borderRight: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center' }}>
+                            <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
+                                <Box sx={{ width: { xs: '100%', md: '60%' }, p: 0, borderRight: `1px solid ${borderColor}`, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center' }}>
                                     <Box sx={{ pl: 1, pr: 0.5, whiteSpace: 'nowrap' }}>Approved by</Box>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 0.5, py: 1, height: '100%' } }} value={docInfo.approvedBy} onChange={e => setDocInfo({...docInfo, approvedBy: e.target.value})} />
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.approvedBy || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 0.5, py: 1, height: '100%' } }} value={docInfo.approvedBy} onChange={e => setDocInfo({...docInfo, approvedBy: e.target.value})} />)}
                                 </Box>
-                                <Box sx={{ width: '40%', p: 1 }}>Page 1 of 1</Box>
+                                <Box sx={{ width: { xs: '100%', md: '40%' }, p: 1 }}>Page 1 of 1</Box>
                             </Box>
                         </Box>
 
-                        {/* Right Logo */}
-                        <Box sx={{ width: '30%', p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Box component="img" src="/Logo02.png" alt="Construct Lifts" sx={{ width: '80%', objectFit: 'contain' }} />
-                        </Box>
+                        
                     </Box>
 
                     {/* Briefing Info Header */}
-                    <Box sx={{ display: 'flex', border: `1px solid ${borderColor}`, borderBottom: 'none' }}>
-                        <Box sx={{ width: '25%', p: cellPadding, fontWeight: 'bold', borderRight: `1px solid ${borderColor}`, bgcolor: headerBgColor }}>Project title</Box>
-                        <Box sx={{ width: '35%', display: 'flex', borderRight: `1px solid ${borderColor}` }}>
-                            <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, p: cellPadding } }} value={headerData.projectTitle} onChange={handleHeaderChange("projectTitle")} />
+                    <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, border: `1px solid ${borderColor}`, borderBottom: 'none' }}>
+                        <Box sx={{ width: { xs: '100%', md: '25%' }, p: cellPadding, fontWeight: 'bold', borderRight: `1px solid ${borderColor}`, bgcolor: headerBgColor }}>Project title</Box>
+                        <Box sx={{ width: { xs: '100%', md: '35%' }, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderRight: `1px solid ${borderColor}` }}>
+                            {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{headerData.projectTitle || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, p: cellPadding } }} value={headerData.projectTitle} onChange={handleHeaderChange("projectTitle")} />)}
                         </Box>
-                        <Box sx={{ width: '15%', p: cellPadding, fontWeight: 'bold', borderRight: `1px solid ${borderColor}`, bgcolor: headerBgColor }}>Scope of Work</Box>
-                        <Box sx={{ width: '25%', display: 'flex' }}>
-                            <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, p: cellPadding } }} value={headerData.scopeOfWork} onChange={handleHeaderChange("scopeOfWork")} />
+                        <Box sx={{ width: { xs: '100%', md: '15%' }, p: cellPadding, fontWeight: 'bold', borderRight: `1px solid ${borderColor}`, bgcolor: headerBgColor }}>Scope of Work</Box>
+                        <Box sx={{ width: { xs: '100%', md: '25%' }, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
+                            {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{headerData.scopeOfWork || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, p: cellPadding } }} value={headerData.scopeOfWork} onChange={handleHeaderChange("scopeOfWork")} />)}
                         </Box>
                     </Box>
 
-                    <Box sx={{ display: 'flex', border: `1px solid ${borderColor}` }}>
-                        <Box sx={{ width: '25%', p: cellPadding, fontWeight: 'bold', borderRight: `1px solid ${borderColor}`, bgcolor: headerBgColor }}>Location</Box>
-                        <Box sx={{ width: '35%', display: 'flex', borderRight: `1px solid ${borderColor}` }}>
-                            <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, p: cellPadding } }} value={headerData.location} onChange={handleHeaderChange("location")} />
+                    <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, border: `1px solid ${borderColor}` }}>
+                        <Box sx={{ width: { xs: '100%', md: '25%' }, p: cellPadding, fontWeight: 'bold', borderRight: `1px solid ${borderColor}`, bgcolor: headerBgColor }}>Location</Box>
+                        <Box sx={{ width: { xs: '100%', md: '35%' }, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderRight: `1px solid ${borderColor}` }}>
+                            {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{headerData.location || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, p: cellPadding } }} value={headerData.location} onChange={handleHeaderChange("location")} />)}
                         </Box>
-                        <Box sx={{ width: '15%', p: cellPadding, fontWeight: 'bold', borderRight: `1px solid ${borderColor}`, bgcolor: headerBgColor }}>Contract no.</Box>
-                        <Box sx={{ width: '25%', display: 'flex' }}>
-                            <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, p: cellPadding } }} value={headerData.contractNo} onChange={handleHeaderChange("contractNo")} />
+                        <Box sx={{ width: { xs: '100%', md: '15%' }, p: cellPadding, fontWeight: 'bold', borderRight: `1px solid ${borderColor}`, bgcolor: headerBgColor }}>Contract no.</Box>
+                        <Box sx={{ width: { xs: '100%', md: '25%' }, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
+                            {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{headerData.contractNo || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, p: cellPadding } }} value={headerData.contractNo} onChange={handleHeaderChange("contractNo")} />)}
                         </Box>
                     </Box>
 
@@ -238,64 +274,107 @@ export default function SiteInductionForm() {
 
                     {/* Signatures Table */}
                     <Box sx={{ border: `1px solid ${borderColor}`, mb: 4 }}>
-                        <Box sx={{ display: 'flex', borderBottom: `1px solid ${borderColor}`, fontWeight: 'bold', textAlign: 'center', fontSize: '0.8rem', bgcolor: headerBgColor }}>
-                            <Box sx={{ width: '10%', p: cellPadding, borderRight: `1px solid ${borderColor}` }}>Date</Box>
-                            <Box sx={{ width: '15%', p: cellPadding, borderRight: `1px solid ${borderColor}` }}>Name<br/>(capitals)</Box>
-                            <Box sx={{ width: '12%', p: cellPadding, borderRight: `1px solid ${borderColor}` }}>Signature</Box>
-                            <Box sx={{ width: '13%', p: cellPadding, borderRight: `1px solid ${borderColor}` }}>Employed by<br/><span style={{color: '#FF6B6B', fontSize: '0.7rem'}}>(this column to be completed by Subcontractors only)</span></Box>
-                            <Box sx={{ width: '15%', p: cellPadding, borderRight: `1px solid ${borderColor}` }}>Occupation</Box>
+                        <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}`, fontWeight: 'bold', textAlign: 'center', fontSize: '0.8rem', bgcolor: headerBgColor }}>
+                            <Box sx={{ width: { xs: '100%', md: '10%' }, p: cellPadding, borderRight: `1px solid ${borderColor}` }}>Date</Box>
+                            <Box sx={{ width: { xs: '100%', md: '15%' }, p: cellPadding, borderRight: `1px solid ${borderColor}` }}>Name<br/>(capitals)</Box>
+                            <Box sx={{ width: { xs: '100%', md: '12%' }, p: cellPadding, borderRight: `1px solid ${borderColor}` }}>Signature</Box>
+                            <Box sx={{ width: { xs: '100%', md: '13%' }, p: cellPadding, borderRight: `1px solid ${borderColor}` }}>Employed by<br/><span style={{color: '#FF6B6B', fontSize: '0.7rem'}}>(this column to be completed by Subcontractors only)</span></Box>
+                            <Box sx={{ width: { xs: '100%', md: '15%' }, p: cellPadding, borderRight: `1px solid ${borderColor}` }}>Occupation</Box>
                             
-                            <Box sx={{ width: '10%', display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
+                            <Box sx={{ width: { xs: '100%', md: '10%' }, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
                                 <Box sx={{ flex: 1, p: cellPadding, borderBottom: `1px solid ${borderColor}` }}>Approved<br/>competency<br/>card/ cert<br/><span style={{fontSize: '0.7rem', fontWeight: 'normal'}}>(i.e. CSCS/CPCS)</span></Box>
-                                <Box sx={{ display: 'flex', height: '25px' }}>
-                                    <Box sx={{ width: '50%', borderRight: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FF6B6B' }}>Yes</Box>
-                                    <Box sx={{ width: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FF6B6B' }}>No</Box>
+                                <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, height: '25px' }}>
+                                    <Box sx={{ width: { xs: '100%', md: '50%' }, borderRight: `1px solid ${borderColor}`, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', justifyContent: 'center', color: '#FF6B6B' }}>Yes</Box>
+                                    <Box sx={{ width: { xs: '100%', md: '50%' }, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', justifyContent: 'center', color: '#FF6B6B' }}>No</Box>
                                 </Box>
                             </Box>
 
-                            <Box sx={{ width: '15%', p: cellPadding, borderRight: `1px solid ${borderColor}` }}>Type of card held<br/><span style={{fontSize: '0.7rem', fontWeight: 'normal', fontStyle: 'italic'}}>(Plus, Card number and<br/>Expiry Date)</span></Box>
-                            <Box sx={{ width: '10%', p: cellPadding }}>Person giving induction</Box>
+                            <Box sx={{ width: { xs: '100%', md: '15%' }, p: cellPadding, borderRight: `1px solid ${borderColor}` }}>Type of card held<br/><span style={{fontSize: '0.7rem', fontWeight: 'normal', fontStyle: 'italic'}}>(Plus, Card number and<br/>Expiry Date)</span></Box>
+                            <Box sx={{ width: { xs: '100%', md: '10%' }, p: cellPadding }}>Person giving induction</Box>
                         </Box>
                         
                         {attendees.map((att, index) => (
-                            <Box key={index} sx={{ display: 'flex', borderBottom: index < 9 ? `1px solid ${borderColor}` : 'none' }}>
-                                <Box sx={{ width: '10%', borderRight: `1px solid ${borderColor}` }}>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem' } }} value={att.date} onChange={handleAttendeeChange(index, "date")} />
+                            <Box key={index} sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: index < 9 ? `1px solid ${borderColor}` : 'none' }}>
+                                <Box sx={{ width: { xs: '100%', md: '10%' }, borderRight: `1px solid ${borderColor}` }}>
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{att.date || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem' } }} value={att.date} onChange={handleAttendeeChange(index, "date")} />)}
                                 </Box>
-                                <Box sx={{ width: '15%', borderRight: `1px solid ${borderColor}` }}>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem' } }} value={att.name} onChange={handleAttendeeChange(index, "name")} />
+                                <Box sx={{ width: { xs: '100%', md: '15%' }, borderRight: `1px solid ${borderColor}` }}>
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{att.name || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem' } }} value={att.name} onChange={handleAttendeeChange(index, "name")} />)}
                                 </Box>
-                                <Box sx={{ width: '12%', borderRight: `1px solid ${borderColor}` }}>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem' } }} value={att.signature} onChange={handleAttendeeChange(index, "signature")} />
+                                <Box sx={{ width: { xs: '100%', md: '12%' }, borderRight: `1px solid ${borderColor}` }}>
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{att.signature || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem' } }} value={att.signature} onChange={handleAttendeeChange(index, "signature")} />)}
                                 </Box>
-                                <Box sx={{ width: '13%', borderRight: `1px solid ${borderColor}` }}>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem' } }} value={att.employedBy} onChange={handleAttendeeChange(index, "employedBy")} />
+                                <Box sx={{ width: { xs: '100%', md: '13%' }, borderRight: `1px solid ${borderColor}` }}>
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{att.employedBy || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem' } }} value={att.employedBy} onChange={handleAttendeeChange(index, "employedBy")} />)}
                                 </Box>
-                                <Box sx={{ width: '15%', borderRight: `1px solid ${borderColor}` }}>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem' } }} value={att.occupation} onChange={handleAttendeeChange(index, "occupation")} />
+                                <Box sx={{ width: { xs: '100%', md: '15%' }, borderRight: `1px solid ${borderColor}` }}>
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{att.occupation || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem' } }} value={att.occupation} onChange={handleAttendeeChange(index, "occupation")} />)}
                                 </Box>
 
                                 {/* Competency Card Yes/No split */}
-                                <Box sx={{ width: '10%', display: 'flex', borderRight: `1px solid ${borderColor}` }}>
-                                    <Box sx={{ width: '50%', borderRight: `1px solid ${borderColor}` }}>
-                                        <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem', textAlign: 'center' } }} value={att.competencyCard === "Yes" ? "✓" : ""} onClick={() => handleAttendeeChange(index, "competencyCard")({target:{value: "Yes"}})} />
+                                <Box sx={{ width: { xs: '100%', md: '10%' }, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderRight: `1px solid ${borderColor}` }}>
+                                    <Box sx={{ width: { xs: '100%', md: '50%' }, borderRight: `1px solid ${borderColor}` }}>
+                                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'center' }}>{att.competencyCard === "Yes" ? "✓" : "" || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem', textAlign: 'center' } }} value={att.competencyCard === "Yes" ? "✓" : ""} onClick={() => handleAttendeeChange(index, "competencyCard")({target:{value: "Yes"}})} />)}
                                     </Box>
-                                    <Box sx={{ width: '50%' }}>
-                                        <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem', textAlign: 'center' } }} value={att.competencyCard === "No" ? "✓" : ""} onClick={() => handleAttendeeChange(index, "competencyCard")({target:{value: "No"}})} />
+                                    <Box sx={{ width: { xs: '100%', md: '50%' } }}>
+                                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'center' }}>{att.competencyCard === "No" ? "✓" : "" || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem', textAlign: 'center' } }} value={att.competencyCard === "No" ? "✓" : ""} onClick={() => handleAttendeeChange(index, "competencyCard")({target:{value: "No"}})} />)}
                                     </Box>
                                 </Box>
 
-                                <Box sx={{ width: '15%', borderRight: `1px solid ${borderColor}` }}>
-                                    <TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem' } }} value={att.cardDetails} onChange={handleAttendeeChange(index, "cardDetails")} />
+                                <Box sx={{ width: { xs: '100%', md: '15%' }, borderRight: `1px solid ${borderColor}` }}>
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{att.cardDetails || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem' } }} value={att.cardDetails} onChange={handleAttendeeChange(index, "cardDetails")} />)}
                                 </Box>
-                                <Box sx={{ width: '10%' }}>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem' } }} value={att.inductor} onChange={handleAttendeeChange(index, "inductor")} />
+                                <Box sx={{ width: { xs: '100%', md: '10%' } }}>
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{att.inductor || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5, height: '100%', fontSize: '0.85rem' } }} value={att.inductor} onChange={handleAttendeeChange(index, "inductor")} />)}
                                 </Box>
                             </Box>
                         ))}
                     </Box>
 
-                </Paper>
+                                        {/* Signature Section */}
+                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 6, mb: 2 }}>
+                            <Box sx={{ width: '250px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                {docInfo.signature ? (
+                                    <>
+                                        <Box component="img" src={docInfo.signature} alt="Signature" sx={{ width: '100%', maxHeight: '80px', objectFit: 'contain', borderBottom: `1px solid ${borderColor}`, mb: 1 }} />
+                                        {(action !== 'download') && (
+                                            <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
+                                                Change Signature
+                                                <input type="file" hidden accept="image/*" onChange={(e) => {
+                                                    const file = e.target.files[0];
+                                                    if (file) {
+                                                        const reader = new FileReader();
+                                                        reader.onload = (ev) => setDocInfo({...docInfo, signature: ev.target.result});
+                                                        reader.readAsDataURL(file);
+                                                    }
+                                                }} />
+                                            </Button>
+                                        )}
+                                    </>
+                                ) : (
+                                    (action !== 'download') ? (
+                                        <Box sx={{ width: '100%', height: '60px', borderBottom: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1 }}>
+                                            <Button variant="outlined" component="label" size="small">
+                                                Upload Signature
+                                                <input type="file" hidden accept="image/*" onChange={(e) => {
+                                                    const file = e.target.files[0];
+                                                    if (file) {
+                                                        const reader = new FileReader();
+                                                        reader.onload = (ev) => setDocInfo({...docInfo, signature: ev.target.result});
+                                                        reader.readAsDataURL(file);
+                                                    }
+                                                }} />
+                                            </Button>
+                                        </Box>
+                                    ) : (
+                                        <Box sx={{ width: '100%', height: '60px', borderBottom: `1px solid ${borderColor}`, mb: 1 }} />
+                                    )
+                                )}
+                                <Typography sx={{ fontWeight: 'bold', fontSize: '0.9rem' }}>Signature</Typography>
+                            </Box>
+                        </Box>
+
+                    </Paper>
                 </Box>
             </Box>
         </Layout>

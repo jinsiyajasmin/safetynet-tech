@@ -17,10 +17,10 @@ console.log("Email Service Initialized with:");
 console.log("Host:", process.env.SMTP_HOST ? process.env.SMTP_HOST : "USING DEFAULT MOCK");
 console.log("User:", process.env.SMTP_USER ? process.env.SMTP_USER : "USING DEFAULT MOCK");
 
-/**
- * Send an email
+/**  
+ * Send an email 
  * @param {Object} options
- * @param {string} options.to - Recipient email
+ * @param {string} options.to - Recipient email 
  * @param {string} options.subject - Email subject
  * @param {string} options.html - HTML content
  * @param {string} options.replyTo - Reply-to email address
@@ -39,7 +39,7 @@ const sendEmail = async ({ to, subject, html, replyTo, from }) => {
         return { success: true, messageId: info.messageId };
     } catch (error) {
         console.error("Error sending email:", error);
-        return { success: false, error: error.message };
+        return { success: false, error: error.message }; 
     }
 };
 

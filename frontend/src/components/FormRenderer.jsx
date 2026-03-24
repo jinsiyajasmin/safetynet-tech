@@ -36,18 +36,26 @@ export default function FormRenderer({
         onChange(fieldId, newValue);
     };
 
-    // Style overrides for read-only to ensure black text
+    // Style overrides for read-only to ensure plain text appearance
     const readOnlyInputProps = {
         readOnly: true,
         sx: {
             "& .MuiInputBase-input": {
                 color: "text.primary",
                 WebkitTextFillColor: "rgba(0, 0, 0, 0.87) !important",
-                cursor: "default"
+                cursor: "default",
+                overflow: "visible",
+                paddingBottom: "8px",
             },
             "& .MuiOutlinedInput-notchedOutline": { 
-                borderColor: "rgba(0, 0, 0, 0.23)",
+                border: "none", // Remove border entirely
             },
+            "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+                border: "none",
+            },
+            "&:hover .MuiOutlinedInput-notchedOutline": {
+                border: "none",
+            }
         }
     };
 
@@ -111,44 +119,57 @@ export default function FormRenderer({
                     )}
 
                     {f.type === "text" && (
-                        <TextField
-                            fullWidth
-                            sx={inputSx}
-                            value={values[f.id] || ""}
-                            onChange={(e) => handleChange(f.id, e.target.value)}
-                            InputProps={readOnly ? readOnlyInputProps : {}}
-                            placeholder={readOnly ? "-" : ""}
-                        />
+                        readOnly ? (
+                            <Box sx={{ py: 1, minHeight: '2.5rem', display: 'flex', alignItems: 'center' }}>
+                                <Typography sx={{ color: "text.primary", wordBreak: 'break-word' }}>{values[f.id] || "-"}</Typography>
+                            </Box>
+                        ) : (
+                            <TextField
+                                fullWidth
+                                sx={inputSx}
+                                value={values[f.id] || ""}
+                                onChange={(e) => handleChange(f.id, e.target.value)}
+                            />
+                        )
                     )}
 
                     {f.type === "textarea" && (
-                        <TextField
-                            fullWidth
-                            multiline
-                            minRows={3}
-                            sx={inputSx}
-                            value={values[f.id] || ""}
-                            onChange={(e) => handleChange(f.id, e.target.value)}
-                            InputProps={readOnly ? readOnlyInputProps : {}}
-                            placeholder={readOnly ? "-" : ""}
-                        />
+                        readOnly ? (
+                            <Box sx={{ py: 1, minHeight: '4.5rem' }}>
+                                <Typography sx={{ color: "text.primary", whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{values[f.id] || "-"}</Typography>
+                            </Box>
+                        ) : (
+                            <TextField
+                                fullWidth
+                                multiline
+                                minRows={3}
+                                sx={inputSx}
+                                value={values[f.id] || ""}
+                                onChange={(e) => handleChange(f.id, e.target.value)}
+                            />
+                        )
                     )}
 
                     {f.type === "select" && (
-                        <TextField
-                            select
-                            fullWidth
-                            sx={inputSx}
-                            value={values[f.id] || ""}
-                            onChange={(e) => handleChange(f.id, e.target.value)}
-                            InputProps={readOnly ? readOnlyInputProps : {}}
-                        >
-                            {f.options?.map((o) => (
-                                <MenuItem key={o.id} value={o.value}>
-                                    {o.label}
-                                </MenuItem>
-                            ))}
-                        </TextField>
+                        readOnly ? (
+                            <Box sx={{ py: 1, minHeight: '2.5rem', display: 'flex', alignItems: 'center' }}>
+                                <Typography sx={{ color: "text.primary" }}>{values[f.id] ? (f.options?.find(o => o.value === values[f.id])?.label || values[f.id]) : "-"}</Typography>
+                            </Box>
+                        ) : (
+                            <TextField
+                                select
+                                fullWidth
+                                sx={inputSx}
+                                value={values[f.id] || ""}
+                                onChange={(e) => handleChange(f.id, e.target.value)}
+                            >
+                                {f.options?.map((o) => (
+                                    <MenuItem key={o.id} value={o.value}>
+                                        {o.label}
+                                    </MenuItem>
+                                ))}
+                            </TextField>
+                        )
                     )}
 
                     {f.type === "radio" && (
@@ -202,15 +223,20 @@ export default function FormRenderer({
                     )}
 
                     {(f.type === "date" || f.type === "time" || f.type === "datetime" || f.type === "monthyear") && (
-                        <TextField
-                            type={f.type === "datetime" ? "datetime-local" : f.type === "monthyear" ? "month" : f.type}
-                            fullWidth
-                            sx={inputSx}
-                            value={values[f.id] || ""}
-                            onChange={(e) => handleChange(f.id, e.target.value)}
-                            InputProps={readOnly ? readOnlyInputProps : {}}
-                            InputLabelProps={{ shrink: true }}
-                        />
+                        readOnly ? (
+                            <Box sx={{ py: 1, minHeight: '2.5rem', display: 'flex', alignItems: 'center' }}>
+                                <Typography sx={{ color: "text.primary" }}>{values[f.id] || "-"}</Typography>
+                            </Box>
+                        ) : (
+                            <TextField
+                                type={f.type === "datetime" ? "datetime-local" : f.type === "monthyear" ? "month" : f.type}
+                                fullWidth
+                                sx={inputSx}
+                                value={values[f.id] || ""}
+                                onChange={(e) => handleChange(f.id, e.target.value)}
+                                InputLabelProps={{ shrink: true }}
+                            />
+                        )
                     )}
 
                     {/* Image Upload Renderer */}

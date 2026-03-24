@@ -3,6 +3,7 @@ import { Box, Drawer } from "@mui/material";
 import Sidebar from "./Sidebar";
 import TopNav from "./TopNav";
 import { useTheme } from "../context/ThemeContext";
+import { useLocation } from "react-router-dom";
 
 const Layout = ({ children, pageTitle, disablePadding = false }) => {
     const { isDarkMode } = useTheme();
@@ -11,6 +12,23 @@ const Layout = ({ children, pageTitle, disablePadding = false }) => {
     const handleDrawerToggle = () => {
         setMobileOpen(!mobileOpen);
     };
+
+    const location = useLocation();
+    const isPreview = new URLSearchParams(location.search).get("preview") === "true";
+
+    if (isPreview) {
+        return (
+            <Box sx={{ bgcolor: isDarkMode ? "#1B212C" : "#fff", height: "100vh", overflow: "auto", p: { xs: 1, md: 3 } }}>
+                <style>
+                    {`
+                        button, a, [role="button"] { display: none !important; }
+                        input, textarea, select { pointer-events: none !important; }
+                    `}
+                </style>
+                {children}
+            </Box>
+        );
+    }
 
     return (
         <Box sx={{

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useCompanyLogo } from "../hooks/useCompanyLogo";
 import { Box, Typography, Button, Paper, TextField, CircularProgress, IconButton } from "@mui/material";
 import { ArrowLeft } from "lucide-react";
 import Layout from "../components/Layout";
@@ -9,6 +10,7 @@ import { getOrCreateTemplateForm } from "../services/formUtils";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
 
 export default function AuditActionForm() {
+  const logoUrl = useCompanyLogo();
     const { isDarkMode } = useTheme();
     const { id } = useParams();
     const navigate = useNavigate();
@@ -27,6 +29,10 @@ export default function AuditActionForm() {
         date: "",
         docNo: "",
         approvedBy: ""
+    ,
+        logo: ""
+,
+        logoRight: ""
     });
 
     const [formData, setFormData] = useState({
@@ -119,12 +125,12 @@ export default function AuditActionForm() {
     const textColor = isDarkMode ? "#F9FAFB" : "#111827";
     const cellPadding = "8px 12px";
 
-    if (loading) return <Layout><Box sx={{display:'flex', justifyContent:'center', py:10}}><CircularProgress/></Box></Layout>;
+    if (loading) return <Layout><Box sx={{display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, justifyContent:'center', py:10}}><CircularProgress/></Box></Layout>;
 
     return (
         <Layout>
             <Box sx={{ mb: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', gap: 2 }}>
                     <IconButton onClick={() => siteId ? navigate('/sitepack-management', { state: { siteId, moduleTitle: category } }) : navigate('/general-forms')} sx={{ bgcolor: isDarkMode ? '#374151' : '#E5E7EB' }}>
                         <ArrowLeft size={20} color={isDarkMode ? '#F9FAFB' : '#111827'} />
                     </IconButton>
@@ -149,13 +155,13 @@ export default function AuditActionForm() {
                 </Button>
             </Box>
 
-            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 8, overflowX: "auto", px: { xs: 2, md: 0 } }}>
+            <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, justifyContent: 'center', mb: 8, overflowX: "auto", px: { xs: 2, md: 0 } }}>
                 <Paper 
                     ref={containerRef}
                     elevation={ (downloading || action === 'download') ? 0 : 3 } 
                     sx={{ 
                         width: "100%", 
-                        minWidth: "1000px",
+                        minWidth: (downloading || action === 'download') ? "1000px" : "100%",
                         maxWidth: "1000px", 
                         p: 4, 
                         bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF", 
@@ -167,91 +173,160 @@ export default function AuditActionForm() {
                     {/* PAGE 1 */}
                     
                     {/* Top Header Logos and Document Info */}
-                    <Box sx={{ display: 'flex', border: `1px solid ${borderColor}`, mb: 4 }}>
-                        <Box sx={{ width: '30%', p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: `1px solid ${borderColor}` }}>
-                            <Box component="img" src="/Logo02.png" alt="Construct Lifts" sx={{ width: '80%', objectFit: 'contain' }} />
+                    <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, border: `1px solid ${borderColor}`, mb: 4 }}>
+                                                {/* Left Logo / Upload */}
+                        <Box sx={{ width: { xs: '100%', md: '30%' }, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRight: `1px solid ${borderColor}` }}>
+                            {docInfo.logo ? (
+                                <>
+                                    <Box component="img" src={docInfo.logo} alt="Uploaded Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: (action !== 'download') ? 1 : 0 }} />
+                                    {(action !== 'download') && (
+                                        <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
+                                            Change Logo
+                                            <input type="file" hidden accept="image/*" onChange={(e) => {
+                                                const file = e.target.files[0];
+                                                if (file) {
+                                                    const reader = new FileReader();
+                                                    reader.onload = (ev) => setDocInfo({...docInfo, logo: ev.target.result});
+                                                    reader.readAsDataURL(file);
+                                                }
+                                            }} />
+                                        </Button>
+                                    )}
+                                </>
+                            ) : (
+                                (action !== 'download') ? (
+                                    <Button variant="outlined" component="label" size="small">
+                                        Upload Logo
+                                        <input type="file" hidden accept="image/*" onChange={(e) => {
+                                            const file = e.target.files[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onload = (ev) => setDocInfo({...docInfo, logo: ev.target.result});
+                                                reader.readAsDataURL(file);
+                                            }
+                                        }} />
+                                    </Button>
+                                ) : (
+                                    <Typography variant="caption" color="text.secondary">No Logo</Typography>
+                                )
+                            )}
                         </Box>
                         
-                        <Box sx={{ width: '40%', display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
-                            <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', p: 1, borderBottom: `1px solid ${borderColor}` }}>
+                        <Box sx={{ width: { xs: '100%', md: '40%' }, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
+                            <Box sx={{ flex: 1, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', p: 1, borderBottom: `1px solid ${borderColor}` }}>
                                 AUDIT ACTION FORM
                             </Box>
-                            <Box sx={{ display: 'flex', borderBottom: `1px solid ${borderColor}` }}>
-                                <Box sx={{ width: '40%', p: 1, borderRight: `1px solid ${borderColor}` }}>Date</Box>
-                                <Box sx={{ width: '60%', p: 0 }}>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.date} onChange={e => setDocInfo({...docInfo, date: e.target.value})} />
+                            <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
+                                <Box sx={{ width: { xs: '100%', md: '40%' }, p: 1, borderRight: `1px solid ${borderColor}` }}>Date</Box>
+                                <Box sx={{ width: { xs: '100%', md: '60%' }, p: 0 }}>
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.date || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.date} onChange={e => setDocInfo({...docInfo, date: e.target.value})} />)}
                                 </Box>
                             </Box>
-                            <Box sx={{ display: 'flex', borderBottom: `1px solid ${borderColor}` }}>
-                                <Box sx={{ width: '40%', p: 1, borderRight: `1px solid ${borderColor}` }}>Document No. & Rev</Box>
-                                <Box sx={{ width: '60%', p: 0 }}>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.docNo} onChange={e => setDocInfo({...docInfo, docNo: e.target.value})} />
+                            <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
+                                <Box sx={{ width: { xs: '100%', md: '40%' }, p: 1, borderRight: `1px solid ${borderColor}` }}>Document No. & Rev</Box>
+                                <Box sx={{ width: { xs: '100%', md: '60%' }, p: 0 }}>
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.docNo || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.docNo} onChange={e => setDocInfo({...docInfo, docNo: e.target.value})} />)}
                                 </Box>
                             </Box>
-                            <Box sx={{ display: 'flex' }}>
-                                <Box sx={{ width: '60%', p: 0, borderRight: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center' }}>
+                            <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
+                                <Box sx={{ width: { xs: '100%', md: '60%' }, p: 0, borderRight: `1px solid ${borderColor}`, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center' }}>
                                     <Box sx={{ pl: 1, pr: 0.5, whiteSpace: 'nowrap' }}>Approved by</Box>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 0.5, py: 1, height: '100%' } }} value={docInfo.approvedBy} onChange={e => setDocInfo({...docInfo, approvedBy: e.target.value})} />
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.approvedBy || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 0.5, py: 1, height: '100%' } }} value={docInfo.approvedBy} onChange={e => setDocInfo({...docInfo, approvedBy: e.target.value})} />)}
                                 </Box>
-                                <Box sx={{ width: '40%', p: 1 }}>Page 1 of 2</Box>
+                                <Box sx={{ width: { xs: '100%', md: '40%' }, p: 1 }}>Page 1 of 2</Box>
                             </Box>
                         </Box>
 
-                        <Box sx={{ width: '30%', p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Box component="img" src="/Logo02.png" alt="Construct Lifts" sx={{ width: '80%', objectFit: 'contain' }} />
-                        </Box>
+                        
                     </Box>
 
                     {/* Table 1 */}
                     <Box sx={{ border: `1px solid ${borderColor}`, mb: 8 }}>
                         {/* Header Row */}
-                        <Box sx={{ display: 'flex', borderBottom: `1px solid ${borderColor}`, bgcolor: headerBgColor, fontWeight: 'bold', textAlign: 'center' }}>
-                            <Box sx={{ width: '40%', p: cellPadding, borderRight: `1px solid ${borderColor}` }}>ACTION FORM</Box>
-                            <Box sx={{ width: '60%', p: cellPadding, textAlign: 'left' }}>Reference</Box>
+                        <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}`, bgcolor: headerBgColor, fontWeight: 'bold', textAlign: 'center' }}>
+                            <Box sx={{ width: { xs: '100%', md: '40%' }, p: cellPadding, borderRight: `1px solid ${borderColor}` }}>ACTION FORM</Box>
+                            <Box sx={{ width: { xs: '100%', md: '60%' }, p: cellPadding, textAlign: 'left' }}>Reference</Box>
                         </Box>
                         
                         {/* Details of Observation */}
                         <Box sx={{ borderBottom: `1px solid ${borderColor}`, minHeight: '300px', display: 'flex', flexDirection: 'column' }}>
                             <Box sx={{ p: cellPadding, fontWeight: 'bold' }}>Details of Observation</Box>
                             <Box sx={{ flex: 1, px: 1, pb: 1 }}>
-                                <TextField fullWidth multiline minRows={8} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, height: '100%' } }} value={formData.detailsOfObservation} onChange={updateField("detailsOfObservation")} />
+                                {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{formData.detailsOfObservation || ' '}</Typography>) : (<TextField fullWidth multiline minRows={8} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, height: '100%' } }} value={formData.detailsOfObservation} onChange={updateField("detailsOfObservation")} />)}
                             </Box>
                         </Box>
 
                         {/* Raised by / Agreed with */}
-                        <Box sx={{ display: 'flex', borderBottom: `1px solid ${borderColor}` }}>
-                            <Box sx={{ width: '40%', display: 'flex', flexWrap: 'wrap', borderRight: `1px solid ${borderColor}` }}>
+                        <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
+                            <Box sx={{ width: { xs: '100%', md: '40%' }, display: 'flex', flexWrap: 'wrap', borderRight: `1px solid ${borderColor}` }}>
                                 <Box sx={{ p: cellPadding, fontWeight: 'bold' }}>Raised by</Box>
-                                <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1 } }} value={formData.raisedBy} onChange={updateField("raisedBy")} />
+                                {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{formData.raisedBy || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1 } }} value={formData.raisedBy} onChange={updateField("raisedBy")} />)}
                             </Box>
-                            <Box sx={{ width: '60%', display: 'flex', flexWrap: 'wrap' }}>
+                            <Box sx={{ width: { xs: '100%', md: '60%' }, display: 'flex', flexWrap: 'wrap' }}>
                                 <Box sx={{ p: cellPadding, fontWeight: 'bold' }}>Agreed with</Box>
-                                <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1 } }} value={formData.agreedWithObs} onChange={updateField("agreedWithObs")} />
+                                {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{formData.agreedWithObs || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1 } }} value={formData.agreedWithObs} onChange={updateField("agreedWithObs")} />)}
                             </Box>
+                        {/* Right Logo / Upload */}
+                        <Box sx={{ width: { xs: '100%', md: '30%' }, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                            {docInfo.logoRight ? (
+                                <>
+                                    <Box component="img" src={docInfo.logoRight} alt="Uploaded Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: (action !== 'download') ? 1 : 0 }} />
+                                    {(action !== 'download') && (
+                                        <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
+                                            Change Logo
+                                            <input type="file" hidden accept="image/*" onChange={(e) => {
+                                                const file = e.target.files[0];
+                                                if (file) {
+                                                    const reader = new FileReader();
+                                                    reader.onload = (ev) => setDocInfo({...docInfo, logoRight: ev.target.result});
+                                                    reader.readAsDataURL(file);
+                                                }
+                                            }} />
+                                        </Button>
+                                    )}
+                                </>
+                            ) : (
+                                (action !== 'download') ? (
+                                    <Button variant="outlined" component="label" size="small">
+                                        Upload Logo
+                                        <input type="file" hidden accept="image/*" onChange={(e) => {
+                                            const file = e.target.files[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onload = (ev) => setDocInfo({...docInfo, logoRight: ev.target.result});
+                                                reader.readAsDataURL(file);
+                                            }
+                                        }} />
+                                    </Button>
+                                ) : (
+                                    <Typography variant="caption" color="text.secondary">No Logo</Typography>
+                                )
+                            )}
+                        </Box>
                         </Box>
 
                         {/* PROPOSED ACTION Header */}
-                        <Box sx={{ display: 'flex', borderBottom: `1px solid ${borderColor}`, bgcolor: headerBgColor, fontWeight: 'bold', textAlign: 'center' }}>
-                            <Box sx={{ width: '40%', p: cellPadding, borderRight: `1px solid ${borderColor}` }}>PROPOSED / AGREED ACTION</Box>
-                            <Box sx={{ width: '60%', p: cellPadding }}></Box>
+                        <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}`, bgcolor: headerBgColor, fontWeight: 'bold', textAlign: 'center' }}>
+                            <Box sx={{ width: { xs: '100%', md: '40%' }, p: cellPadding, borderRight: `1px solid ${borderColor}` }}>PROPOSED / AGREED ACTION</Box>
+                            <Box sx={{ width: { xs: '100%', md: '60%' }, p: cellPadding }}></Box>
                         </Box>
 
                         {/* Action Details */}
                         <Box sx={{ borderBottom: `1px solid ${borderColor}`, minHeight: '300px', display: 'flex', flexDirection: 'column' }}>
                             <Box sx={{ flex: 1, p: 1 }}>
-                                <TextField fullWidth multiline minRows={8} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, height: '100%' } }} value={formData.proposedAction} onChange={updateField("proposedAction")} />
+                                {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{formData.proposedAction || ' '}</Typography>) : (<TextField fullWidth multiline minRows={8} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, height: '100%' } }} value={formData.proposedAction} onChange={updateField("proposedAction")} />)}
                             </Box>
                         </Box>
 
                         {/* Agreed with / Date for Completion */}
-                        <Box sx={{ display: 'flex' }}>
-                            <Box sx={{ width: '40%', display: 'flex', flexWrap: 'wrap', borderRight: `1px solid ${borderColor}` }}>
+                        <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
+                            <Box sx={{ width: { xs: '100%', md: '40%' }, display: 'flex', flexWrap: 'wrap', borderRight: `1px solid ${borderColor}` }}>
                                 <Box sx={{ p: cellPadding, fontWeight: 'bold' }}>Agreed with</Box>
-                                <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, pb: 1 } }} value={formData.agreedWithAct} onChange={updateField("agreedWithAct")} />
+                                {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{formData.agreedWithAct || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, pb: 1 } }} value={formData.agreedWithAct} onChange={updateField("agreedWithAct")} />)}
                             </Box>
-                            <Box sx={{ width: '60%', display: 'flex', flexWrap: 'wrap' }}>
+                            <Box sx={{ width: { xs: '100%', md: '60%' }, display: 'flex', flexWrap: 'wrap' }}>
                                 <Box sx={{ p: cellPadding, fontWeight: 'bold' }}>Date for Completion</Box>
-                                <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, pb: 1 } }} value={formData.dateForCompletion} onChange={updateField("dateForCompletion")} />
+                                {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{formData.dateForCompletion || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, pb: 1 } }} value={formData.dateForCompletion} onChange={updateField("dateForCompletion")} />)}
                             </Box>
                         </Box>
                     </Box>
@@ -260,66 +335,62 @@ export default function AuditActionForm() {
                     <Box sx={{ height: '40px' }}></Box>
 
                     {/* PAGE 2 - Top Header Logos and Document Info */}
-                    <Box sx={{ display: 'flex', border: `1px solid ${borderColor}`, mb: 4 }}>
-                        <Box sx={{ width: '30%', p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: `1px solid ${borderColor}` }}>
-                            <Box component="img" src="/Logo02.png" alt="Construct Lifts" sx={{ width: '80%', objectFit: 'contain' }} />
-                        </Box>
+                    <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, border: `1px solid ${borderColor}`, mb: 4 }}>
                         
-                        <Box sx={{ width: '40%', display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
-                            <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', p: 1, borderBottom: `1px solid ${borderColor}` }}>
+                        
+                        <Box sx={{ width: { xs: '100%', md: '40%' }, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
+                            <Box sx={{ flex: 1, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', p: 1, borderBottom: `1px solid ${borderColor}` }}>
                                 AUDIT ACTION FORM
                             </Box>
-                            <Box sx={{ display: 'flex', borderBottom: `1px solid ${borderColor}` }}>
-                                <Box sx={{ width: '40%', p: 1, borderRight: `1px solid ${borderColor}` }}>Date</Box>
-                                <Box sx={{ width: '60%', p: 0 }}>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.date} onChange={e => setDocInfo({...docInfo, date: e.target.value})} />
+                            <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
+                                <Box sx={{ width: { xs: '100%', md: '40%' }, p: 1, borderRight: `1px solid ${borderColor}` }}>Date</Box>
+                                <Box sx={{ width: { xs: '100%', md: '60%' }, p: 0 }}>
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.date || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.date} onChange={e => setDocInfo({...docInfo, date: e.target.value})} />)}
                                 </Box>
                             </Box>
-                            <Box sx={{ display: 'flex', borderBottom: `1px solid ${borderColor}` }}>
-                                <Box sx={{ width: '40%', p: 1, borderRight: `1px solid ${borderColor}` }}>Document No. & Rev</Box>
-                                <Box sx={{ width: '60%', p: 0 }}>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.docNo} onChange={e => setDocInfo({...docInfo, docNo: e.target.value})} />
+                            <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
+                                <Box sx={{ width: { xs: '100%', md: '40%' }, p: 1, borderRight: `1px solid ${borderColor}` }}>Document No. & Rev</Box>
+                                <Box sx={{ width: { xs: '100%', md: '60%' }, p: 0 }}>
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.docNo || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.docNo} onChange={e => setDocInfo({...docInfo, docNo: e.target.value})} />)}
                                 </Box>
                             </Box>
-                            <Box sx={{ display: 'flex' }}>
-                                <Box sx={{ width: '60%', p: 0, borderRight: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center' }}>
+                            <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
+                                <Box sx={{ width: { xs: '100%', md: '60%' }, p: 0, borderRight: `1px solid ${borderColor}`, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center' }}>
                                     <Box sx={{ pl: 1, pr: 0.5, whiteSpace: 'nowrap' }}>Approved by</Box>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 0.5, py: 1, height: '100%' } }} value={docInfo.approvedBy} onChange={e => setDocInfo({...docInfo, approvedBy: e.target.value})} />
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.approvedBy || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 0.5, py: 1, height: '100%' } }} value={docInfo.approvedBy} onChange={e => setDocInfo({...docInfo, approvedBy: e.target.value})} />)}
                                 </Box>
-                                <Box sx={{ width: '40%', p: 1 }}>Page 2 of 2</Box>
+                                <Box sx={{ width: { xs: '100%', md: '40%' }, p: 1 }}>Page 2 of 2</Box>
                             </Box>
                         </Box>
 
-                        <Box sx={{ width: '30%', p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Box component="img" src="/Logo02.png" alt="Construct Lifts" sx={{ width: '80%', objectFit: 'contain' }} />
-                        </Box>
+                        
                     </Box>
 
                     {/* Follow Up Action Table */}
                     <Box sx={{ border: `1px solid ${borderColor}`, mb: 4 }}>
-                        <Box sx={{ display: 'flex', borderBottom: `1px solid ${borderColor}`, bgcolor: headerBgColor, fontWeight: 'bold', textAlign: 'center' }}>
-                            <Box sx={{ width: '40%', p: cellPadding, borderRight: `1px solid ${borderColor}` }}>FOLLOW UP ACTION</Box>
-                            <Box sx={{ width: '60%', p: cellPadding, textAlign: 'left' }}>The agreed action has\has not been implemented and found to be effective</Box>
+                        <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}`, bgcolor: headerBgColor, fontWeight: 'bold', textAlign: 'center' }}>
+                            <Box sx={{ width: { xs: '100%', md: '40%' }, p: cellPadding, borderRight: `1px solid ${borderColor}` }}>FOLLOW UP ACTION</Box>
+                            <Box sx={{ width: { xs: '100%', md: '60%' }, p: cellPadding, textAlign: 'left' }}>The agreed action has\has not been implemented and found to be effective</Box>
                         </Box>
                         
-                        <Box sx={{ display: 'flex', minHeight: '200px' }}>
-                            <Box sx={{ width: '40%', display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
+                        <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, minHeight: '200px' }}>
+                            <Box sx={{ width: { xs: '100%', md: '40%' }, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
                                 <Box sx={{ p: cellPadding }}>
                                     <Typography sx={{ fontWeight: 'bold' }}>AUDITED BY</Typography>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor } }} value={formData.auditedBy} onChange={updateField("auditedBy")} />
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{formData.auditedBy || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor } }} value={formData.auditedBy} onChange={updateField("auditedBy")} />)}
                                 </Box>
                                 <Box sx={{ p: cellPadding, mt: 2 }}>
                                     <Typography sx={{ fontWeight: 'bold' }}>DATE</Typography>
-                                    <TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor } }} value={formData.auditDate} onChange={updateField("auditDate")} />
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{formData.auditDate || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor } }} value={formData.auditDate} onChange={updateField("auditDate")} />)}
                                 </Box>
                             </Box>
-                            <Box sx={{ width: '60%', display: 'flex', flexDirection: 'column' }}>
+                            <Box sx={{ width: { xs: '100%', md: '60%' }, display: 'flex', flexDirection: 'column' }}>
                                 <Box sx={{ p: cellPadding }}>
                                     <Typography sx={{ fontWeight: 'bold' }}>SIG</Typography>
-                                    <TextField fullWidth multiline minRows={4} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor } }} value={formData.auditSignature} onChange={updateField("auditSignature")} />
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{formData.auditSignature || ' '}</Typography>) : (<TextField fullWidth multiline minRows={4} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor } }} value={formData.auditSignature} onChange={updateField("auditSignature")} />)}
                                 </Box>
                                 <Box sx={{ flex: 1 }}>
-                                    <TextField fullWidth multiline minRows={4} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 2, pb: 1, height: '100%' } }} value={formData.followUpAction} onChange={updateField("followUpAction")} placeholder="Follow up notes..." />
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{formData.followUpAction || ' '}</Typography>) : (<TextField fullWidth multiline minRows={4} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 2, pb: 1, height: '100%' } }} value={formData.followUpAction} onChange={updateField("followUpAction")} placeholder="Follow up notes..." />)}
                                 </Box>
                             </Box>
                         </Box>
@@ -327,28 +398,71 @@ export default function AuditActionForm() {
 
                     {/* Audit Report Continuation */}
                     <Box sx={{ border: `1px solid ${borderColor}` }}>
-                        <Box sx={{ display: 'flex', borderBottom: `1px solid ${borderColor}`, bgcolor: headerBgColor, fontWeight: 'bold' }}>
-                            <Box sx={{ width: '60%', p: cellPadding, borderRight: `1px solid ${borderColor}` }}>AUDIT REPORT CONTINUATION</Box>
-                            <Box sx={{ width: '40%', p: cellPadding }}>PAGE &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; OF &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</Box>
+                        <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}`, bgcolor: headerBgColor, fontWeight: 'bold' }}>
+                            <Box sx={{ width: { xs: '100%', md: '60%' }, p: cellPadding, borderRight: `1px solid ${borderColor}` }}>AUDIT REPORT CONTINUATION</Box>
+                            <Box sx={{ width: { xs: '100%', md: '40%' }, p: cellPadding }}>PAGE &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; OF &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</Box>
                         </Box>
                         
-                        <Box sx={{ display: 'flex', minHeight: '500px' }}>
-                            <Box sx={{ width: '40%', display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
+                        <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, minHeight: '500px' }}>
+                            <Box sx={{ width: { xs: '100%', md: '40%' }, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
                                 <Box sx={{ p: cellPadding, fontWeight: 'bold' }}>AUDIT SUMMARY</Box>
                                 <Box sx={{ flex: 1, p: 1 }}>
-                                    <TextField fullWidth multiline minRows={18} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, height: '100%' } }} value={formData.auditSummary} onChange={updateField("auditSummary")} />
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{formData.auditSummary || ' '}</Typography>) : (<TextField fullWidth multiline minRows={18} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, height: '100%' } }} value={formData.auditSummary} onChange={updateField("auditSummary")} />)}
                                 </Box>
                             </Box>
-                            <Box sx={{ width: '60%', display: 'flex', flexDirection: 'column' }}>
+                            <Box sx={{ width: { xs: '100%', md: '60%' }, display: 'flex', flexDirection: 'column' }}>
                                 <Box sx={{ p: cellPadding, fontWeight: 'bold' }}>Clause</Box>
                                 <Box sx={{ flex: 1, p: 1 }}>
-                                    <TextField fullWidth multiline minRows={18} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, height: '100%' } }} value={formData.clause} onChange={updateField("clause")} />
+                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{formData.clause || ' '}</Typography>) : (<TextField fullWidth multiline minRows={18} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, height: '100%' } }} value={formData.clause} onChange={updateField("clause")} />)}
                                 </Box>
                             </Box>
                         </Box>
                     </Box>
 
-                </Paper>
+                                        {/* Signature Section */}
+                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 6, mb: 2 }}>
+                            <Box sx={{ width: '250px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                {docInfo.signature ? (
+                                    <>
+                                        <Box component="img" src={docInfo.signature} alt="Signature" sx={{ width: '100%', maxHeight: '80px', objectFit: 'contain', borderBottom: `1px solid ${borderColor}`, mb: 1 }} />
+                                        {(action !== 'download') && (
+                                            <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
+                                                Change Signature
+                                                <input type="file" hidden accept="image/*" onChange={(e) => {
+                                                    const file = e.target.files[0];
+                                                    if (file) {
+                                                        const reader = new FileReader();
+                                                        reader.onload = (ev) => setDocInfo({...docInfo, signature: ev.target.result});
+                                                        reader.readAsDataURL(file);
+                                                    }
+                                                }} />
+                                            </Button>
+                                        )}
+                                    </>
+                                ) : (
+                                    (action !== 'download') ? (
+                                        <Box sx={{ width: '100%', height: '60px', borderBottom: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1 }}>
+                                            <Button variant="outlined" component="label" size="small">
+                                                Upload Signature
+                                                <input type="file" hidden accept="image/*" onChange={(e) => {
+                                                    const file = e.target.files[0];
+                                                    if (file) {
+                                                        const reader = new FileReader();
+                                                        reader.onload = (ev) => setDocInfo({...docInfo, signature: ev.target.result});
+                                                        reader.readAsDataURL(file);
+                                                    }
+                                                }} />
+                                            </Button>
+                                        </Box>
+                                    ) : (
+                                        <Box sx={{ width: '100%', height: '60px', borderBottom: `1px solid ${borderColor}`, mb: 1 }} />
+                                    )
+                                )}
+                                <Typography sx={{ fontWeight: 'bold', fontSize: '0.9rem' }}>Signature</Typography>
+                            </Box>
+                        </Box>
+
+                    </Paper>
             </Box>
         </Layout>
     );

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useCompanyLogo } from "../hooks/useCompanyLogo";
 import {
   Box,
   Typography,
@@ -128,6 +129,7 @@ const MENU_GROUPS = [
 ];
 
 export default function Sidebar({ sx = {} }) {
+  const logoUrl = useCompanyLogo();
   const { isDarkMode, toggleTheme } = useTheme();
   const location = useLocation();
   const [openGroup, setOpenGroup] = useState(null);
@@ -190,7 +192,7 @@ export default function Sidebar({ sx = {} }) {
       <Box sx={{ p: 2, pb: 1.5, mb: 2, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
         <Box
           component="img"
-          src="/Logo02.png"
+          src={logoUrl}
           alt="SafetyNett Logo"
           sx={{
             height: 28,

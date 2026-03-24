@@ -23,6 +23,14 @@ import Layout from "../components/Layout";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
 import { useRef } from "react";
 
+// helper to build absolute URL for logos
+const computeLogoUrl = (logo) => {
+    if (!logo) return null;
+    if (/^https?:\/\//i.test(logo)) return logo;
+    const host = import.meta.env.VITE_BACKEND_URL || "https://api.site-mateai.co.uk";
+    return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
+};
+
 export default function UseForm() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -33,6 +41,7 @@ export default function UseForm() {
   const containerRef = useRef(null);
   
   const [downloading, setDownloading] = useState(false);
+  const [logoUrl, setLogoUrl] = useState(null);
 
   const [form, setForm] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -42,6 +51,26 @@ export default function UseForm() {
 
 
   useEffect(() => {
+    try {
+        const userStr = localStorage.getItem("user");
+        if (userStr) {
+            const user = JSON.parse(userStr);
+            let rawLogo = null;
+            if (user.clientId && typeof user.clientId === 'object' && user.clientId.logo) {
+                rawLogo = user.clientId.logo;
+            } else if (user.companyLogo) {
+                rawLogo = user.companyLogo;
+            } else if (user.logo) {
+                rawLogo = user.logo;
+            }
+            if (rawLogo) {
+                setLogoUrl(computeLogoUrl(rawLogo));
+            }
+        }
+    } catch (e) {
+        console.error("Error parsing user from localstorage", e);
+    }
+
     const fetchForm = async () => {
       try {
         const res = await api.get(`/forms/${id}`);
@@ -149,7 +178,14 @@ export default function UseForm() {
       <Box sx={{ flex: 1, px: { xs: 2, md: 5 }, py: 4, overflowY: "auto" }}>
 
 
-        <Paper ref={containerRef} sx={{ p: 3, maxWidth: 900 }}>
+        <Paper ref={containerRef} sx={{ p: 3, maxWidth: 900, position: 'relative', display: 'flex', flexDirection: 'column', minHeight: action === "download" ? '1414px' : 'auto', boxSizing: 'border-box' }}>
+          {action === "download" && (
+            <Typography sx={{ position: 'absolute', top: 24, right: 24, fontWeight: 500, color: 'text.secondary', fontSize: '0.9rem' }}>
+                Date: {new Date().toLocaleDateString('en-GB')}
+            </Typography>
+          )}
+
+          <Box sx={{ flex: 1 }}>
           <Typography variant="h4" sx={{ fontWeight: 700, mb: 3, color: form.titleColor, textAlign: form.titleAlignment || "left" }}>
             {form.title}
           </Typography>
@@ -293,12 +329,28 @@ export default function UseForm() {
           <Button
             variant="contained"
             fullWidth
-            sx={{ mt: 2, textTransform: "none" }}
+            sx={{ mt: 2, textTransform: "none", display: action === "download" ? "none" : "block" }}
             onClick={handleSubmit}
             disabled={saving}
           >
             {saving ? "Submitting..." : "Save"}
           </Button>
+          </Box>
+
+          {/* Footer for download mode */}
+          {action === "download" && (
+            <Box sx={{ mt: 4, pt: 2, borderTop: "2px solid black", display: "flex", justifyContent: "flex-end" }}>
+                <Box
+                    component="img"
+                    src={logoUrl || "/logo.png"}
+                    alt="Company Logo"
+                    sx={{
+                        height: 40,
+                        width: "auto"
+                    }}
+                />
+            </Box>
+          )}
         </Paper>
       </Box>
 

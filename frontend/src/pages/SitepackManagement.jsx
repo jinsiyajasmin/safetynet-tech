@@ -170,6 +170,8 @@ export default function SitepackManagement() {
     const [viewModalOpen, setViewModalOpen] = useState(false);
     const [viewDocUrl, setViewDocUrl] = useState(null);
     const [viewDocType, setViewDocType] = useState(null);
+    const [previewModalOpen, setPreviewModalOpen] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState("");
 
     const [anchorEl, setAnchorEl] = useState(null);
     const [menuDoc, setMenuDoc] = useState(null);
@@ -378,6 +380,20 @@ export default function SitepackManagement() {
         } else {
             navigate(`${formPath}?siteId=${siteId}&category=${category}`);
         }
+    };
+
+    const handlePreviewForm = (formPath, isCustom = false, customFormId = null) => {
+        const siteId = selectedSite._id || selectedSite.id;
+        const category = encodeURIComponent("Friday Pack Forms");
+
+        let url = "";
+        if (isCustom) {
+            url = `/forms/${customFormId}/use?siteId=${siteId}&category=${category}&preview=true`;
+        } else {
+            url = `${formPath}?siteId=${siteId}&category=${category}&preview=true`;
+        }
+        setPreviewUrl(url);
+        setPreviewModalOpen(true);
     };
 
     const handleMenuClick = (event, doc) => {
@@ -1293,7 +1309,7 @@ export default function SitepackManagement() {
                                         size="small"
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            handleSelectForm(template.path, false);
+                                            handlePreviewForm(template.path, false);
                                         }}
                                         sx={{ 
                                             position: 'absolute', 
@@ -1350,7 +1366,7 @@ export default function SitepackManagement() {
                                                 size="small"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    handleSelectForm(null, true, form.id || form._id);
+                                                    handlePreviewForm(null, true, form.id || form._id);
                                                 }}
                                                 sx={{ 
                                                     position: 'absolute', 
@@ -1455,6 +1471,35 @@ export default function SitepackManagement() {
                                 </Paper>
                             </Grid>
                         </Grid>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Form Preview Modal */}
+            <Dialog
+                open={previewModalOpen}
+                onClose={() => setPreviewModalOpen(false)}
+                maxWidth="lg"
+                fullWidth
+                PaperProps={{
+                    sx: { height: '85vh', borderRadius: 3, bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF" }
+                }}
+            >
+                <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, borderBottom: isDarkMode ? '1px solid #374151' : '1px solid #E5E7EB' }}>
+                    <Typography variant="h6" fontWeight={600} color={isDarkMode ? "#F9FAFB" : "#111827"}>Form Preview</Typography>
+                    <IconButton size="small" onClick={() => setPreviewModalOpen(false)}>
+                        <X size={20} color={isDarkMode ? "#9CA3AF" : "#6B7280"} />
+                    </IconButton>
+                </DialogTitle>
+                <DialogContent sx={{ p: 0, height: '100%', overflow: 'hidden' }}>
+                    {previewUrl && (
+                        <iframe
+                            src={previewUrl}
+                            width="100%"
+                            height="100%"
+                            style={{ border: 'none' }}
+                            title="Form Preview"
+                        />
                     )}
                 </DialogContent>
             </Dialog>

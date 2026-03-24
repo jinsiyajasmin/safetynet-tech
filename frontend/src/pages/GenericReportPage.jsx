@@ -322,6 +322,7 @@ export default function GenericReportPage({ pageTitle }) {
                 setSelectedForm(formRes.data.data);
                 setFormValues(sub.answers || {});
                 setEditingId(sub.id || sub._id);
+                setLastResponse(sub); // Store submission data including date
                 setViewMode(mode);
             }
         } catch (e) {
@@ -385,7 +386,7 @@ export default function GenericReportPage({ pageTitle }) {
                 heightLeft -= pageContentHeight;
 
                 // Add additional pages if needed
-                while (heightLeft > 0) {
+                while (heightLeft > 2) {
                     position = position - pageContentHeight; // shift the image up
                     pdf.addPage();
                     pageNum++;
@@ -609,7 +610,10 @@ export default function GenericReportPage({ pageTitle }) {
                                 ref={printRef}
                             >
                                 {/* Form Content - Grows to push footer down */}
-                                <Box sx={{ flex: 1 }}>
+                                <Box sx={{ flex: 1, position: 'relative' }}>
+                                    <Typography sx={{ position: 'absolute', top: 0, right: 0, fontWeight: 500, color: 'text.secondary', fontSize: '0.9rem' }}>
+                                        Date: {lastResponse?.createdAt ? new Date(lastResponse.createdAt).toLocaleDateString() : new Date().toLocaleDateString()}
+                                    </Typography>
                                     <FormRenderer
                                         form={selectedForm}
                                         values={formValues}

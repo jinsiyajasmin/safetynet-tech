@@ -1,4 +1,5 @@
 import React from "react";
+import { useCompanyLogo } from "../hooks/useCompanyLogo";
 import {
   Box,
   Container,
@@ -30,6 +31,7 @@ const itemVariants = {
 };
 
 export default function IsoFooter() {
+  const logoUrl = useCompanyLogo();
   return (
     <Box sx={{ bgcolor: "#012a4a", color: "white", pt: 12, pb: 4 }}>
       <Container
@@ -143,7 +145,7 @@ export default function IsoFooter() {
           <motion.div variants={itemVariants}>
             <Box
               component="img"
-              src="/Logo02.png"
+              src={logoUrl}
               alt="Xurya Logo"
               sx={{ height: 40, width: "auto", mr: 1 }}
             />
