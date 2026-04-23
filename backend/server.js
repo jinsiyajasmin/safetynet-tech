@@ -150,25 +150,31 @@ const start = async () => {
   try {
     // await connectDB(); // Prisma auto-connects
 
-    // Seed 'Safetynett' client if it doesn't exist
-    const clientName = "Safetynett";
-    const existingClient = await prisma.client.findUnique({
-      where: { name: clientName }
-    });
-
-    if (!existingClient) {
-      await prisma.client.create({
-        data: { name: clientName }
-      });
-      console.log(`Client '${clientName}' created successfully.`);
-    } else {
-      console.log(`Client '${clientName}' already exists.`);
-    }
-
     const PORT = process.env.PORT || 4000;
     app.listen(PORT, () => {
       console.log(`Server listening on http://localhost:${PORT}`);
     });
+
+    // Run seeding in the background so it doesn't block server startup
+    (async () => {
+      try {
+        const clientName = "Safetynett";
+        const existingClient = await prisma.client.findUnique({
+          where: { name: clientName }
+        });
+
+        if (!existingClient) {
+          await prisma.client.create({
+            data: { name: clientName }
+          });
+          console.log(`Client '${clientName}' created successfully.`);
+        } else {
+          console.log(`Client '${clientName}' already exists.`);
+        }
+      } catch (err) {
+        console.error("Background seeding failed (is the DB URL correct?):", err.message);
+      }
+    })();
   } catch (err) {
     console.error("Failed to start server/db, exiting.", err);
     process.exit(1);
