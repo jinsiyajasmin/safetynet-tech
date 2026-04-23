@@ -44,6 +44,7 @@ const MANAGER_PLUS = ["superadmin", "admin", "company_admin", "site_manager"];
 const SUPERVISOR_PLUS = ["superadmin", "admin", "company_admin", "site_manager", "supervisor"];
 
 const MENU_GROUPS = [
+/*
   {
     id: "dashboard",
     heading: "Dashboard",
@@ -51,6 +52,7 @@ const MENU_GROUPS = [
     to: "/concern-reports",
     roles: ALL_ROLES,
   },
+*/
   {
     id: "clients",
     heading: "Clients",

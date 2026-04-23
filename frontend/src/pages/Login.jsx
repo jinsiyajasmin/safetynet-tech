@@ -87,11 +87,12 @@ export default function LoginPage() {
           // redirect by role
           if (
             user?.role === "superadmin" ||
+            user?.role === "admin" ||
             user?.companyname?.trim()?.toLowerCase() === "safetynett"
           ) {
             navigate("/clients");
           } else {
-            navigate("/company");
+            navigate("/general-forms");
           }
         }
       }
