@@ -3,6 +3,12 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
 exports.signup = async (payload) => {
+  if (!process.env.JWT_SECRET) {
+    const err = new Error("Server configuration error: JWT secret is missing");
+    err.status = 500;
+    throw err;
+  }
+
   const {
     username,
     firstName,
@@ -14,13 +20,20 @@ exports.signup = async (payload) => {
     password,
   } = payload;
 
+  const normalizedUsername = String(username || "").trim();
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedFirstName = String(firstName || "").trim();
+  const normalizedLastName = String(lastName || "").trim();
+  const normalizedMobile = String(mobile || "").trim();
+  const normalizedJobTitle = jobTitle ? String(jobTitle).trim() : null;
+
   console.log("Signup Step 1: Checking existing user");
   // 1️⃣ Check if user already exists
   const existingUser = await prisma.user.findFirst({
     where: {
       OR: [
-        { email: { equals: email, mode: 'insensitive' } },
-        { username: { equals: username, mode: 'insensitive' } }
+        { email: { equals: normalizedEmail, mode: 'insensitive' } },
+        { username: { equals: normalizedUsername, mode: 'insensitive' } }
       ]
     }
   });
@@ -49,9 +62,17 @@ exports.signup = async (payload) => {
   if (!client) {
     // Auto-create company if not found
     console.log(`Company '${companyName}' not found. Creating new client.`);
-    client = await prisma.client.create({
-      data: { name: companyName }
-    });
+    try {
+      client = await prisma.client.create({
+        data: { name: companyName }
+      });
+    } catch (error) {
+      if (error?.code === "P2002") {
+        client = await prisma.client.findUnique({ where: { name: companyName } });
+      } else {
+        throw error;
+      }
+    }
     console.log(`Client created: ${client.id}`);
   } else {
     console.log(`Client found: ${client.id}`);
@@ -65,13 +86,13 @@ exports.signup = async (payload) => {
   // 4️⃣ Create user linked to client
   const user = await prisma.user.create({
     data: {
-      username,
-      firstName,
-      lastName,
-      email,
-      jobTitle,
+      username: normalizedUsername,
+      firstName: normalizedFirstName,
+      lastName: normalizedLastName,
+      email: normalizedEmail,
+      jobTitle: normalizedJobTitle,
       companyname: client.name, // store canonical name
-      mobile,
+      mobile: normalizedMobile,
       password: hashed,
       clientId: client.id,
     }
@@ -80,10 +101,6 @@ exports.signup = async (payload) => {
 
   console.log("Signup Step 5: Generating token");
   // 5️⃣ Generate token
-  if (!process.env.JWT_SECRET) {
-    console.error("Signup Error: JWT_SECRET missing");
-    throw new Error("JWT_SECRET is not defined in environment variables");
-  }
   // Safetynett users are always superadmin
   const effectiveRole = (user.companyname || "").trim().toLowerCase() === "safetynett"
     ? "superadmin"

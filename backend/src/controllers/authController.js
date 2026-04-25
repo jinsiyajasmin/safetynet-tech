@@ -14,8 +14,10 @@ exports.signup = asyncHandler(async (req, res) => {
         const { user, token } = await authService.signup(payload);
         res.status(201).json({ success: true, message: 'Account created', user, token });
     } catch (err) {
-        if (err.status === 409) return res.status(409).json({ success: false, message: err.message });
-        throw err;
+        return res.status(err.status || 500).json({
+            success: false,
+            message: err.message || "Signup failed"
+        });
     }
 });
 
