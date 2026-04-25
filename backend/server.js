@@ -19,29 +19,51 @@ const fs = require("fs");
 
 const app = express();
 
+const allowedOrigins = [
+  "https://site-mateai.co.uk",
+  "http://site-mateai.co.uk",
+  "https://www.site-mateai.co.uk",
+  "http://www.site-mateai.co.uk",
+  "https://api.site-mateai.co.uk",
+  "http://api.site-mateai.co.uk",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
+
+const isOriginAllowed = (origin = "") => {
+  const cleanOrigin = origin.replace(/\/$/, "");
+  return (
+    allowedOrigins.includes(cleanOrigin) ||
+    cleanOrigin.endsWith(".vercel.app") ||
+    cleanOrigin.startsWith("http://localhost:") ||
+    cleanOrigin.startsWith("http://127.0.0.1:")
+  );
+};
+
+// Manual CORS fallback so preflight never gets dropped by later middleware/proxy layers.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  if (origin && isOriginAllowed(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Vary", "Origin");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS,PATCH");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept");
+  }
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
+
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      "https://site-mateai.co.uk",
-      "http://site-mateai.co.uk",
-      "https://www.site-mateai.co.uk",
-      "http://www.site-mateai.co.uk",
-      "https://api.site-mateai.co.uk",
-      "http://api.site-mateai.co.uk",
-      "http://localhost:5173",
-      "http://localhost:3000",
-    ];
 
-    const cleanOrigin = origin.replace(/\/$/, "");
-
-    if (
-      allowedOrigins.includes(cleanOrigin) ||
-      cleanOrigin.endsWith(".vercel.app") ||
-      cleanOrigin.startsWith("http://localhost:") ||
-      cleanOrigin.startsWith("http://127.0.0.1:")
-    ) {
+    if (isOriginAllowed(origin)) {
       callback(null, true);
     } else {
       console.log("Blocked by CORS:", origin);

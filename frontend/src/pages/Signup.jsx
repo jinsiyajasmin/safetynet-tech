@@ -58,6 +58,7 @@ export default function SignupPage() {
     if (!form.lastName.trim()) e.lastName = "Last name is required";
     if (!form.email.trim()) e.email = "Email is required";
     else if (!/^\S+@\S+\.\S+$/.test(form.email)) e.email = "Enter a valid email";
+    if (!form.employer.trim()) e.employer = "Company name is required";
     if (!form.mobile.trim()) e.mobile = "Mobile number is required";
     else if (!/^\+?\d{7,15}$/.test(form.mobile.replace(/\s+/g, "")))
       e.mobile = "Enter a valid phone number (7–15 digits)";
@@ -87,7 +88,7 @@ export default function SignupPage() {
         lastName: form.lastName.trim(),
         email: form.email.trim().toLowerCase(),
         jobTitle: form.jobTitle?.trim() || null,
-        employer: form.employer?.trim() || null,
+        employer: form.employer.trim(),
         mobile: form.mobile.trim(),
         password: form.password,
         passwordConfirm: form.passwordConfirm,
