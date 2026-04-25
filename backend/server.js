@@ -129,6 +129,13 @@ app.use((err, req, res, next) => {
     });
   }
 
+  if (err.code === 'P2021') {
+    return res.status(500).json({
+      success: false,
+      message: "Database schema is missing required tables. Run Prisma schema deployment on the server."
+    });
+  }
+
   res
     .status(err.status || 500)
     .json({

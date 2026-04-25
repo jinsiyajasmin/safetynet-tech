@@ -1,6 +1,9 @@
 const prisma = require("../prismaClient");
 const { sendEmail } = require("../services/emailService");
 
+const STATIC_CONCERN_FORM_ID = "health-safety-concern-static-id";
+const STATIC_CONCERN_FORM_TITLE = "Concern Form";
+
 
 // ✅ Save new form
 exports.saveForm = async (req, res, next) => {
@@ -162,11 +165,30 @@ exports.deleteForm = async (req, res, next) => {
 exports.saveResponse = async (req, res) => {
   try {
     const { answers, category } = req.body;
+    const formId = req.params.id;
+
+    let form = await prisma.form.findUnique({ where: { id: formId } });
+    if (!form && formId === STATIC_CONCERN_FORM_ID) {
+      // Auto-create static concern form in fresh databases.
+      form = await prisma.form.create({
+        data: {
+          id: STATIC_CONCERN_FORM_ID,
+          title: STATIC_CONCERN_FORM_TITLE,
+          fields: [],
+          createdById: req.user?.id || null,
+        },
+      });
+    }
+
+    if (!form) {
+      return res.status(404).json({ success: false, message: "Form not found" });
+    }
+
     const response = await prisma.formResponse.create({
       data: {
         answers,
         category,
-        formId: req.params.id,
+        formId: form.id,
         submittedById: req.user?.id
       }
     });

@@ -81,6 +81,8 @@ const getSubheading = (title) => {
     }
 };
 
+const STATIC_CONCERN_FORM_ID = "health-safety-concern-static-id";
+
 export default function GenericReportPage({ pageTitle }) {
     const themeContext = useTheme();
     const isDarkMode = themeContext?.isDarkMode;
@@ -185,19 +187,16 @@ export default function GenericReportPage({ pageTitle }) {
     }, [pageTitle, fetchSubmissions]);
 
     const handleOpenConcernForm = async () => {
-        try {
-            const formId = "health-safety-concern-static-id";
-            const res = await api.get(`/forms/${formId}`);
-            if (res.data?.success) {
-                setSelectedForm(res.data.data);
-                setFormValues({});
-                setEditingId(null);
-                setViewMode("filling");
-            }
-        } catch (err) {
-            console.error("Failed to load concern form", err);
-            alert("Could not load the Concern Form. Please try again or use 'Choose Form'.");
-        }
+        // Concern forms are rendered by dedicated React components,
+        // so we do not need to fetch a DB form definition here.
+        setSelectedForm({
+            id: STATIC_CONCERN_FORM_ID,
+            title: "Concern Form",
+            fields: []
+        });
+        setFormValues({});
+        setEditingId(null);
+        setViewMode("filling");
     };
 
     const handleSelectForm = (form) => {
