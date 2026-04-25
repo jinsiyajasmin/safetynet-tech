@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-const HealthSafetyConcernForm = ({ values: externalValues, onChange, readOnly = false, formType = "health_safety" }) => {
+const HealthSafetyConcernForm = ({ values: externalValues, onChange, readOnly = false, formType = "health_safety", logoUrl = null }) => {
   const [internalValues, setInternalValues] = useState({});
   const values = externalValues ?? internalValues;
 
@@ -78,6 +78,8 @@ const HealthSafetyConcernForm = ({ values: externalValues, onChange, readOnly = 
       : formType === "quality"
       ? "Quality Concern"
       : "Health & Safety Concern";
+
+  const resolvedTitle = values.report_heading?.trim() || formTitle;
 
   const styles = {
     wrap: {
@@ -332,7 +334,10 @@ const HealthSafetyConcernForm = ({ values: externalValues, onChange, readOnly = 
   };
 
   const LogoUpload = () => {
-    const preview = values["company_logo_preview"] || (typeof values["company_logo"] === "string" ? values["company_logo"] : null);
+    const preview =
+      values["company_logo_preview"] ||
+      (typeof values["company_logo"] === "string" ? values["company_logo"] : null) ||
+      logoUrl;
     if (readOnly && !preview) return null;
 
     return (
@@ -371,7 +376,25 @@ const HealthSafetyConcernForm = ({ values: externalValues, onChange, readOnly = 
       {/* Header with Title and Logo */}
       <div style={styles.header}>
         <div>
-          <h1 style={styles.title}>{formTitle}</h1>
+          {readOnly ? (
+            <h1 style={styles.title}>{resolvedTitle}</h1>
+          ) : (
+            <input
+              style={{
+                ...styles.title,
+                border: "none",
+                borderBottom: "2px solid #1e3a8a",
+                background: "transparent",
+                width: "100%",
+                maxWidth: 720,
+                padding: "0 0 6px 0",
+                outline: "none",
+              }}
+              placeholder={formTitle}
+              value={values.report_heading || ""}
+              onChange={(e) => handleChange("report_heading", e.target.value)}
+            />
+          )}
           <p style={styles.subtitle}>Official record of safety and environmental concerns.</p>
         </div>
         <div style={styles.logoWrapper}>

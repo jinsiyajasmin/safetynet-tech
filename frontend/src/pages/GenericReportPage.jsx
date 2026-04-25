@@ -164,6 +164,19 @@ export default function GenericReportPage({ pageTitle }) {
     const [recipientEmail, setRecipientEmail] = useState("");
     const [emailingItem, setEmailingItem] = useState(null);
 
+    const isConcernStylePage =
+        pageTitle === "Health & Safety concern" ||
+        pageTitle === "Sustainability concern" ||
+        pageTitle === "Quality concern" ||
+        pageTitle === "Positive observation" ||
+        pageTitle === "Weekly supervisor health & safety inspection";
+
+    const getSubmissionTitle = (row) =>
+        row?.answers?.report_heading?.trim() ||
+        row?.form?.title ||
+        row?.formId?.title ||
+        "Untitled";
+
 
     const fetchSubmissions = useCallback(async () => {
         try {
@@ -223,9 +236,21 @@ export default function GenericReportPage({ pageTitle }) {
 
         setIsSubmitting(true);
         try {
+            let workingValues = { ...formValues };
+            if (isConcernStylePage && !workingValues.report_heading?.trim()) {
+                const enteredName = window.prompt("Enter a report name");
+                if (!enteredName || !enteredName.trim()) {
+                    setIsSubmitting(false);
+                    alert("Report name is required to save.");
+                    return;
+                }
+                workingValues.report_heading = enteredName.trim();
+                setFormValues((prev) => ({ ...prev, report_heading: enteredName.trim() }));
+            }
+
             // Process answers to handle files
             const processedAnswers = {};
-            for (const [key, value] of Object.entries(formValues)) {
+            for (const [key, value] of Object.entries(workingValues)) {
                 if (value instanceof File) {
                     processedAnswers[key] = await toBase64(value);
                 } else if (!key.endsWith("_preview")) {
@@ -252,11 +277,11 @@ export default function GenericReportPage({ pageTitle }) {
 
             if (res.data?.success) {
                 const newSub = res.data.data;
-                const displaySub = viewMode === "editing" ? { ...newSub, formId: selectedForm } : { ...newSub, formId: selectedForm, answers: formValues };
+                const displaySub = viewMode === "editing" ? { ...newSub, formId: selectedForm } : { ...newSub, formId: selectedForm, answers: workingValues };
 
                 setLastResponse({
                     ...displaySub,
-                    answers: formValues // Ensure we have latest values
+                    answers: workingValues // Ensure we have latest values
                 });
 
                 setSuccessOpen(true);
@@ -406,24 +431,18 @@ export default function GenericReportPage({ pageTitle }) {
                 const imgData = fullCanvas.toDataURL("image/jpeg", 1.0);
                 const imgHeight = (fullCanvas.height * contentWidth) / fullCanvas.width;
                 const usablePageHeight = pdfHeight - margin - footerSpace;
-
-                let heightLeft = imgHeight;
-                let position = margin;
-
-                pdf.addImage(imgData, "JPEG", margin, position, contentWidth, imgHeight);
-                heightLeft -= usablePageHeight;
-
-                while (heightLeft > 0) {
-                    pdf.addPage();
-                    position = heightLeft - imgHeight + margin;
-                    pdf.addImage(imgData, "JPEG", margin, position, contentWidth, imgHeight);
-                    heightLeft -= usablePageHeight;
+                // Force concern-form fallback export to a single page by scaling to fit.
+                let drawWidth = contentWidth;
+                let drawHeight = imgHeight;
+                if (drawHeight > usablePageHeight) {
+                    const fitScale = usablePageHeight / drawHeight;
+                    drawHeight = usablePageHeight;
+                    drawWidth = contentWidth * fitScale;
                 }
 
-                const totalPages = pdf.internal.getNumberOfPages();
-                for (let j = 1; j <= totalPages; j++) {
-                    addFooter(j, totalPages);
-                }
+                const x = margin + (contentWidth - drawWidth) / 2;
+                pdf.addImage(imgData, "JPEG", x, margin, drawWidth, drawHeight);
+                addFooter(1, 1);
 
                 pdf.save(`report-${selectedForm?.title || "download"}.pdf`);
                 return;
@@ -642,7 +661,7 @@ export default function GenericReportPage({ pageTitle }) {
                                     <TableBody>
                                         {(() => {
                                             const filtered = submissions.filter((row) => {
-                                                const title = row.form?.title || row.formId?.title || "Untitled";
+                                                const title = getSubmissionTitle(row);
                                                 return title.toLowerCase().includes(search.toLowerCase());
                                             });
                                             const paginated = filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
@@ -656,7 +675,7 @@ export default function GenericReportPage({ pageTitle }) {
                                                 return (
                                                 <TableRow key={row.id || row._id} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                                                     <TableCell sx={{ color: isDarkMode ? "#F9FAFB" : "#111827", fontWeight: 500, borderBottom: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB" }}>{slNo}</TableCell>
-                                                    <TableCell sx={{ color: isDarkMode ? "#F9FAFB" : "#111827", fontWeight: 500, borderBottom: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB" }}>{row.form?.title || row.formId?.title || "Untitled"}</TableCell>
+                                                    <TableCell sx={{ color: isDarkMode ? "#F9FAFB" : "#111827", fontWeight: 500, borderBottom: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB" }}>{getSubmissionTitle(row)}</TableCell>
                                                     <TableCell sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280", borderBottom: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB" }}>{new Date(row.createdAt).toLocaleDateString()}</TableCell>
                                                     <TableCell sx={{ borderBottom: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB" }}><Chip label="Submitted" color="success" size="small" sx={{ bgcolor: 'rgba(34, 197, 94, 0.15)', color: '#22C55E', fontWeight: 500, border: 'none' }} /></TableCell>
                                                     <TableCell align="right" sx={{ borderBottom: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB" }}>
@@ -674,7 +693,7 @@ export default function GenericReportPage({ pageTitle }) {
                             <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', p: 1 }}>
                                 <TablePagination
                                     component="div"
-                                    count={submissions.filter((row) => (row.form?.title || row.formId?.title || "Untitled").toLowerCase().includes(search.toLowerCase())).length}
+                                    count={submissions.filter((row) => getSubmissionTitle(row).toLowerCase().includes(search.toLowerCase())).length}
                                     page={page}
                                     onPageChange={handleChangePage}
                                     rowsPerPage={rowsPerPage}
