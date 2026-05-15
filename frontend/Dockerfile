@@ -4,7 +4,9 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+# Hosts (e.g. Coolify) often pass NODE_ENV=production as a build-arg, which makes npm
+# omit devDependencies — but Vite is a devDependency, so `vite build` fails with exit 127.
+RUN npm ci --include=dev || npm install --include=dev
 
 COPY . .
 
@@ -15,7 +17,7 @@ ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
 ARG VITE_USE_RELATIVE_API
 ENV VITE_USE_RELATIVE_API=$VITE_USE_RELATIVE_API
 # Optional subpath deploy, e.g. /app/ (must start and end with / except root).
-ARG VITE_BASE_PATH
+ARG VITE_BASE_PATH=/
 ENV VITE_BASE_PATH=$VITE_BASE_PATH
 
 RUN npm run build
