@@ -12,7 +12,10 @@ exports.signup = asyncHandler(async (req, res) => {
 
     try {
         const { user, token } = await authService.signup(payload);
-        res.status(201).json({ success: true, message: 'Account created', user, token });
+        const safeUser = { ...user };
+        delete safeUser.password;
+        delete safeUser.twoFactorSecret;
+        res.status(201).json({ success: true, message: 'Account created', user: safeUser, token });
     } catch (err) {
         return res.status(err.status || 500).json({
             success: false,

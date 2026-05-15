@@ -22,5 +22,5 @@ RUN npx prisma generate
 # Expose the port the app runs on
 EXPOSE 4000
 
-# Start the application
-CMD ["npm", "start"]
+# Apply pending migrations then start (do not rely on `npm start` / prestart — many hosts run `node` directly).
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node server.js"]

@@ -54,11 +54,14 @@ const extraAllowedOrigins = (process.env.ALLOWED_ORIGINS || "")
 
 const allowedOrigins = [...new Set([...defaultAllowedOrigins, ...extraAllowedOrigins])];
 
-const isOriginAllowed = (origin = "") => {
+/** Static allowlist (known domains, previews, local dev). */
+const isOriginInStaticList = (origin = "") => {
   const cleanOrigin = origin.replace(/\/$/, "");
   return (
     allowedOrigins.includes(cleanOrigin) ||
     cleanOrigin.endsWith(".vercel.app") ||
+    cleanOrigin.endsWith(".sslip.io") ||
+    cleanOrigin.endsWith(".nip.io") ||
     cleanOrigin.startsWith("http://localhost:") ||
     cleanOrigin.startsWith("https://localhost:") ||
     cleanOrigin.startsWith("http://127.0.0.1:") ||
@@ -66,11 +69,35 @@ const isOriginAllowed = (origin = "") => {
   );
 };
 
+/**
+ * SPA and API share one public hostname (e.g. Coolify + nginx). Browsers still send Origin;
+ * it must be allowed even if it is not in the static list (preview URLs, sslip.io, custom domains).
+ */
+function isSamePublicHostOrigin(origin, req) {
+  if (!origin || !req) return false;
+  let publicHost = (req.headers["x-forwarded-host"] || "")
+    .split(",")[0]
+    .trim();
+  if (!publicHost) publicHost = (req.headers.host || "").trim();
+  if (!publicHost) return false;
+  try {
+    const o = new URL(origin);
+    return o.host === publicHost;
+  } catch {
+    return false;
+  }
+}
+
+function isOriginAllowedForRequest(origin, req) {
+  if (!origin) return true;
+  return isOriginInStaticList(origin) || isSamePublicHostOrigin(origin, req);
+}
+
 // Manual CORS fallback so preflight never gets dropped by later middleware/proxy layers.
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  if (origin && isOriginAllowed(origin)) {
+  if (origin && isOriginAllowedForRequest(origin, req)) {
     res.header("Access-Control-Allow-Origin", origin);
     res.header("Vary", "Origin");
     res.header("Access-Control-Allow-Credentials", "true");
@@ -85,24 +112,26 @@ app.use((req, res, next) => {
   next();
 });
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
+const corsMethods = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"];
+const corsAllowedHeaders = ["Content-Type", "Authorization", "X-Requested-With", "Accept"];
 
-    if (isOriginAllowed(origin)) {
-      callback(null, true);
-    } else {
+/** Per-request delegate so Origin can be matched against Host / X-Forwarded-Host (Coolify, etc.). */
+const corsDelegate = (req, callback) => {
+  callback(null, {
+    origin(origin, cb) {
+      if (!origin) return cb(null, true);
+      if (isOriginAllowedForRequest(origin, req)) return cb(null, true);
       console.log("Blocked by CORS:", origin);
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-  credentials: true,
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+      cb(new Error("Not allowed by CORS"));
+    },
+    methods: corsMethods,
+    credentials: true,
+    allowedHeaders: corsAllowedHeaders,
+  });
 };
 
-app.use(cors(corsOptions));
-app.options(/.*/, cors(corsOptions)); // Enable pre-flight for all routes using same options
+app.use(cors(corsDelegate));
+app.options(/.*/, cors(corsDelegate)); // Enable pre-flight for all routes using same options
 
 // CORS Debugging Middleware
 app.use((req, res, next) => {
@@ -146,6 +175,13 @@ app.use("/api/dashboard", dashboardRoutes);
 
 app.use((err, req, res, next) => { 
   console.error("Error Handler:", err);
+
+  if (err.message === "Not allowed by CORS") {
+    return res.status(403).json({
+      success: false,
+      message: "Origin not allowed. Set ALLOWED_ORIGINS to your app URL (comma-separated) or use the same hostname for the SPA and API.",
+    });
+  }
 
   // Prisma specific error handling could go here
   if (err.code === 'P2002') {
