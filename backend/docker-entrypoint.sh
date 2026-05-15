@@ -7,8 +7,7 @@ if [ -z "$DATABASE_URL" ]; then
   exit 1
 fi
 
-echo "Running Prisma migrations..."
-npx prisma migrate deploy
+./docker-migrate.sh
 
 echo "Starting API server..."
 exec node server.js

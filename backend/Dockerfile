@@ -20,6 +20,7 @@ COPY . .
 RUN npx prisma generate
 
 RUN chmod +x docker-entrypoint.sh
+RUN chmod +x docker-migrate.sh
 
 # Expose the port the app runs on
 EXPOSE 4000

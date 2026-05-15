@@ -10,8 +10,9 @@ services:
       - .env
 
     environment:
-      NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL}
+      NODE_ENV: ${NODE_ENV:-production}
+      # Default matches bundled Postgres in docker-compose.local.yaml; override in .env for Neon/Coolify.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://safetyuser:safetypassword@db:5432/safetyapp_db?schema=public}
 
     volumes:
       - ./backend/uploads:/app/uploads
