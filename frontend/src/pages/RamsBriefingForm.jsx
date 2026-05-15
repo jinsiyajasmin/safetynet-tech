@@ -19,6 +19,8 @@ import { getOrCreateTemplateForm } from "../services/formUtils";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
 import { useRef } from "react";
 import { useGeneralFormTemplateAccess } from "../hooks/useGeneralFormTemplateAccess";
+import FormDocumentHeader from "../components/FormDocumentHeader";
+import FormHeaderApprovedRow from "../components/FormHeaderApprovedRow";
 
 export default function RamsBriefingForm() {
   const logoUrl = useCompanyLogo();
@@ -37,10 +39,12 @@ export default function RamsBriefingForm() {
     const [formMetadata, setFormMetadata] = useState({ name: "", tags: "" });
     
     // Header Data
-    const [docInfo, setDocInfo] = useState({ date: "", docNo: "", approvedBy: "" ,
-        logo: ""
-,
-        logoRight: ""
+    const [docInfo, setDocInfo] = useState({
+        date: "",
+        docNo: "",
+        approvedBy: "",
+        logo: "",
+        logoRight: "",
     });
     const [briefingData, setBriefingData] = useState({
         personConducting: "",
@@ -246,47 +250,15 @@ export default function RamsBriefingForm() {
                     }}
                 >
                     {/* Top Header Logos and Document Info */}
-                    <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, border: `1px solid ${borderColor}`, mb: 4 }}>
-                                                {/* Left Logo / Upload */}
-                        <Box sx={{ width: { xs: '100%', md: '30%' }, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRight: `1px solid ${borderColor}` }}>
-                            {docInfo.logo ? (
-                                <>
-                                    <Box component="img" src={docInfo.logo} alt="Uploaded Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: !contentReadOnly ? 1 : 0 }} />
-                                    {!contentReadOnly && (
-                                        <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
-                                            Change Logo
-                                            <input type="file" hidden accept="image/*" onChange={(e) => {
-                                                const file = e.target.files[0];
-                                                if (file) {
-                                                    const reader = new FileReader();
-                                                    reader.onload = (ev) => setDocInfo({...docInfo, logo: ev.target.result});
-                                                    reader.readAsDataURL(file);
-                                                }
-                                            }} />
-                                        </Button>
-                                    )}
-                                </>
-                            ) : (
-                                !contentReadOnly ? (
-                                    <Button variant="outlined" component="label" size="small">
-                                        Upload Logo
-                                        <input type="file" hidden accept="image/*" onChange={(e) => {
-                                            const file = e.target.files[0];
-                                            if (file) {
-                                                const reader = new FileReader();
-                                                reader.onload = (ev) => setDocInfo({...docInfo, logo: ev.target.result});
-                                                reader.readAsDataURL(file);
-                                            }
-                                        }} />
-                                    </Button>
-                                ) : (
-                                    <Typography variant="caption" color="text.secondary">No Logo</Typography>
-                                )
-                            )}
-                        </Box>
-                        
-                        {/* Center Info */}
-                        <Box sx={{ width: { xs: '100%', md: '40%' }, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
+                    <FormDocumentHeader
+                        borderColor={borderColor}
+                        readOnly={contentReadOnly}
+                        leftImageSrc={docInfo.logo}
+                        onLeftImageChange={(url) => setDocInfo((prev) => ({ ...prev, logo: url }))}
+                        rightImageSrc={docInfo.logoRight}
+                        onRightImageChange={(url) => setDocInfo((prev) => ({ ...prev, logoRight: url }))}
+                        sx={{ mb: 4 }}
+                    >
                             <Box sx={{ flex: 1, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', p: 1, borderBottom: `1px solid ${borderColor}` }}>
                                 {contentReadOnly ? (
                                     <Typography sx={{ fontWeight: 'bold' }}>{briefingLabels.headerTitle}</Typography>
@@ -336,28 +308,17 @@ export default function RamsBriefingForm() {
                                     {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.docNo || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: isDarkMode ? "#F9FAFB" : "#111827", px: 1, py: 1, height: '100%' } }} value={docInfo.docNo} onChange={e => setDocInfo({...docInfo, docNo: e.target.value})} />)}
                                 </Box>
                             </Box>
-                            <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
-                                <Box sx={{ width: { xs: '100%', md: '60%' }, p: 0, borderRight: `1px solid ${borderColor}`, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center' }}>
-                                    <Box sx={{ pl: 1, pr: 0.5, whiteSpace: 'nowrap' }}>
-                                        {contentReadOnly ? (
-                                            <Typography sx={{ fontWeight: 'inherit' }}>{briefingLabels.headerApprovedBy}</Typography>
-                                        ) : (
-                                            <TextField
-                                                variant="standard"
-                                                InputProps={{ disableUnderline: true, sx: { fontWeight: 'inherit', maxWidth: '100px' } }}
-                                                value={briefingLabels.headerApprovedBy}
-                                                onChange={(e) => setBriefingLabels({...briefingLabels, headerApprovedBy: e.target.value})}
-                                            />
-                                        )}
-                                    </Box>
-                                    {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.approvedBy || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: isDarkMode ? "#F9FAFB" : "#111827", px: 0.5, py: 1, height: '100%' } }} value={docInfo.approvedBy} onChange={e => setDocInfo({...docInfo, approvedBy: e.target.value})} />)}
-                                </Box>
-                                <Box sx={{ width: { xs: '100%', md: '40%' }, p: 1 }}>Page 1 of 1</Box>
-                            </Box>
-                        </Box>
-
-                        
-                    </Box>
+                            <FormHeaderApprovedRow
+                                borderColor={borderColor}
+                                contentReadOnly={contentReadOnly}
+                                label={briefingLabels.headerApprovedBy}
+                                onLabelChange={(e) => setBriefingLabels({ ...briefingLabels, headerApprovedBy: e.target.value })}
+                                value={docInfo.approvedBy}
+                                onValueChange={(e) => setDocInfo({ ...docInfo, approvedBy: e.target.value })}
+                                valueTextColor={isDarkMode ? "#F9FAFB" : "#111827"}
+                                pageText="Page 1 of 1"
+                            />
+                    </FormDocumentHeader>
 
                     {/* Form Title */}
                     <Box sx={{ mb: 3, display: 'flex', justifyContent: 'center' }}>

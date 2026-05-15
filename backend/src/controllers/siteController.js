@@ -1,6 +1,26 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
+function companyUserWhere(req) {
+    const { role, clientId } = req.user;
+    if (role === "company_admin") {
+        if (!clientId) return null;
+        return { clientId };
+    }
+    if (clientId) return { clientId };
+    return {};
+}
+
+async function assertManagerInCompany(req, managerId) {
+    if (!managerId) return true;
+    const companyWhere = companyUserWhere(req);
+    if (companyWhere === null) return false;
+    const manager = await prisma.user.findFirst({
+        where: { id: managerId, active: true, ...companyWhere },
+    });
+    return Boolean(manager);
+}
+
 // Create a new site
 exports.createSite = async (req, res) => {
     try {
@@ -8,6 +28,12 @@ exports.createSite = async (req, res) => {
 
         if (!name || !address) {
             return res.status(400).json({ error: "Name and Address are required." });
+        }
+
+        if (managerId && !(await assertManagerInCompany(req, managerId))) {
+            return res.status(400).json({
+                error: "Selected site manager is not valid for your company.",
+            });
         }
 
         const newSite = await prisma.site.create({
@@ -76,6 +102,12 @@ exports.updateSite = async (req, res) => {
         const { id } = req.params;
         const { name, address, managerId, isActive } = req.body;
 
+        if (managerId && !(await assertManagerInCompany(req, managerId))) {
+            return res.status(400).json({
+                error: "Selected site manager is not valid for your company.",
+            });
+        }
+
         const data = {};
         if (name !== undefined) data.name = name;
         if (address !== undefined) data.address = address;
@@ -118,15 +150,18 @@ exports.deleteSite = async (req, res) => {
     }
 };
 
-// Get site managers
+// All active users in the requester's company (for site manager assignment)
 exports.getSiteManagers = async (req, res) => {
     try {
-        // Assuming role 'site_manager' or similar exists. 
-        // The user mentioned "whos role is site manager" -> now expanded to superadmin, company_admin too
+        const companyWhere = companyUserWhere(req);
+        if (companyWhere === null) {
+            return res.status(400).json({ error: "Company context required." });
+        }
+
         const managers = await prisma.user.findMany({
             where: {
-                role: { in: ["site_manager", "superadmin", "company_admin"] },
-                active: true, // Only fetch active managers? Just a good practice.
+                active: true,
+                ...companyWhere,
             },
             select: {
                 id: true,
@@ -135,6 +170,7 @@ exports.getSiteManagers = async (req, res) => {
                 lastName: true,
                 email: true,
             },
+            orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
         });
         res.json(managers);
     } catch (error) {

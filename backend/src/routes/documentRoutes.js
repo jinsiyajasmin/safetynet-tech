@@ -8,7 +8,19 @@ const upload = require('../middleware/upload');
 router.use(requireAuth);
 
 const multer = require('multer');
-const uploadMem = multer({ storage: multer.memoryStorage() });
+const { isAllowedUpload, MAX_DOCUMENT_BYTES } = require('../utils/documentFileTypes');
+
+const uploadMem = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_DOCUMENT_BYTES },
+    fileFilter: (req, file, cb) => {
+        if (isAllowedUpload(file)) {
+            cb(null, true);
+        } else {
+            cb(new Error('File type not supported. Use PDF, Word, Excel, PowerPoint, PNG, JPEG, or similar.'));
+        }
+    },
+});
 
 router.post('/upload', (req, res, next) => {
     uploadMem.single('file')(req, res, (err) => {

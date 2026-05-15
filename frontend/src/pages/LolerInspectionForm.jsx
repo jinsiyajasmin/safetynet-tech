@@ -18,6 +18,7 @@ import api from "../services/api";
 import { getOrCreateTemplateForm } from "../services/formUtils";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
 import { useGeneralFormTemplateAccess } from "../hooks/useGeneralFormTemplateAccess";
+import FormDocumentHeader from "../components/FormDocumentHeader";
 
 export default function LolerInspectionForm() {
   const logoUrl = useCompanyLogo();
@@ -255,46 +256,15 @@ export default function LolerInspectionForm() {
                     }}
                 >
                     {/* Header */}
-                    <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, border: `1px solid ${borderColor}`, mb: 3 }}>
-                                                {/* Left Logo / Upload */}
-                        <Box sx={{ width: { xs: '100%', md: '30%' }, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRight: `1px solid ${borderColor}` }}>
-                            {docInfo.logo ? (
-                                <>
-                                    <Box component="img" src={docInfo.logo} alt="Uploaded Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: !contentReadOnly ? 1 : 0 }} />
-                                    {!contentReadOnly && (
-                                        <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
-                                            Change
-                                            <input type="file" hidden accept="image/*" onChange={(e) => {
-                                                const file = e.target.files[0];
-                                                if (file) {
-                                                    const reader = new FileReader();
-                                                    reader.onload = (ev) => setDocInfo({...docInfo, logo: ev.target.result});
-                                                    reader.readAsDataURL(file);
-                                                }
-                                            }} />
-                                        </Button>
-                                    )}
-                                </>
-                            ) : (
-                                !contentReadOnly ? (
-                                    <Button variant="outlined" component="label" size="small">
-                                        Upload Logo
-                                        <input type="file" hidden accept="image/*" onChange={(e) => {
-                                            const file = e.target.files[0];
-                                            if (file) {
-                                                const reader = new FileReader();
-                                                reader.onload = (ev) => setDocInfo({...docInfo, logo: ev.target.result});
-                                                reader.readAsDataURL(file);
-                                            }
-                                        }} />
-                                    </Button>
-                                ) : (
-                                    <Typography variant="caption" color="text.secondary">No Logo</Typography>
-                                )
-                            )}
-                        </Box>
-                        
-                        <Box sx={{ width: { xs: '100%', md: '40%' }, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
+                    <FormDocumentHeader
+                        borderColor={borderColor}
+                        readOnly={contentReadOnly}
+                        leftImageSrc={docInfo.logo}
+                        onLeftImageChange={(url) => setDocInfo((prev) => ({ ...prev, logo: url }))}
+                        rightImageSrc={docInfo.logoRight}
+                        onRightImageChange={(url) => setDocInfo((prev) => ({ ...prev, logoRight: url }))}
+                        sx={{ mb: 3 }}
+                    >
                             <Box sx={{ flex: 1, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem', p: 1, borderBottom: `1px solid ${borderColor}` }}>
                                 {contentReadOnly ? (
                                     <Typography sx={{ fontWeight: 'bold', fontSize: '1.2rem' }}>{headerLabels.formTitle}</Typography>
@@ -363,45 +333,7 @@ export default function LolerInspectionForm() {
                                 </Box>
                                 <Box sx={{ width: { xs: '100%', md: '20%' }, p: cellPadding }}>Page 1 of 1</Box>
                             </Box>
-                        </Box>
-                        
-                        <Box sx={{ width: { xs: '100%', md: '30%' }, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                            {docInfo.logoRight ? (
-                                <>
-                                    <Box component="img" src={docInfo.logoRight} alt="Right Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: !contentReadOnly ? 1 : 0 }} />
-                                    {!contentReadOnly && (
-                                        <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
-                                            Change
-                                            <input type="file" hidden accept="image/*" onChange={(e) => {
-                                                const file = e.target.files[0];
-                                                if (file) {
-                                                    const reader = new FileReader();
-                                                    reader.onload = (ev) => setDocInfo({...docInfo, logoRight: ev.target.result});
-                                                    reader.readAsDataURL(file);
-                                                }
-                                            }} />
-                                        </Button>
-                                    )}
-                                </>
-                            ) : (
-                                !contentReadOnly ? (
-                                    <Button variant="outlined" component="label" size="small">
-                                        Upload Logo
-                                        <input type="file" hidden accept="image/*" onChange={(e) => {
-                                            const file = e.target.files[0];
-                                            if (file) {
-                                                const reader = new FileReader();
-                                                reader.onload = (ev) => setDocInfo({...docInfo, logoRight: ev.target.result});
-                                                reader.readAsDataURL(file);
-                                            }
-                                        }} />
-                                    </Button>
-                                ) : (
-                                    <Typography variant="caption" color="text.secondary">No Logo</Typography>
-                                )
-                            )}
-                        </Box>
-                    </Box>
+                    </FormDocumentHeader>
 
                     {/* Top Section */}
                     <Box sx={{ border: `1px solid ${borderColor}`, mb: 3 }}>

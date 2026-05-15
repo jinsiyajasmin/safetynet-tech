@@ -26,6 +26,7 @@ import {
     Divider,
 } from "@mui/material";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+import { formatUserDisplayName } from "../utils/plainName";
 import AddIcon from "@mui/icons-material/Add";
 import { Eye, Pencil, Trash2, UserX, UserCheck, X } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
@@ -276,7 +277,7 @@ export default function CreateSitesPage() {
                                             <TableCell sx={{ fontSize: "0.85rem", color: isDarkMode ? "#9CA3AF" : "#4B5563", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>{site.address}</TableCell>
                                             <TableCell sx={{ fontSize: "0.85rem", color: isDarkMode ? "#9CA3AF" : "#4B5563", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>
                                                 {site.manager
-                                                    ? `${site.manager.firstName || ""} ${site.manager.lastName || ""} (${site.manager.username})`
+                                                    ? formatUserDisplayName(site.manager)
                                                     : "N/A"}
                                             </TableCell>
                                             <TableCell sx={{ borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>
@@ -503,7 +504,7 @@ export default function CreateSitesPage() {
                                 </MenuItem>
                                 {managers.map((mgr) => (
                                     <MenuItem key={mgr.id} value={mgr.id}>
-                                        {`${mgr.firstName || ""} ${mgr.lastName || ""} (${mgr.username})`}
+                                        {formatUserDisplayName(mgr)}
                                     </MenuItem>
                                 ))}
                             </TextField>

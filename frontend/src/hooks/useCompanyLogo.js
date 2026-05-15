@@ -9,7 +9,7 @@ const computeLogoUrl = (logo) => {
     return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
 };
 
-export const useCompanyLogo = (fallback = "/logo2.png") => {
+export const useCompanyLogo = (fallback = "/sitemate-logo.svg") => {
     const [logoUrl, setLogoUrl] = useState(fallback);
 
     useEffect(() => {
@@ -62,10 +62,9 @@ export const useCompanyLogo = (fallback = "/logo2.png") => {
                 }
                 
                 if (rawLogo) {
-                    // Force logo2.png for Safetynett users
                     const isSafetynett = (user.companyname || user.company || "").toString().trim().toLowerCase().replace(/\s+/g, "") === "safetynett";
                     if (isSafetynett) {
-                        setLogoUrl("/logo2.png");
+                        setLogoUrl("/sitemate-logo.svg");
                     } else {
                         setLogoUrl(computeLogoUrl(rawLogo));
                     }

@@ -17,10 +17,15 @@ exports.signup = asyncHandler(async (req, res) => {
         delete safeUser.twoFactorSecret;
         res.status(201).json({ success: true, message: 'Account created', user: safeUser, token });
     } catch (err) {
-        return res.status(err.status || 500).json({
+        const body = {
             success: false,
-            message: err.message || "Signup failed"
-        });
+            message: err.message || "Signup failed",
+        };
+        if (err.code) body.code = err.code;
+        if (err.field) {
+            body.errors = { [err.field]: err.message };
+        }
+        return res.status(err.status || 500).json(body);
     }
 });
 

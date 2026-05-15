@@ -121,7 +121,7 @@ function App() {
           } />
           <Route path="/create-sites" element={
             <RequireAuth>
-              <RoleGuard allowedRoles={MANAGER_PLUS}>
+              <RoleGuard allowedRoles={ADMIN_PLUS}>
                 <CreateSitesPage />
               </RoleGuard>
             </RequireAuth>

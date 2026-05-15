@@ -18,6 +18,26 @@ import { downloadPdfFromRef } from "../utils/pdfGenerator";
 import { useRef } from "react";
 import { useCompanyLogo } from "../hooks/useCompanyLogo";
 import { useGeneralFormTemplateAccess } from "../hooks/useGeneralFormTemplateAccess";
+import FormDocumentHeader from "../components/FormDocumentHeader";
+import FormHeaderApprovedRow from "../components/FormHeaderApprovedRow";
+
+const DEFAULT_HEADER_LABELS = {
+    formTitle: "TOOL BOX TALK REGISTER",
+    dateLabel: "Date",
+    docNoLabel: "Document No. & Rev",
+    approvedByLabel: "Approved by",
+    presenter: "Name of Presenter",
+    date: "Date",
+    site: "Site",
+    topic: "Tool Box Talk Topic:",
+    attendeeDisclaimer:
+        "The undersigned have been fully briefed on the contents of the attached Tool Box Talk and will ensure they work to the agreed safe system of work in place at all times and shall raise any concerns directly with the Site Supervisor or Construct Lifts Installation Director.",
+    attendeePrintNameLabel: "Print Name",
+    attendeeSignatureLabel: "Signature",
+    attendeeDateLabel: "Date",
+    consultationTitle:
+        "Consultation (record all consultation comments raised during the tool box talk)",
+};
 
 export default function ToolBoxTalkForm() {
     const { isDarkMode } = useTheme();
@@ -42,25 +62,16 @@ export default function ToolBoxTalkForm() {
         topic: ""
     });
 
-    const [headerLabels, setHeaderLabels] = useState({
-        formTitle: "TOOL BOX TALK REGISTER",
-        dateLabel: "Date",
-        docNoLabel: "Document No. & Rev",
-        approvedByLabel: "Approved by",
-        presenter: "Name of Presenter",
-        date: "Date",
-        site: "Site",
-        topic: "Tool Box Talk Topic:"
-    });
+    const [headerLabels, setHeaderLabels] = useState(() => ({ ...DEFAULT_HEADER_LABELS }));
 
     // Common Document Header
     const [docInfo, setDocInfo] = useState({
         date: "",
         docNo: "",
         approvedBy: "",
-        logo: ""
-,
-        logoRight: ""
+        logo: "",
+        logoRight: "",
+        signature: "",
     });
     
     const EMPTY_ATTENDEE = { printName: "", signature: "", date: "" };
@@ -111,7 +122,9 @@ export default function ToolBoxTalkForm() {
                     setPersistedSiteId(submission.answers.siteId ?? null);
                     if (submission.answers.docInfo) setDocInfo(submission.answers.docInfo);
                     if (submission.answers.headerData) setHeaderData(submission.answers.headerData);
-                    if (submission.answers.headerLabels) setHeaderLabels(submission.answers.headerLabels);
+                    if (submission.answers.headerLabels) {
+                        setHeaderLabels({ ...DEFAULT_HEADER_LABELS, ...submission.answers.headerLabels });
+                    }
                     if (submission.answers.attendees) setAttendees(submission.answers.attendees);
                     if (submission.answers.consultation !== undefined) setConsultation(submission.answers.consultation);
                     setFormMetadata({
@@ -251,52 +264,15 @@ export default function ToolBoxTalkForm() {
                     }}
                 >
                     {/* Top Header Logos and Document Info */}
-                    <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, border: `1px solid ${borderColor}`, mb: 4 }}>
-                        {/* Left Logo / Upload */}
-                        <Box sx={{ width: { xs: '100%', md: '30%' }, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRight: `1px solid ${borderColor}` }}>
-                            {docInfo.logo ? (
-                                <>
-                                    <Box component="img" src={docInfo.logo} alt="Uploaded Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: !contentReadOnly ? 1 : 0 }} />
-                                    {!contentReadOnly && (
-                                        <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                                            <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
-                                                Change Logo
-                                                <input type="file" hidden accept="image/*" onChange={(e) => {
-                                                    const file = e.target.files[0];
-                                                    if (file) {
-                                                        const reader = new FileReader();
-                                                        reader.onload = (ev) => setDocInfo({...docInfo, logo: ev.target.result});
-                                                        reader.readAsDataURL(file);
-                                                    }
-                                                }} />
-                                            </Button>
-                                            <Button variant="text" color="error" size="small" sx={{ fontSize: '0.7rem' }} onClick={() => setDocInfo({...docInfo, logo: ''})}>
-                                                Remove
-                                            </Button>
-                                        </Box>
-                                    )}
-                                </>
-                            ) : (
-                                !contentReadOnly ? (
-                                    <Button variant="outlined" component="label" size="small">
-                                        Upload Logo
-                                        <input type="file" hidden accept="image/*" onChange={(e) => {
-                                            const file = e.target.files[0];
-                                            if (file) {
-                                                const reader = new FileReader();
-                                                reader.onload = (ev) => setDocInfo({...docInfo, logoRight: ev.target.result});
-                                                reader.readAsDataURL(file);
-                                            }
-                                        }} />
-                                    </Button>
-                                ) : (
-                                    <Typography variant="caption" color="text.secondary">No Logo</Typography>
-                                )
-                            )}
-                        </Box>
-                        
-                        {/* Center Info */}
-                        <Box sx={{ width: { xs: '100%', md: '40%' }, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
+                    <FormDocumentHeader
+                        borderColor={borderColor}
+                        readOnly={contentReadOnly}
+                        leftImageSrc={docInfo.logo}
+                        onLeftImageChange={(url) => setDocInfo((prev) => ({ ...prev, logo: url }))}
+                        rightImageSrc={docInfo.logoRight}
+                        onRightImageChange={(url) => setDocInfo((prev) => ({ ...prev, logoRight: url }))}
+                        sx={{ mb: 4 }}
+                    >
                             <Box sx={{ flex: 1, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', p: 1, borderBottom: `1px solid ${borderColor}` }}>
                                 {(contentReadOnly) ? (
                                     <Typography sx={{ fontWeight: 'bold' }}>{headerLabels.formTitle}</Typography>
@@ -346,68 +322,16 @@ export default function ToolBoxTalkForm() {
                                     {(contentReadOnly) ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.docNo || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: headerTextColor, px: 1, py: 1, height: '100%' } }} value={docInfo.docNo} onChange={e => setDocInfo({...docInfo, docNo: e.target.value})} />)}
                                 </Box>
                             </Box>
-                            <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
-                                <Box sx={{ width: { xs: '100%', md: '60%' }, p: 0, borderRight: `1px solid ${borderColor}`, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center' }}>
-                                    <Box sx={{ pl: 1, pr: 0.5, whiteSpace: 'nowrap' }}>
-                                        {(contentReadOnly) ? (
-                                            <Typography sx={{ fontWeight: 'inherit' }}>{headerLabels.approvedByLabel}</Typography>
-                                        ) : (
-                                            <TextField
-                                                variant="standard"
-                                                InputProps={{ disableUnderline: true, sx: { fontWeight: 'inherit', maxWidth: '100px' } }}
-                                                value={headerLabels.approvedByLabel}
-                                                onChange={(e) => setHeaderLabels({...headerLabels, approvedByLabel: e.target.value})}
-                                            />
-                                        )}
-                                    </Box>
-                                    {(contentReadOnly) ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.approvedBy || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: headerTextColor, px: 0.5, py: 1, height: '100%' } }} value={docInfo.approvedBy} onChange={e => setDocInfo({...docInfo, approvedBy: e.target.value})} />)}
-                                </Box>
-                            </Box>
-                        </Box>
-
-                        {/* Right Logo / Upload */}
-                        <Box sx={{ width: { xs: '100%', md: '30%' }, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                            {docInfo.logoRight ? (
-                                <>
-                                    <Box component="img" src={docInfo.logoRight} alt="Uploaded Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: !contentReadOnly ? 1 : 0 }} />
-                                    {!contentReadOnly && (
-                                        <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                                            <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
-                                                Change Logo
-                                                <input type="file" hidden accept="image/*" onChange={(e) => {
-                                                    const file = e.target.files[0];
-                                                    if (file) {
-                                                        const reader = new FileReader();
-                                                        reader.onload = (ev) => setDocInfo({...docInfo, logoRight: ev.target.result});
-                                                        reader.readAsDataURL(file);
-                                                    }
-                                                }} />
-                                            </Button>
-                                            <Button variant="text" color="error" size="small" sx={{ fontSize: '0.7rem' }} onClick={() => setDocInfo({...docInfo, logoRight: ''})}>
-                                                Remove
-                                            </Button>
-                                        </Box>
-                                    )}
-                                </>
-                            ) : (
-                                !contentReadOnly ? (
-                                    <Button variant="outlined" component="label" size="small">
-                                        Upload Logo
-                                        <input type="file" hidden accept="image/*" onChange={(e) => {
-                                            const file = e.target.files[0];
-                                            if (file) {
-                                                const reader = new FileReader();
-                                                reader.onload = (ev) => setDocInfo({...docInfo, logoRight: ev.target.result});
-                                                reader.readAsDataURL(file);
-                                            }
-                                        }} />
-                                    </Button>
-                                ) : (
-                                    <Typography variant="caption" color="text.secondary">No Logo</Typography>
-                                )
-                            )}
-                        </Box>
-                    </Box>
+                            <FormHeaderApprovedRow
+                                borderColor={borderColor}
+                                contentReadOnly={contentReadOnly}
+                                label={headerLabels.approvedByLabel}
+                                onLabelChange={(e) => setHeaderLabels({ ...headerLabels, approvedByLabel: e.target.value })}
+                                value={docInfo.approvedBy}
+                                onValueChange={(e) => setDocInfo({ ...docInfo, approvedBy: e.target.value })}
+                                valueTextColor={headerTextColor}
+                            />
+                    </FormDocumentHeader>
 
                     {/* Presenter Info Details */}
                     <Box sx={{ display: 'flex', flexDirection: 'column', border: `1px solid ${borderColor}` }}>
@@ -445,18 +369,69 @@ export default function ToolBoxTalkForm() {
 
                     {/* Disclaimer Text */}
                     <Box sx={{ border: `1px solid ${borderColor}`, borderTop: 'none', p: 2 }}>
-                        <Typography sx={{ fontSize: '0.9rem', lineHeight: 1.5 }}>
-                            The undersigned have been fully briefed on the contents of the attached Tool Box Talk and will ensure they work to the agreed safe system of work in place at all times and shall raise any concerns directly with the Site Supervisor or Construct Lifts Installation Director.
-                        </Typography>
+                        {contentReadOnly ? (
+                            <Typography sx={{ fontSize: "0.9rem", lineHeight: 1.5 }}>
+                                {headerLabels.attendeeDisclaimer}
+                            </Typography>
+                        ) : (
+                            <TextField
+                                fullWidth
+                                multiline
+                                minRows={2}
+                                variant="standard"
+                                InputProps={{
+                                    disableUnderline: true,
+                                    sx: { fontSize: "0.9rem", lineHeight: 1.5, color: isDarkMode ? "#F9FAFB" : "#111827" },
+                                }}
+                                value={headerLabels.attendeeDisclaimer}
+                                onChange={(e) =>
+                                    setHeaderLabels({ ...headerLabels, attendeeDisclaimer: e.target.value })
+                                }
+                            />
+                        )}
                     </Box>
 
                     {/* Attendees Table */}
                     <Box sx={{ border: `1px solid ${borderColor}`, borderTop: 'none' }}>
                         <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
                             <Box sx={{ width: { xs: '100%', md: (contentReadOnly) ? '5%' : '88px' }, minWidth: { md: (contentReadOnly) ? undefined : '88px' }, p: cellPadding, borderRight: `1px solid ${borderColor}`, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>#</Box>
-                            <Box sx={{ width: { xs: '100%', md: '35%' }, p: cellPadding, textAlign: 'center', borderRight: `1px solid ${borderColor}` }}>Print Name</Box>
-                            <Box sx={{ width: { xs: '100%', md: '35%' }, p: cellPadding, textAlign: 'center', borderRight: `1px solid ${borderColor}` }}>Signature</Box>
-                            <Box sx={{ width: { xs: '100%', md: '25%' }, p: cellPadding, textAlign: 'center' }}>Date</Box>
+                            {[
+                                { key: "attendeePrintNameLabel", width: "35%", borderRight: true },
+                                { key: "attendeeSignatureLabel", width: "35%", borderRight: true },
+                                { key: "attendeeDateLabel", width: "25%", borderRight: false },
+                            ].map(({ key, width, borderRight: hasBorder }) => (
+                                <Box
+                                    key={key}
+                                    sx={{
+                                        width: { xs: "100%", md: width },
+                                        p: cellPadding,
+                                        textAlign: "center",
+                                        ...(hasBorder ? { borderRight: `1px solid ${borderColor}` } : {}),
+                                    }}
+                                >
+                                    {contentReadOnly ? (
+                                        <Typography sx={{ fontWeight: "bold" }}>{headerLabels[key]}</Typography>
+                                    ) : (
+                                        <TextField
+                                            fullWidth
+                                            variant="standard"
+                                            InputProps={{
+                                                disableUnderline: true,
+                                                sx: {
+                                                    fontWeight: "bold",
+                                                    textAlign: "center",
+                                                    input: { textAlign: "center" },
+                                                    color: isDarkMode ? "#F9FAFB" : "#111827",
+                                                },
+                                            }}
+                                            value={headerLabels[key]}
+                                            onChange={(e) =>
+                                                setHeaderLabels({ ...headerLabels, [key]: e.target.value })
+                                            }
+                                        />
+                                    )}
+                                </Box>
+                            ))}
                         </Box>
                         
                         {attendees.map((attendee, index) => (
@@ -526,9 +501,30 @@ export default function ToolBoxTalkForm() {
                     {/* Consultation Section */}
                     <Box sx={{ border: `1px solid ${borderColor}`, borderTop: 'none', minHeight: '150px', display: 'flex', flexDirection: 'column' }}>
                         <Box sx={{ p: cellPadding }}>
-                            <Typography sx={{ fontWeight: 'bold', textDecoration: 'underline', fontStyle: 'italic', fontSize: '0.9rem' }}>
-                                Consultation (record all consultation comments raised during the tool box talk)
-                            </Typography>
+                            {contentReadOnly ? (
+                                <Typography sx={{ fontWeight: "bold", textDecoration: "underline", fontStyle: "italic", fontSize: "0.9rem" }}>
+                                    {headerLabels.consultationTitle}
+                                </Typography>
+                            ) : (
+                                <TextField
+                                    fullWidth
+                                    variant="standard"
+                                    InputProps={{
+                                        disableUnderline: true,
+                                        sx: {
+                                            fontWeight: "bold",
+                                            textDecoration: "underline",
+                                            fontStyle: "italic",
+                                            fontSize: "0.9rem",
+                                            color: isDarkMode ? "#F9FAFB" : "#111827",
+                                        },
+                                    }}
+                                    value={headerLabels.consultationTitle}
+                                    onChange={(e) =>
+                                        setHeaderLabels({ ...headerLabels, consultationTitle: e.target.value })
+                                    }
+                                />
+                            )}
                         </Box>
                         {(contentReadOnly) ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{consultation || ' '}</Typography>) : (<TextField 
                             fullWidth 

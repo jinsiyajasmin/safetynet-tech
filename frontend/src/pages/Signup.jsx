@@ -124,18 +124,13 @@ export default function SignupPage() {
       const data = err?.response?.data;
 
       if (status === 400) {
-        // Validation error from backend
         const msg = data?.message || "Validation failed";
         setServerMsg({ type: "error", text: msg });
 
-        // If backend returns field-specific errors (e.g. { errors: { email: '...' } })
         if (data?.errors) {
           setErrors(data.errors);
-        } else {
-          // If we suspect it's the company/employer field based on message
-          if (msg.toLowerCase().includes("company")) {
-            setErrors((prev) => ({ ...prev, employer: msg }));
-          }
+        } else if (data?.code === "COMPANY_NOT_FOUND" || msg.toLowerCase().includes("company")) {
+          setErrors((prev) => ({ ...prev, employer: msg }));
         }
       } else if (status === 409) {
         setServerMsg({ type: "error", text: data?.message || "Conflict" });
@@ -200,6 +195,9 @@ export default function SignupPage() {
         }}
       >
         <Box sx={{ width: "100%", maxWidth: 500, py: 3 }}>
+          <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+            <Box component="img" src="/sitemate-logo.svg" alt="Site-mate logo" sx={{ height: 36, width: "auto" }} />
+          </Box>
           <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
             Create your account
           </Typography>
@@ -298,7 +296,10 @@ export default function SignupPage() {
                   value={form.employer}
                   onChange={handleChange("employer")}
                   error={!!errors.employer}
-                  helperText={errors.employer}
+                  helperText={
+                    errors.employer ||
+                    "Enter the exact company name you were given (must already be registered)."
+                  }
                   inputProps={{ maxLength: 200 }}
                 />
               </Grid>

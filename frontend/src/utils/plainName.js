@@ -14,3 +14,12 @@ export function plainNameError(value, label) {
   }
   return null;
 }
+
+/** Display name for UI (first + last, no username). */
+export function formatUserDisplayName(user) {
+  const first = (user?.firstName || "").trim();
+  const last = (user?.lastName || "").trim();
+  const full = `${first} ${last}`.trim();
+  if (full) return full;
+  return (user?.username || user?.email || "").trim() || "Unknown";
+}

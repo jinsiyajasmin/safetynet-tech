@@ -67,30 +67,22 @@ exports.signup = async (payload) => {
     throw err;
   }
 
-  let client = await prisma.client.findFirst({
+  const client = await prisma.client.findFirst({
     where: {
-      name: { equals: companyName, mode: 'insensitive' }
-    }
+      name: { equals: companyName, mode: "insensitive" },
+    },
   });
 
   if (!client) {
-    // Auto-create company if not found
-    console.log(`Company '${companyName}' not found. Creating new client.`);
-    try {
-      client = await prisma.client.create({
-        data: { name: companyName }
-      });
-    } catch (error) {
-      if (error?.code === "P2002") {
-        client = await prisma.client.findUnique({ where: { name: companyName } });
-      } else {
-        throw error;
-      }
-    }
-    console.log(`Client created: ${client.id}`);
-  } else {
-    console.log(`Client found: ${client.id}`);
+    console.log(`Signup rejected: company '${companyName}' does not match any client`);
+    const err = new Error("That company does not exist. Check the name and try again.");
+    err.status = 400;
+    err.code = "COMPANY_NOT_FOUND";
+    err.field = "employer";
+    throw err;
   }
+
+  console.log(`Client found: ${client.id}`);
 
   console.log("Signup Step 3: Hashing password");
   // 3️⃣ Hash password

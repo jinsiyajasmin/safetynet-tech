@@ -16,10 +16,10 @@ router.get(
   siteController.getSiteManagers
 );
 
-// Create a new site — company_admin and above
+// Create a new site — superadmin and company_admin only
 router.post(
   "/",
-  requireRole(["superadmin", "company_admin", "site_manager"]),
+  requireRole(["superadmin", "company_admin"]),
   siteController.createSite
 );
 

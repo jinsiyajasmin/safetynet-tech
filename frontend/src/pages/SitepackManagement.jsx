@@ -60,6 +60,16 @@ import PolicyOutlinedIcon from '@mui/icons-material/PolicyOutlined'; // Audit
 
 import Layout from '../components/Layout';
 import api, { fetchSites, uploadDocument, fetchDocuments, fetchDocumentCounts, deleteDocument } from "../services/api";
+import { isSavedGeneralFormTemplate } from "../utils/generalFormSubmissions";
+import {
+    DOCUMENT_UPLOAD_ACCEPT,
+    MAX_DOCUMENT_MB,
+    isAllowedDocumentFile,
+    documentTypeFromFile,
+    buildDownloadFilename,
+    getDocumentViewUrl,
+    triggerBrowserDownload,
+} from "../utils/documentFiles";
 import { useTheme } from "../context/ThemeContext";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutline';
@@ -233,7 +243,9 @@ export default function SitepackManagement() {
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [viewModalOpen, setViewModalOpen] = useState(false);
     const [viewDocUrl, setViewDocUrl] = useState(null);
+    const [viewDocSourceUrl, setViewDocSourceUrl] = useState(null);
     const [viewDocType, setViewDocType] = useState(null);
+    const [viewDocTitle, setViewDocTitle] = useState("");
     const [previewModalOpen, setPreviewModalOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState("");
 
@@ -400,9 +412,8 @@ export default function SitepackManagement() {
                 }
                 if (responsesRes.data?.success) {
                     const list = responsesRes.data.data || [];
-                    const knownTitles = new Set(Object.keys(generalFormTitleToPath));
                     const saved = list
-                        .filter((r) => r.form?.title && knownTitles.has(r.form.title))
+                        .filter(isSavedGeneralFormTemplate)
                         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
                     setSavedGeneralSubmissions(saved);
                 }
@@ -437,16 +448,32 @@ export default function SitepackManagement() {
     };
 
     const handleFileChange = (e) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            const fileNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
-            setFormData({ 
-                ...formData, 
-                file,
-                title: formData.title ? formData.title : fileNameWithoutExt 
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (!isAllowedDocumentFile(file)) {
+            setFormErrors({
+                ...formErrors,
+                file: "Unsupported file type. Use PDF, Word, Excel, PowerPoint, PNG, JPEG, or similar.",
             });
-            setFormErrors({ ...formErrors, file: null, title: null });
+            return;
         }
+
+        if (file.size > MAX_DOCUMENT_MB * 1024 * 1024) {
+            setFormErrors({
+                ...formErrors,
+                file: `File is too large. Maximum size is ${MAX_DOCUMENT_MB} MB.`,
+            });
+            return;
+        }
+
+        const fileNameWithoutExt = file.name.substring(0, file.name.lastIndexOf(".")) || file.name;
+        setFormData({
+            ...formData,
+            file,
+            title: formData.title ? formData.title : fileNameWithoutExt,
+        });
+        setFormErrors({ ...formErrors, file: null, title: null });
     };
 
     const handleInputChange = (field, value) => {
@@ -489,7 +516,11 @@ export default function SitepackManagement() {
             setDocs(documents || []);
         } catch (error) {
             console.error("Upload failed", error);
-            // Handle error UI if needed
+            const msg =
+                error?.response?.data?.message ||
+                error?.message ||
+                "Upload failed. Please try again.";
+            alert(msg);
         } finally {
             setIsUploading(false);
         }
@@ -565,8 +596,11 @@ export default function SitepackManagement() {
         }
 
         if (menuDoc?.url) {
-            setViewDocUrl(menuDoc.url);
-            setViewDocType(menuDoc.type || 'UNKNOWN');
+            const docType = (menuDoc.type || "FILE").toUpperCase();
+            setViewDocTitle(menuDoc.title || "Document");
+            setViewDocSourceUrl(menuDoc.url);
+            setViewDocUrl(getDocumentViewUrl(menuDoc.url, docType));
+            setViewDocType(docType);
             setViewModalOpen(true);
         }
         handleMenuClose();
@@ -575,7 +609,9 @@ export default function SitepackManagement() {
     const handleCloseViewModal = () => {
         setViewModalOpen(false);
         setViewDocUrl(null);
+        setViewDocSourceUrl(null);
         setViewDocType(null);
+        setViewDocTitle("");
     };
 
     const handleDownload = () => {
@@ -592,7 +628,7 @@ export default function SitepackManagement() {
         }
 
         if (menuDoc?.url) {
-            window.open(menuDoc.url, '_blank');
+            triggerBrowserDownload(menuDoc.url, buildDownloadFilename(menuDoc));
         }
         handleMenuClose();
     };
@@ -1189,7 +1225,7 @@ export default function SitepackManagement() {
                                     zIndex: 10
                                 }}
                                 onChange={handleFileChange}
-                                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.mp4,.txt"
+                                accept={DOCUMENT_UPLOAD_ACCEPT}
                             />
                             {formData.file && formData.file.type === "application/pdf" ? (
                                 <Box sx={{ mt: 1, mb: 2, height: 180, width: '100%', overflow: 'hidden', borderRadius: 2, border: '1px solid #e5e7eb', zIndex: 1, position: 'relative' }}>
@@ -1215,7 +1251,9 @@ export default function SitepackManagement() {
                                 {formData.file ? formData.file.name : "Drop files here or click to upload"}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" sx={{ position: 'relative', zIndex: 1 }}>
-                                {formData.file ? `${(formData.file.size / 1024 / 1024).toFixed(2)} MB` : "PDF, DOC, XLS, JPG, PNG, MP4, TXT up to 50 MB"}
+                                {formData.file
+                                    ? `${(formData.file.size / 1024 / 1024).toFixed(2)} MB · ${documentTypeFromFile(formData.file)}`
+                                    : `PDF, Word, Excel, PowerPoint, PNG, JPEG, and more (up to ${MAX_DOCUMENT_MB} MB)`}
                             </Typography>
                             {formErrors.file && (
                                 <Typography variant="caption" color="error" display="block" sx={{ mt: 1, position: 'relative', zIndex: 1 }}>
@@ -1423,88 +1461,85 @@ export default function SitepackManagement() {
                     p: 2,
                     px: 3
                 }}>
-                    <Typography variant="h6" fontWeight={600}>Document Viewer</Typography>
-                    <IconButton size="small" onClick={handleCloseViewModal}>
-                        <X size={20} color={isDarkMode ? "#9CA3AF" : "#6B7280"} />
-                    </IconButton>
+                    <Typography variant="h6" fontWeight={600} sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>
+                        {viewDocTitle || "Document Viewer"}
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                        {viewDocSourceUrl && (
+                            <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<Download size={16} />}
+                                onClick={() => triggerBrowserDownload(viewDocSourceUrl, buildDownloadFilename({ title: viewDocTitle, type: viewDocType }))}
+                                sx={{ textTransform: 'none', borderRadius: 2 }}
+                            >
+                                Download
+                            </Button>
+                        )}
+                        <IconButton size="small" onClick={handleCloseViewModal}>
+                            <X size={20} color={isDarkMode ? "#9CA3AF" : "#6B7280"} />
+                        </IconButton>
+                    </Box>
                 </DialogTitle>
                 <DialogContent sx={{ p: 0, height: '100%', overflow: 'hidden', bgcolor: isDarkMode ? "#111827" : "#F3F4F6", display: 'flex', justifyContent: 'center' }}>
                     {viewDocType === 'PDF' && (
-                        <object
-                            data={viewDocUrl}
-                            type="application/pdf"
-                            width="100%"
-                            height="100%"
-                            style={{ border: 'none' }}
-                        >
-                            <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', p: 3 }}>
-                                <FileText size={48} color={isDarkMode ? "#9CA3AF" : "#6B7280"} style={{ marginBottom: 16 }} />
-                                <Typography variant="h6" gutterBottom color={isDarkMode ? "#F9FAFB" : "#111827"}>Browser PDF Viewer Not Supported</Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                                    Your browser doesn't support embedded PDFs, or the file is preventing inline preview.
-                                </Typography>
-                                <Button
-                                    variant="contained"
-                                    href={viewDocUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    startIcon={<Download size={18} />}
-                                    sx={{ textTransform: 'none', borderRadius: 2 }}
-                                >
-                                    Download PDF
-                                </Button>
-                            </Box>
-                        </object>
-                    )}
-
-                    {['DOC', 'DOCX', 'XLS', 'XLSX'].includes(viewDocType) && (
-                        <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', p: 3, bgcolor: isDarkMode ? '#1F2937' : '#FFFFFF' }}>
-                            <Box sx={{ p: 4, borderRadius: 4, textAlign: 'center', border: '1px solid', borderColor: isDarkMode ? '#374151' : '#E5E7EB', bgcolor: isDarkMode ? '#111827' : '#F9FAFB' }}>
-                                <FileText size={56} color="#0B4DA6" style={{ marginBottom: 16 }} />
-                                <Typography variant="h6" gutterBottom color={isDarkMode ? "#F9FAFB" : "#111827"}>Office Document ({viewDocType})</Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 4, maxWidth: 350 }}>
-                                    This document type requires a local application like Microsoft Word or Excel to view properly.
-                                </Typography>
-                                <Button
-                                    variant="contained"
-                                    href={viewDocUrl}
-                                    target="_blank"
-                                    download
-                                    rel="noopener noreferrer"
-                                    startIcon={<Download size={18} />}
-                                    sx={{ textTransform: 'none', borderRadius: 2, px: 4, py: 1.5 }}
-                                >
-                                    Download to View
-                                </Button>
-                            </Box>
+                        <Box sx={{ width: '100%', height: '100%' }}>
+                            <iframe
+                                src={viewDocUrl}
+                                title={viewDocTitle || "PDF"}
+                                width="100%"
+                                height="100%"
+                                style={{ border: 'none' }}
+                            />
                         </Box>
                     )}
 
-                    {['JPG', 'JPEG', 'PNG', 'WEBP', 'SVG'].includes(viewDocType) && (
+                    {['DOC', 'DOCX', 'XLS', 'XLSX', 'XLSM', 'CSV', 'PPT', 'PPTX', 'RTF'].includes(viewDocType) && (
+                        <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+                            <iframe
+                                src={viewDocUrl}
+                                title={viewDocTitle || "Document preview"}
+                                width="100%"
+                                height="100%"
+                                style={{ border: 'none', flex: 1 }}
+                            />
+                        </Box>
+                    )}
+
+                    {['JPG', 'JPEG', 'PNG', 'WEBP', 'SVG', 'GIF', 'BMP'].includes(viewDocType) && (
                         <Box sx={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', p: 3 }}>
                             <img src={viewDocUrl} alt="Document" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                         </Box>
                     )}
 
-                    {viewDocType === 'MP4' && (
+                    {['MP4', 'MOV', 'WEBM'].includes(viewDocType) && (
                         <Box sx={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', p: 3 }}>
                             <video src={viewDocUrl} controls style={{ maxWidth: '100%', maxHeight: '100%' }} />
                         </Box>
                     )}
 
-                    {!['PDF', 'DOC', 'DOCX', 'XLS', 'XLSX', 'JPG', 'JPEG', 'PNG', 'WEBP', 'SVG', 'MP4'].includes(viewDocType) && (
+                    {viewDocType === 'TXT' && (
+                        <Box sx={{ width: '100%', height: '100%', p: 3, overflow: 'auto' }}>
+                            <iframe
+                                src={viewDocUrl}
+                                title={viewDocTitle || "Text file"}
+                                width="100%"
+                                height="100%"
+                                style={{ border: 'none', background: isDarkMode ? '#1F2937' : '#FFFFFF' }}
+                            />
+                        </Box>
+                    )}
+
+                    {!['PDF', 'DOC', 'DOCX', 'XLS', 'XLSX', 'XLSM', 'CSV', 'PPT', 'PPTX', 'RTF', 'JPG', 'JPEG', 'PNG', 'WEBP', 'SVG', 'GIF', 'BMP', 'MP4', 'MOV', 'WEBM', 'TXT'].includes(viewDocType) && (
                         <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', p: 3 }}>
                             <FileText size={48} color={isDarkMode ? "#9CA3AF" : "#6B7280"} style={{ marginBottom: 16 }} />
                             <Typography variant="h6" gutterBottom color={isDarkMode ? "#F9FAFB" : "#111827"}>Preview not available</Typography>
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                                This file type ({viewDocType}) cannot be previewed directly in the browser.
+                                This file type ({viewDocType}) cannot be previewed in the browser. Download it to open locally.
                             </Typography>
                             <Button
                                 variant="contained"
-                                href={viewDocUrl}
-                                target="_blank"
-                                download
-                                rel="noopener noreferrer"
+                                onClick={() => triggerBrowserDownload(viewDocSourceUrl, buildDownloadFilename({ title: viewDocTitle, type: viewDocType }))}
                                 startIcon={<Download size={18} />}
                                 sx={{ textTransform: 'none', borderRadius: 2 }}
                             >

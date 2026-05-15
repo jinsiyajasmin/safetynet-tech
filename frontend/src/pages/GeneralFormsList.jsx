@@ -11,6 +11,10 @@ import Layout from "../components/Layout";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { canEditGeneralFormTemplatesList } from "../utils/generalFormTemplateAccess";
+import {
+    isGeneralFormsPageSubmission,
+    submissionHasSiteContext,
+} from "../utils/generalFormSubmissions";
 import api from "../services/api";
 
 const TEMPLATES = [
@@ -82,11 +86,6 @@ export default function GeneralFormsList() {
     const navigate = useNavigate();
     const canManageTemplates = canEditGeneralFormTemplatesList(role);
 
-    const submissionHasSiteContext = (sub) => {
-        const sid = sub.answers?.siteId;
-        return sid != null && String(sid).trim() !== "";
-    };
-
     const userCanOpenSubmissionEditor = (sub) =>
         canManageTemplates || submissionHasSiteContext(sub);
 
@@ -108,7 +107,7 @@ export default function GeneralFormsList() {
         try {
             const res = await api.get('/forms/responses');
             if (res.data?.success) {
-                setSubmissions(res.data.data);
+                setSubmissions((res.data.data || []).filter(isGeneralFormsPageSubmission));
             }
         } catch (err) {
             console.error("Failed to fetch submissions", err);
@@ -156,9 +155,12 @@ export default function GeneralFormsList() {
         (form.description || "").toLowerCase().includes(search.toLowerCase())
     );
 
-    const filteredSubmissions = submissions.filter(s => 
-        (s.form?.title || "").toLowerCase().includes(subSearch.toLowerCase()) ||
-        (new Date(s.createdAt).toLocaleDateString()).includes(subSearch)
+    const filteredSubmissions = submissions.filter(
+        (s) =>
+            isGeneralFormsPageSubmission(s) &&
+            ((s.form?.title || "").toLowerCase().includes(subSearch.toLowerCase()) ||
+                (s.name || s.answers?.name || "").toLowerCase().includes(subSearch.toLowerCase()) ||
+                new Date(s.createdAt).toLocaleDateString().includes(subSearch))
     );
 
     return (
