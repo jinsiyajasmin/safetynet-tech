@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -49,19 +49,28 @@ import {
   Pencil,
   UserX,
   UserCheck,
-  Trash2
+  Trash2,
+  Mail,
+  Phone,
+  Building2,
+  Clock,
+  X,
 } from "lucide-react";
 import { useParams, useLocation, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import api from "../services/api";
 import { useTheme } from "../context/ThemeContext";
+import { plainNameError } from "../utils/plainName";
+import { newPasswordError } from "../utils/passwordPolicy";
 import { useAuth, ASSIGNABLE_ROLES } from "../context/AuthContext";
+import { formatLastSignIn, isUserOnline, ONLINE_WINDOW_MS } from "../utils/userPresence";
+import { getBackendOrigin } from "../utils/backendOrigin.js";
 
 /* Helper to compute avatar/url */
 const computeAvatarUrl = (avatar) => {
   if (!avatar) return null;
   if (/^https?:\/\//i.test(avatar)) return avatar;
-  const host = import.meta.env.VITE_BACKEND_URL || "https://api.site-mateai.co.uk";
+  const host = getBackendOrigin();
   return `${host.replace(/\/$/, "")}${avatar.startsWith("/") ? "" : "/"}${avatar}`;
 };
 
@@ -111,6 +120,15 @@ const headCells = [
   { id: 'actions', label: 'Action', sortable: false },
 ];
 
+function normalizeUserActivityFields(u) {
+  if (!u || typeof u !== "object") return u;
+  return {
+    ...u,
+    lastLoginAt: u.lastLoginAt ?? u.last_login_at ?? null,
+    lastSeenAt: u.lastSeenAt ?? u.last_seen_at ?? null,
+  };
+}
+
 export default function UsersPage() {
   const { isDarkMode } = useTheme();
   const { id } = useParams(); // optional client id
@@ -118,11 +136,14 @@ export default function UsersPage() {
   const clientName = location.state?.clientName;
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [isSafetynettUser, setIsSafetynettUser] = useState(false);
-
-  // Auth context for role-based UI
-  const { role: currentRole, isSafetyNett, isCompanyAdmin } = useAuth();
+  const { isSafetyNett, isCompanyAdmin, currentUser } = useAuth();
   const canInvite = isCompanyAdmin || isSafetyNett;
+
+  const storedRole = useMemo(
+    () => (currentUser?.role || "").toString().toLowerCase(),
+    [currentUser?.role]
+  );
+  const isSuperAdminAccount = storedRole === "superadmin";
 
   // Sorting State
   const [order, setOrder] = useState('desc');
@@ -233,13 +254,7 @@ export default function UsersPage() {
     setLoading(true);
     try {
       const current = await getCurrentUser();
-      const isSuper = current?.role === "superadmin";
-      // Check if Safetynett
-      const isSafetynett = (current?.companyname || current?.company || "")
-        .toString().trim().toLowerCase() === "safetynett";
-      setIsSafetynettUser(isSafetynett);
-
-      if (current?.role === "worker" && !isSafetynett) {
+      if (current?.role === "worker") {
         setUsers([]);
         setLoading(false);
         return;
@@ -252,20 +267,8 @@ export default function UsersPage() {
         res = await api.get("/users");
       }
 
-      let list = res?.data?.users ?? res?.data ?? [];
-
-      // FILTERS: If NOT SuperAdmin AND NOT Safetynett => Filter by my company
-      if (!isSuper && !isSafetynett) {
-        const myCompany = (current?.companyname || current?.company || "").trim().toLowerCase();
-        list = list.filter(u => {
-          const uCompany = (u.companyname || u.company || "").trim().toLowerCase();
-          return uCompany === myCompany;
-        });
-      }
-
-      // Default sort by createdAt initially to keep consistent ID order if needed, 
-      // but UI sort state controls display
-      setUsers(list);
+      const list = res?.data?.users ?? res?.data ?? [];
+      setUsers(Array.isArray(list) ? list.map(normalizeUserActivityFields) : []);
     } catch (err) {
       console.error("Failed to fetch users:", err);
       setSnack({ open: true, msg: "Failed to load users", severity: "error" });
@@ -282,13 +285,15 @@ export default function UsersPage() {
 
   const [clientsList, setClientsList] = useState([]);
   useEffect(() => {
-    if (currentRole === 'superadmin') {
+    if (isSuperAdminAccount) {
       api.get("/clients").then(res => {
         if (res?.data?.clients) setClientsList(res.data.clients);
         else if (Array.isArray(res?.data)) setClientsList(res.data);
       }).catch(err => console.error("Failed to fetch clients for dropdown", err));
+    } else {
+      setClientsList([]);
     }
-  }, [currentRole]);
+  }, [isSuperAdminAccount]);
 
   const handleRequestSort = (property) => {
     const isAsc = orderBy === property && order === 'asc';
@@ -329,11 +334,11 @@ export default function UsersPage() {
     try {
       const id = user._id ?? user.id;
       const res = await api.get(`/users/${id}`);
-      const fullUser = res?.data?.user ?? user;
-      setDetailUser(fullUser);
+      const raw = res?.data?.user ?? user;
+      setDetailUser(normalizeUserActivityFields(raw));
     } catch (err) {
       console.warn("Could not fetch full user, using local copy", err);
-      setDetailUser(user);
+      setDetailUser(normalizeUserActivityFields(user));
     }
     setDetailOpen(true);
     closeMenu();
@@ -343,6 +348,8 @@ export default function UsersPage() {
     setDetailOpen(false);
     setDetailUser(null);
   };
+
+  const detailUserOnline = detailUser ? isUserOnline(detailUser.lastSeenAt, detailUser.lastLoginAt) : false;
 
   // EDIT User
   const handleEdit = (user) => {
@@ -361,6 +368,12 @@ export default function UsersPage() {
 
   const handleSaveEdit = async () => {
     if (!editUser) return;
+    const fe = plainNameError(editForm.firstName, "First name");
+    const le = plainNameError(editForm.lastName, "Last name");
+    if (fe || le) {
+      setSnack({ open: true, msg: fe || le, severity: "error" });
+      return;
+    }
     try {
       const id = editUser._id ?? editUser.id;
       const res = await api.put(`/users/${id}`, editForm);
@@ -436,7 +449,7 @@ export default function UsersPage() {
       <Box sx={{ mb: 2, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 600, color: isDarkMode ? "#F9FAFB" : "#111827", }}>
-            {clientName ? `Users - ${clientName}` : "All Users"}
+            {clientName ? `Users - ${clientName}` : isSuperAdminAccount ? "All users" : `Users — ${currentUser?.companyname || "Your company"}`}
           </Typography>
           <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280" }}>
             Manage user accounts and permissions
@@ -453,7 +466,20 @@ export default function UsersPage() {
             variant="contained"
             startIcon={<PersonAddIcon />}
             onClick={() => {
-              setInviteForm({ firstName: "", lastName: "", email: "", mobile: "", role: "worker", password: "", companyname: "", clientId: "" });
+              const cid =
+                typeof currentUser?.clientId === "string"
+                  ? currentUser.clientId
+                  : currentUser?.clientId?.id ?? "";
+              setInviteForm({
+                firstName: "",
+                lastName: "",
+                email: "",
+                mobile: "",
+                role: "worker",
+                password: "",
+                companyname: isSuperAdminAccount ? "" : (currentUser?.companyname || ""),
+                clientId: isSuperAdminAccount ? "" : cid,
+              });
               setInviteErrors({});
               setInviteDialogOpen(true);
             }}
@@ -516,8 +542,8 @@ export default function UsersPage() {
           />
         </Grid>
 
-        {/* Dropdowns row */}
-        {isSafetynettUser && (
+        {/* Dropdowns row — superadmin only (multi-company directory) */}
+        {isSuperAdminAccount && (
           <Grid item xs={12} md={4}>
           <Autocomplete
             fullWidth
@@ -702,7 +728,7 @@ export default function UsersPage() {
                     <TableCell sx={{ fontWeight: 500, color: isDarkMode ? "#9CA3AF" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>SL No</TableCell>
                     <TableCell sx={{ fontWeight: 500, color: isDarkMode ? "#F9FAFB" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>Name</TableCell>
                     <TableCell sx={{ fontWeight: 500, color: isDarkMode ? "#F9FAFB" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>Email</TableCell>
-                    {isSafetynettUser && <TableCell sx={{ fontWeight: 500, color: isDarkMode ? "#F9FAFB" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>Company</TableCell>}
+                    {isSuperAdminAccount && <TableCell sx={{ fontWeight: 500, color: isDarkMode ? "#F9FAFB" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>Company</TableCell>}
                     <TableCell sx={{ fontWeight: 500, color: isDarkMode ? "#F9FAFB" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>Role</TableCell>
                     <TableCell sx={{ fontWeight: 500, color: isDarkMode ? "#F9FAFB" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>Status</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 500, color: isDarkMode ? "#F9FAFB" : "#6B7280", fontSize: "0.85rem", textTransform: "none", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>Action</TableCell>
@@ -726,7 +752,7 @@ export default function UsersPage() {
                           <Typography sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280", fontWeight: 400, fontSize: "0.95rem" }}>{user.email ?? "-"}</Typography>
                         </TableCell>
 
-                        {isSafetynettUser && (
+                        {isSuperAdminAccount && (
                           <TableCell sx={{ borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>
                             <Typography sx={{ color: isDarkMode ? "#F9FAFB" : "#111827", fontWeight: 400, fontSize: "0.95rem" }}>{user.companyname ?? "-"}</Typography>
                           </TableCell>
@@ -786,7 +812,7 @@ export default function UsersPage() {
                   })}
                   {filteredUsers.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={isSafetynettUser ? 7 : 6} align="center" sx={{ py: 4, color: isDarkMode ? "#9CA3AF" : "inherit", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>No users found.</TableCell>
+                      <TableCell colSpan={isSuperAdminAccount ? 7 : 6} align="center" sx={{ py: 4, color: isDarkMode ? "#9CA3AF" : "inherit", borderColor: isDarkMode ? "#374151" : "rgba(224, 224, 224, 1)" }}>No users found.</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -994,38 +1020,303 @@ export default function UsersPage() {
         </DialogActions>
       </Dialog>
 
-      {/* View Dialog */}
-      <Dialog open={detailOpen} onClose={closeDetails} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 4, overflow: "hidden", bgcolor: isDarkMode ? "#111827" : "#FFFFFF", color: isDarkMode ? "#F9FAFB" : "inherit" } }}>
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", bgcolor: isDarkMode ? "#1B212C" : "#f5f6f8", px: 3, py: 1.5, borderBottom: isDarkMode ? "1px solid #374151" : "none" }}>
-          <Typography variant="h6" sx={{ fontWeight: 800 }}>User details</Typography>
-          <IconButton onClick={closeDetails} sx={{ color: isDarkMode ? "#9CA3AF" : "inherit" }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg></IconButton>
-        </Box>
-        <DialogContent p={3}>
-          {detailUser && (
-            <Box sx={{ display: "grid", gap: 3, py: 2 }}>
-              <Box sx={{ display: "flex", gap: 3, alignItems: "center" }}>
-                <Avatar sx={{ width: 96, height: 96, fontSize: '2rem', bgcolor: isDarkMode ? "#1B212C" : "#F3F4F6", color: isDarkMode ? "#F9FAFB" : "#111827" }}>{(detailUser.firstName || detailUser.username || "?").charAt(0).toUpperCase()}</Avatar>
-                <Box>
-                  <Typography variant="h5" sx={{ fontWeight: 800, color: isDarkMode ? "#F9FAFB" : "inherit" }}>{detailUser.firstName} {detailUser.lastName}</Typography>
-                  <Chip label={detailUser.active ? "active" : "inactive"} size="small" sx={{ mt: 1, borderRadius: 50, fontWeight: 600, bgcolor: detailUser.active ? "rgba(34,197,94,0.12)" : "rgba(220,38,38,0.06)", color: detailUser.active ? "rgb(22,163,74)" : "rgb(220,38,38)" }} />
-                  <Typography sx={{ mt: 1, color: isDarkMode ? "#9CA3AF" : "text.secondary" }}>{detailUser.jobTitle}</Typography>
+      {/* View Dialog — user profile */}
+      <Dialog
+        open={detailOpen}
+        onClose={closeDetails}
+        maxWidth="sm"
+        fullWidth
+        slotProps={{ backdrop: { sx: { backdropFilter: "blur(6px)" } } }}
+        PaperProps={{
+          elevation: 0,
+          sx: {
+            borderRadius: 3,
+            overflow: "hidden",
+            bgcolor: isDarkMode ? "#111827" : "#FAFAF9",
+            color: isDarkMode ? "#F9FAFB" : "#111827",
+            border: isDarkMode ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(15,23,42,0.08)",
+            boxShadow: isDarkMode
+              ? "0 24px 48px rgba(0,0,0,0.45), 0 0 0 1px rgba(232,159,23,0.12)"
+              : "0 24px 48px rgba(15,23,42,0.12), 0 0 0 1px rgba(232,159,23,0.15)",
+          },
+        }}
+      >
+        {detailUser && (
+          <>
+            <Box
+              sx={{
+                position: "relative",
+                px: 3,
+                pt: 3,
+                pb: 5,
+                background: isDarkMode
+                  ? "linear-gradient(145deg, #1B212C 0%, #111827 45%, #1a1510 100%)"
+                  : "linear-gradient(145deg, #F8FAFC 0%, #FFFBF5 40%, #FFF7ED 100%)",
+                borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.06)",
+                "&::after": {
+                  content: '""',
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 4,
+                  background: "linear-gradient(90deg, #E89F17 0%, #F5C15C 50%, #E89F17 100%)",
+                  opacity: isDarkMode ? 0.85 : 1,
+                },
+              }}
+            >
+              <IconButton
+                onClick={closeDetails}
+                aria-label="Close"
+                sx={{
+                  position: "absolute",
+                  top: 12,
+                  right: 12,
+                  color: isDarkMode ? "#9CA3AF" : "#64748B",
+                  bgcolor: isDarkMode ? "rgba(0,0,0,0.2)" : "rgba(255,255,255,0.7)",
+                  "&:hover": { bgcolor: isDarkMode ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.95)" },
+                }}
+              >
+                <X size={18} strokeWidth={2} />
+              </IconButton>
+
+              <Box sx={{ display: "flex", gap: 2.5, alignItems: "flex-start", pr: 5 }}>
+                <Box
+                  sx={{
+                    position: "relative",
+                    flexShrink: 0,
+                    p: "3px",
+                    borderRadius: "50%",
+                    background: "linear-gradient(135deg, #E89F17, #F5C15C, #D97706)",
+                    boxShadow: "0 8px 24px rgba(232,159,23,0.35)",
+                  }}
+                >
+                  <Avatar
+                    sx={{
+                      width: 88,
+                      height: 88,
+                      fontSize: "1.75rem",
+                      fontWeight: 700,
+                      bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                      color: isDarkMode ? "#F9FAFB" : "#0B4DA6",
+                      border: isDarkMode ? "2px solid #111827" : "2px solid #FFF",
+                    }}
+                  >
+                    {(detailUser.firstName || detailUser.username || "?").charAt(0).toUpperCase()}
+                  </Avatar>
+                </Box>
+                <Box sx={{ minWidth: 0, pt: 0.5 }}>
+                  <Typography
+                    variant="overline"
+                    sx={{
+                      letterSpacing: "0.12em",
+                      fontWeight: 700,
+                      fontSize: "0.65rem",
+                      color: isDarkMode ? "rgba(232,159,23,0.9)" : "#B45309",
+                    }}
+                  >
+                    User profile
+                  </Typography>
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: 800,
+                      lineHeight: 1.2,
+                      mt: 0.25,
+                      color: isDarkMode ? "#F9FAFB" : "#0f172a",
+                    }}
+                  >
+                    {[detailUser.firstName, detailUser.lastName].filter(Boolean).join(" ") || detailUser.username}
+                  </Typography>
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mt: 1.25 }}>
+                    <Chip
+                      size="small"
+                      label={(detailUser.role || "worker").replace(/_/g, " ")}
+                      sx={{
+                        textTransform: "capitalize",
+                        fontWeight: 600,
+                        borderRadius: 2,
+                        bgcolor: isDarkMode ? "rgba(11,77,166,0.25)" : "rgba(11,77,166,0.1)",
+                        color: isDarkMode ? "#93C5FD" : "#0B4DA6",
+                        border: isDarkMode ? "1px solid rgba(96,165,250,0.25)" : "1px solid rgba(11,77,166,0.2)",
+                      }}
+                    />
+                    <Chip
+                      size="small"
+                      label={detailUserOnline ? "Online" : "Offline"}
+                      sx={{
+                        fontWeight: 700,
+                        borderRadius: 2,
+                        bgcolor: detailUserOnline ? "rgba(34,197,94,0.18)" : isDarkMode ? "rgba(107,114,128,0.2)" : "rgba(100,116,139,0.12)",
+                        color: detailUserOnline ? "rgb(34,197,94)" : isDarkMode ? "#9CA3AF" : "#64748B",
+                        border: detailUserOnline ? "1px solid rgba(34,197,94,0.35)" : "1px solid transparent",
+                      }}
+                    />
+                    <Chip
+                      size="small"
+                      label={detailUser.active ? "Active account" : "Inactive"}
+                      sx={{
+                        fontWeight: 600,
+                        borderRadius: 2,
+                        bgcolor: detailUser.active ? "rgba(34,197,94,0.12)" : "rgba(220,38,38,0.1)",
+                        color: detailUser.active ? "rgb(22,163,74)" : "rgb(220,38,38)",
+                        border: detailUser.active ? "1px solid rgba(34,197,94,0.25)" : "1px solid rgba(220,38,38,0.2)",
+                      }}
+                    />
+                  </Box>
+                  {detailUser.jobTitle && (
+                    <Typography
+                      variant="body2"
+                      sx={{ mt: 1.25, color: isDarkMode ? "#94A3B8" : "#64748B", fontWeight: 500 }}
+                    >
+                      {detailUser.jobTitle}
+                    </Typography>
+                  )}
                 </Box>
               </Box>
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
-                  <Paper sx={{ p: 2, borderRadius: 3, bgcolor: isDarkMode ? "#1B212C" : "transparent", borderColor: isDarkMode ? "#374151" : "#E5E7EB" }} variant="outlined">
-                    <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 700, color: isDarkMode ? "#9CA3AF" : "text.secondary" }}>Contact Information</Typography>
-                    <Box sx={{ display: "grid", gap: 1 }}>
-                      <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#4B5563" }}>Email: <b style={{ color: isDarkMode ? "#F9FAFB" : "#111827" }}>{detailUser.email}</b></Typography>
-                      <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#4B5563" }}>Phone: <b style={{ color: isDarkMode ? "#F9FAFB" : "#111827" }}>{detailUser.mobile}</b></Typography>
-                      <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#4B5563" }}>Site: <b style={{ color: isDarkMode ? "#F9FAFB" : "#111827" }}>{detailUser.companyname}</b></Typography>
-                    </Box>
-                  </Paper>
-                </Grid>
-              </Grid>
             </Box>
-          )}
-        </DialogContent>
+
+            <DialogContent
+              sx={{
+                px: 3,
+                pt: 0,
+                pb: 2,
+                mt: -3,
+                position: "relative",
+                zIndex: 1,
+              }}
+            >
+              <Box
+                sx={{
+                  borderRadius: 2.5,
+                  bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                  border: isDarkMode ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(15,23,42,0.08)",
+                  boxShadow: isDarkMode ? "0 12px 32px rgba(0,0,0,0.25)" : "0 4px 24px rgba(15,23,42,0.06)",
+                  overflow: "hidden",
+                }}
+              >
+                <Box
+                  sx={{
+                    px: 2.25,
+                    py: 1.75,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.06)",
+                    bgcolor: isDarkMode ? "rgba(0,0,0,0.15)" : "rgba(248,250,252,0.9)",
+                  }}
+                >
+                  <Mail size={18} color={isDarkMode ? "#E89F17" : "#0B4DA6"} strokeWidth={2} />
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: isDarkMode ? "#E5E7EB" : "#334155" }}>
+                    Contact
+                  </Typography>
+                </Box>
+                <Box sx={{ px: 2.25, py: 0.5 }}>
+                  {[
+                    { icon: <Mail size={17} />, label: "Email", value: detailUser.email },
+                    { icon: <Phone size={17} />, label: "Phone", value: detailUser.mobile },
+                    { icon: <Building2 size={17} />, label: "Site / company", value: detailUser.companyname },
+                  ].map((row, i, arr) => (
+                    <Box
+                      key={row.label}
+                      sx={{
+                        display: "flex",
+                        gap: 1.5,
+                        py: 1.35,
+                        borderBottom: i < arr.length - 1 ? (isDarkMode ? "1px dashed rgba(255,255,255,0.06)" : "1px dashed rgba(15,23,42,0.08)") : "none",
+                      }}
+                    >
+                      <Box sx={{ color: isDarkMode ? "#64748B" : "#94A3B8", pt: 0.35, flexShrink: 0 }}>{row.icon}</Box>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="caption" sx={{ display: "block", color: isDarkMode ? "#64748B" : "#64748B", fontWeight: 600, letterSpacing: "0.02em" }}>
+                          {row.label}
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: isDarkMode ? "#F1F5F9" : "#0f172a", wordBreak: "break-word" }}>
+                          {row.value || "—"}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+
+                <Divider sx={{ borderColor: isDarkMode ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.06)" }} />
+
+                <Box
+                  sx={{
+                    px: 2.25,
+                    py: 1.75,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.06)",
+                    bgcolor: isDarkMode ? "rgba(0,0,0,0.15)" : "rgba(248,250,252,0.9)",
+                  }}
+                >
+                  <Clock size={18} color={isDarkMode ? "#E89F17" : "#0B4DA6"} strokeWidth={2} />
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: isDarkMode ? "#E5E7EB" : "#334155" }}>
+                    Sign-in & activity
+                  </Typography>
+                </Box>
+                <Box sx={{ px: 2.25, py: 2 }}>
+                  <Box sx={{ display: "flex", gap: 1.5, alignItems: "flex-start" }}>
+                    <Box sx={{ color: isDarkMode ? "#64748B" : "#94A3B8", pt: 0.35 }}>
+                      <Clock size={17} />
+                    </Box>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="caption" sx={{ display: "block", color: isDarkMode ? "#64748B" : "#64748B", fontWeight: 600 }}>
+                        Last sign-in
+                      </Typography>
+                      <Typography variant="body1" sx={{ fontWeight: 700, color: isDarkMode ? "#F1F5F9" : "#0f172a", mt: 0.25 }}>
+                        {formatLastSignIn(detailUser.lastLoginAt, detailUser.lastSeenAt)}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Box
+                    sx={{
+                      mt: 2,
+                      p: 1.5,
+                      borderRadius: 2,
+                      bgcolor: isDarkMode ? "rgba(232,159,23,0.08)" : "rgba(232,159,23,0.1)",
+                      border: isDarkMode ? "1px solid rgba(232,159,23,0.2)" : "1px solid rgba(232,159,23,0.25)",
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ color: isDarkMode ? "#CBD5E1" : "#475569", lineHeight: 1.6, display: "block" }}>
+                      <strong style={{ color: isDarkMode ? "#E89F17" : "#B45309" }}>Online</strong> means we recorded activity within the last{" "}
+                      {Math.round(ONLINE_WINDOW_MS / 60000)} minutes (e.g. while using the app).
+                    </Typography>
+                  </Box>
+                </Box>
+              </Box>
+            </DialogContent>
+
+            <DialogActions
+              sx={{
+                px: 3,
+                py: 2,
+                bgcolor: isDarkMode ? "#111827" : "#FAFAF9",
+                borderTop: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.06)",
+                justifyContent: "flex-end",
+              }}
+            >
+              <Button
+                variant="contained"
+                onClick={closeDetails}
+                sx={{
+                  borderRadius: 2,
+                  px: 3,
+                  py: 1,
+                  textTransform: "none",
+                  fontWeight: 700,
+                  boxShadow: "none",
+                  bgcolor: isDarkMode ? "#E89F17" : "#0B4DA6",
+                  "&:hover": { boxShadow: "none", bgcolor: isDarkMode ? "#D97706" : "#083D86" },
+                }}
+              >
+                Close
+              </Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
 
       {/* Access Dialog */}
@@ -1173,7 +1464,7 @@ export default function UsersPage() {
                 />
 
                 {/* Company Dropdown (only for superadmin) */}
-                {currentRole === 'superadmin' && (
+                {isSuperAdminAccount && (
                   <TextField
                     select
                     label="Select Company"
@@ -1182,7 +1473,10 @@ export default function UsersPage() {
                     onChange={e => {
                       const selectedClient = clientsList.find(c => (c.id || c._id) === e.target.value);
                       setInviteForm(f => ({ ...f, clientId: e.target.value, companyname: selectedClient ? selectedClient.name : "" }));
+                      if (inviteErrors.clientId) setInviteErrors((er) => ({ ...er, clientId: undefined }));
                     }}
+                    error={!!inviteErrors.clientId}
+                    helperText={inviteErrors.clientId}
                     sx={{
                       ...fieldSx,
                       "& .MuiSelect-select": { color: isDarkMode ? "#F9FAFB" : "inherit" },
@@ -1239,7 +1533,7 @@ export default function UsersPage() {
                     Assign Role
                   </Typography>
                   <Box sx={{ display: 'grid', gap: 1 }}>
-                    {(ASSIGNABLE_ROLES[currentRole] || ['worker', 'supervisor', 'site_manager']).map((r) => (
+                    {(ASSIGNABLE_ROLES[currentUser?.role] || ['worker', 'supervisor', 'site_manager']).map((r) => (
                       <Paper
                         key={r}
                         variant="outlined"
@@ -1322,17 +1616,38 @@ export default function UsersPage() {
             onClick={async () => {
               // Validate
               const errs = {};
-              if (!inviteForm.firstName.trim()) errs.firstName = 'Required';
-              if (!inviteForm.lastName.trim()) errs.lastName = 'Required';
+              const inviteFn = plainNameError(inviteForm.firstName, "First name");
+              const inviteLn = plainNameError(inviteForm.lastName, "Last name");
+              if (inviteFn) errs.firstName = inviteFn;
+              if (inviteLn) errs.lastName = inviteLn;
               if (!inviteForm.email.trim()) errs.email = 'Required';
               else if (!/^\S+@\S+\.\S+$/.test(inviteForm.email)) errs.email = 'Invalid email';
               if (!inviteForm.password) errs.password = 'Required';
-              else if (inviteForm.password.length < 6) errs.password = 'Minimum 6 characters';
+              else {
+                const pwErr = newPasswordError(inviteForm.password);
+                if (pwErr) errs.password = pwErr;
+              }
+              if (isSuperAdminAccount && !inviteForm.clientId?.trim()) {
+                errs.clientId = "Select a company";
+              }
               if (Object.keys(errs).length) { setInviteErrors(errs); return; }
 
               setInviteLoading(true);
               try {
-                const res = await api.post('/users/invite', inviteForm);
+                const cid =
+                  typeof currentUser?.clientId === "string"
+                    ? currentUser.clientId
+                    : currentUser?.clientId?.id ?? "";
+                const payload = {
+                  ...inviteForm,
+                  ...(isSuperAdminAccount
+                    ? {}
+                    : {
+                        clientId: cid,
+                        companyname: currentUser?.companyname || inviteForm.companyname || "",
+                      }),
+                };
+                const res = await api.post('/users/invite', payload);
                 if (res?.data?.success) {
                   setSnack({ open: true, msg: `${inviteForm.firstName} has been invited successfully`, severity: 'success' });
                   setInviteDialogOpen(false);

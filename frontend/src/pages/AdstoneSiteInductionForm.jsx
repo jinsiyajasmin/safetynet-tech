@@ -2,23 +2,40 @@ import React, { useState, useEffect, useRef } from "react";
 import { 
     Box, Typography, Button, Paper, TextField, Table, TableBody, 
     TableCell, TableHead, TableRow, TableContainer, CircularProgress, 
-    IconButton, Checkbox, Grid, Divider
+    IconButton, Checkbox, Grid, Divider, Alert
 } from "@mui/material";
 import SaveChoiceDialog from "../components/SaveChoiceDialog";
+import SignatureCapture from "../components/SignatureCapture";
+import GeneralFormTableRowControls from "../components/GeneralFormTableRowControls";
 import { Download, ArrowLeft, Save, Printer } from "lucide-react";
 import Layout from "../components/Layout";
 import { useTheme } from "../context/ThemeContext";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useGeneralFormRouteSubmissionIds } from "../hooks/useGeneralFormRouteSubmissionIds";
 import api from "../services/api";
 import { getOrCreateTemplateForm } from "../services/formUtils";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
+import { useGeneralFormTemplateAccess } from "../hooks/useGeneralFormTemplateAccess";
+
+const DEFAULT_ADSTONE_BRIEFING_ITEMS = [
+    { title: "Structural Steel Method Statement", checked: false, date: "", signInductee: "", signInductor: "" },
+    { title: "Lifting Plan Structural Steel", checked: false, date: "", signInductee: "", signInductor: "" },
+    { title: "Project Risk Assessments", checked: false, date: "", signInductee: "", signInductor: "" },
+    { title: "Inspection and Test Plan", checked: false, date: "", signInductee: "", signInductor: "" },
+    { title: "Safe Loading and Unloading of Steel", checked: false, date: "", signInductee: "", signInductor: "" },
+    { title: "SHEQ Management Plan", checked: false, date: "", signInductee: "", signInductor: "" },
+    { title: "Other (Please list below)", checked: false, date: "", signInductee: "", signInductor: "" },
+    { title: "", checked: false, date: "", signInductee: "", signInductor: "" },
+    { title: "", checked: false, date: "", signInductee: "", signInductor: "" },
+];
+
+const MIN_ADSTONE_BRIEFING_ITEM_ROWS = 7;
 
 export default function AdstoneSiteInductionForm() {
     const { isDarkMode } = useTheme();
-    const { id } = useParams();
+    const { persistedResponseId, seedSubmissionId, fromTemplateId } = useGeneralFormRouteSubmissionIds();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const siteId = searchParams.get("siteId");
     const category = searchParams.get("category") || "Induction";
     const action = searchParams.get("action");
     const containerRef = useRef(null);
@@ -37,17 +54,7 @@ export default function AdstoneSiteInductionForm() {
         inductor: "",
         jobNo: "",
         projectName: "",
-        briefingItems: [
-            { title: "Structural Steel Method Statement", checked: false, date: "", signInductee: "", signInductor: "" },
-            { title: "Lifting Plan Structural Steel", checked: false, date: "", signInductee: "", signInductor: "" },
-            { title: "Project Risk Assessments", checked: false, date: "", signInductee: "", signInductor: "" },
-            { title: "Inspection and Test Plan", checked: false, date: "", signInductee: "", signInductor: "" },
-            { title: "Safe Loading and Unloading of Steel", checked: false, date: "", signInductee: "", signInductor: "" },
-            { title: "SHEQ Management Plan", checked: false, date: "", signInductee: "", signInductor: "" },
-            { title: "Other (Please list below)", checked: false, date: "", signInductee: "", signInductor: "" },
-            { title: "", checked: false, date: "", signInductee: "", signInductor: "" },
-            { title: "", checked: false, date: "", signInductee: "", signInductor: "" }
-        ],
+        briefingItems: DEFAULT_ADSTONE_BRIEFING_ITEMS.map((row) => ({ ...row })),
         erectorSignature: "",
         supervisorSignature: "",
         metadata: {
@@ -85,14 +92,26 @@ export default function AdstoneSiteInductionForm() {
         agreement: "By signing above, I confirm that I will work safely in accordance with the above documentation, attend weekly toolbox talks and training given by Adstone, follow site rules as per site induction and shall be responsible for my own health and safety as well as that of others and shall report any concerns immediately to the Site Person in charge."
     });
 
+    const [persistedSiteId, setPersistedSiteId] = useState(null);
+
+    const { canEdit, siteId, pdfLayout, contentReadOnly } = useGeneralFormTemplateAccess(
+        action,
+        downloading,
+        persistedSiteId
+    );
+
     useEffect(() => {
-        if (id) {
-            loadSubmission(id);
+        if (!persistedResponseId && !fromTemplateId) setPersistedSiteId(null);
+    }, [persistedResponseId, fromTemplateId]);
+
+    useEffect(() => {
+        if (seedSubmissionId) {
+            loadSubmission(seedSubmissionId);
         } else if (siteId) {
              // Try to pre-fill project name from site name if available
              loadSiteName();
         }
-    }, [id, siteId]);
+    }, [seedSubmissionId, siteId]);
 
     const loadSiteName = async () => {
         try {
@@ -113,6 +132,7 @@ export default function AdstoneSiteInductionForm() {
             if (res.data?.success) {
                 const submission = res.data.data.find(r => r.id === submissionId || r._id === submissionId);
                 if (submission && submission.answers) {
+                    setPersistedSiteId(submission.answers.siteId ?? null);
                     setFormData(submission.answers);
                     if (submission.answers.headerLabels) setHeaderLabels(submission.answers.headerLabels);
                     setFormMetadata({
@@ -143,8 +163,8 @@ export default function AdstoneSiteInductionForm() {
             };
             if (siteId) payload.siteId = siteId;
             
-            if (id && !asNew) {
-                await api.put(`/forms/responses/${id}`, { 
+            if (persistedResponseId && !asNew) {
+                await api.put(`/forms/responses/${persistedResponseId}`, { 
                     answers: payload
                 });
             } else {
@@ -157,13 +177,16 @@ export default function AdstoneSiteInductionForm() {
             }
             
             setSaveDialogOpen(false);
-            // Show a simple success Alert or just navigate
-            navigate('/sitepack-management', { 
-                state: { 
-                    siteId, 
-                    moduleTitle: category,
-                } 
-            });
+            if (siteId) {
+                navigate('/sitepack-management', { 
+                    state: { 
+                        siteId, 
+                        moduleTitle: category,
+                    } 
+                });
+            } else {
+                navigate('/general-forms');
+            }
         } catch (e) {
             console.error("Failed to save", e);
             alert("Failed to save form");
@@ -197,53 +220,51 @@ export default function AdstoneSiteInductionForm() {
         setFormData({ ...formData, briefingItems: newItems });
     };
 
-    const handleSignatureUpload = (e, field, index = null) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            if (index !== null) {
-                const newItems = [...formData.briefingItems];
-                newItems[index] = { ...newItems[index], [field]: reader.result };
-                setFormData({ ...formData, briefingItems: newItems });
-            } else {
-                setFormData({ ...formData, [field]: reader.result });
-            }
-        };
-        reader.readAsDataURL(file);
+    const insertBriefingItemAfter = (index) => {
+        setFormData((prev) => {
+            if (prev.briefingItems.length >= 25) return prev;
+            const next = [...prev.briefingItems];
+            next.splice(index + 1, 0, {
+                title: "",
+                checked: false,
+                date: "",
+                signInductee: "",
+                signInductor: "",
+            });
+            return { ...prev, briefingItems: next };
+        });
+    };
+    const removeBriefingItemAt = (index) => {
+        setFormData((prev) => {
+            if (prev.briefingItems.length <= MIN_ADSTONE_BRIEFING_ITEM_ROWS) return prev;
+            return { ...prev, briefingItems: prev.briefingItems.filter((_, i) => i !== index) };
+        });
     };
 
-    const SignatureField = ({ value, onUpload, label = "Upload Signature" }) => {
-        if (downloading && !value) return <Box sx={{ minHeight: 30 }} />;
-        
+    const setSignatureAt = (dataUrl, field, index = null) => {
+        if (index !== null) {
+            const newItems = [...formData.briefingItems];
+            newItems[index] = { ...newItems[index], [field]: dataUrl || "" };
+            setFormData({ ...formData, briefingItems: newItems });
+        } else {
+            setFormData({ ...formData, [field]: dataUrl || "" });
+        }
+    };
+
+    const SignatureField = ({ value, field, index = null, compact = false }) => {
+        if (pdfLayout && !value) return <Box sx={{ minHeight: 30 }} />;
+        const displayVal =
+            value && (String(value).startsWith("data:image") || String(value).startsWith("http"))
+                ? value
+                : null;
         return (
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: downloading ? 30 : 40, p: 0.5 }}>
-                {value && value.startsWith('data:image') ? (
-                    <Box sx={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center' }}>
-                        <Box component="img" src={value} sx={{ maxHeight: downloading ? 50 : 60, maxWidth: '100%', objectFit: 'contain' }} />
-                        {!downloading && (
-                            <Button 
-                                size="small" 
-                                component="label" 
-                                sx={{ position: 'absolute', top: -10, right: -10, minWidth: 20, height: 20, borderRadius: '50%', bgcolor: 'rgba(0,0,0,0.5)', color: 'white', p: 0, '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
-                            >
-                                &times;
-                                <input type="file" hidden accept="image/*" onChange={(e) => onUpload(e)} />
-                            </Button>
-                        )}
-                    </Box>
-                ) : (
-                    <Button 
-                        variant="text" 
-                        component="label" 
-                        size="small"
-                        sx={{ fontSize: '0.65rem', textTransform: 'none', color: '#666', border: '1px dashed #ccc', px: 1 }}
-                    >
-                        {label}
-                        <input type="file" hidden accept="image/*" onChange={(e) => onUpload(e)} />
-                    </Button>
-                )}
+            <Box sx={{ width: "100%", minHeight: pdfLayout ? 30 : undefined, p: 0.5 }}>
+                <SignatureCapture
+                    value={displayVal}
+                    onChange={(url) => setSignatureAt(url, field, index)}
+                    readOnly={contentReadOnly}
+                    compact={compact}
+                />
             </Box>
         );
     };
@@ -255,6 +276,11 @@ export default function AdstoneSiteInductionForm() {
 
     return (
         <Layout pageTitle="Site Induction Form">
+            {!canEdit && (
+                <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+                    You can view this template but only a Super Admin, Company Admin, or Supervisor can edit or save it. Use a site pack link to fill this form for a site.
+                </Alert>
+            )}
             <Box sx={{ mb: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                     <IconButton onClick={() => navigate(-1)} sx={{ bgcolor: isDarkMode ? '#374151' : '#E5E7EB' }}>
@@ -265,7 +291,7 @@ export default function AdstoneSiteInductionForm() {
                     <Button 
                         variant="contained" 
                         onClick={handleSave}
-                        disabled={saving}
+                        disabled={saving || !canEdit || downloading}
                         startIcon={<Save size={18} />}
                         sx={{ 
                             bgcolor: "#E89F17", 
@@ -284,10 +310,10 @@ export default function AdstoneSiteInductionForm() {
             <Box sx={{ display: 'flex', justifyContent: 'center', mb: 8 }}>
                 <Paper 
                     ref={containerRef}
-                    elevation={3}
+                    elevation={pdfLayout ? 0 : 3}
                     sx={{ 
                         width: "100%", 
-                        maxWidth: downloading ? "1100px" : "1000px", 
+                        maxWidth: pdfLayout ? "1100px" : "1000px", 
                         p: 0, 
                         bgcolor: "#FFFFFF", 
                         color: "#333",
@@ -297,9 +323,9 @@ export default function AdstoneSiteInductionForm() {
                     }}
                 >
                     {/* TOP HEADER GRID WRAPPER */}
-                    <Box sx={{ border: `2.5px solid ${borderColor}`, m: downloading ? 1 : 2 }}>
+                    <Box sx={{ border: `2.5px solid ${borderColor}`, m: pdfLayout ? 1 : 2 }}>
                         {/* Row 1: Company Info | Title | Logo */}
-                        <Box sx={{ display: 'flex', borderBottom: `2px solid ${borderColor}`, minHeight: downloading ? '100px' : '120px' }}>
+                        <Box sx={{ display: 'flex', borderBottom: `2px solid ${borderColor}`, minHeight: pdfLayout ? '100px' : '120px' }}>
                             {/* Company Info */}
                             <Box sx={{ width: '33.33%', p: 1.5, borderRight: `2px solid ${borderColor}`, fontSize: '0.75rem' }}>
                                 <Typography sx={{ fontWeight: 700, fontSize: '1rem', mb: 0.5 }}>Adstone Construction Ltd</Typography>
@@ -310,7 +336,7 @@ export default function AdstoneSiteInductionForm() {
 
                             {/* Form Title (Middle) */}
                             <Box sx={{ width: '33.33%', borderRight: `2px solid ${borderColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', p: 0, bgcolor: '#FFFFFF' }}>
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography sx={{ fontWeight: 700, fontSize: '1.1rem', color: '#333', p: 2 }}>{headerLabels.formTitle}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -329,7 +355,7 @@ export default function AdstoneSiteInductionForm() {
                                     <>
                                         <Box component="img" src={formData.logoRight} alt="Right Logo" 
                                              sx={{ maxHeight: '100px', maxWidth: '100%', objectFit: 'contain' }} />
-                                        {(action !== 'download') && (
+                                        {!contentReadOnly && (
                                             <Button variant="text" size="small" component="label" sx={{ fontSize: '0.65rem', mt: 0.5 }}>
                                                 Change Logo
                                                 <input type="file" hidden accept="image/*" onChange={(e) => {
@@ -344,7 +370,7 @@ export default function AdstoneSiteInductionForm() {
                                         )}
                                     </>
                                 ) : (
-                                    (action !== 'download') ? (
+                                    !contentReadOnly ? (
                                         <Button variant="outlined" component="label" size="small">
                                             Upload Logo
                                             <input type="file" hidden accept="image/*" onChange={(e) => {
@@ -367,7 +393,7 @@ export default function AdstoneSiteInductionForm() {
                         {/* Row 2: Written by | Value | Doc No | Rev No */}
                         <Box sx={{ display: 'flex', borderBottom: `2px solid ${borderColor}`, fontSize: '0.75rem' }}>
                             <Box sx={{ width: '15%', p: 0.75, fontWeight: 700, borderRight: `1.5px solid ${borderColor}`, display: 'flex', alignItems: 'center' }}>
-                                {(downloading || action === 'download') ? (
+                                {contentReadOnly ? (
                                     <Typography sx={{ fontWeight: 700, fontSize: '0.75rem' }}>{headerLabels.writtenByLabel}</Typography>
                                 ) : (
                                     <TextField
@@ -379,7 +405,7 @@ export default function AdstoneSiteInductionForm() {
                                 )}
                             </Box>
                             <Box sx={{ width: '25%', borderRight: `2px solid ${borderColor}`, p: 0 }}>
-                                {downloading ? (
+                                {contentReadOnly ? (
                                     <Typography sx={{ px: 1, py: 0.5, fontSize: '0.75rem' }}>{formData.metadata.writtenBy}</Typography>
                                 ) : (
                                     <TextField fullWidth variant="standard" value={formData.metadata.writtenBy} 
@@ -389,7 +415,7 @@ export default function AdstoneSiteInductionForm() {
                             </Box>
                             <Box sx={{ width: '30%', borderRight: `2px solid ${borderColor}`, p: 0, display: 'flex', alignItems: 'center' }}>
                                 <Box sx={{ pl: 1, pr: 0.5 }}>
-                                    {(downloading || action === 'download') ? (
+                                    {contentReadOnly ? (
                                         <Typography sx={{ fontWeight: 700, fontSize: '0.75rem' }}>{headerLabels.docNoLabel}</Typography>
                                     ) : (
                                         <TextField
@@ -400,7 +426,7 @@ export default function AdstoneSiteInductionForm() {
                                         />
                                     )}
                                 </Box>
-                                {downloading ? (
+                                {contentReadOnly ? (
                                     <Typography sx={{ px: 0.5, py: 0.5, fontSize: '0.75rem' }}>{formData.metadata.docNo}</Typography>
                                 ) : (
                                     <TextField fullWidth variant="standard" value={formData.metadata.docNo}
@@ -410,7 +436,7 @@ export default function AdstoneSiteInductionForm() {
                             </Box>
                             <Box sx={{ width: '30%', p: 0, display: 'flex', alignItems: 'center' }}>
                                 <Box sx={{ pl: 1, pr: 0.5 }}>
-                                    {(downloading || action === 'download') ? (
+                                    {contentReadOnly ? (
                                         <Typography sx={{ fontWeight: 700, fontSize: '0.75rem' }}>{headerLabels.revNoLabel}</Typography>
                                     ) : (
                                         <TextField
@@ -421,7 +447,7 @@ export default function AdstoneSiteInductionForm() {
                                         />
                                     )}
                                 </Box>
-                                {downloading ? (
+                                {contentReadOnly ? (
                                     <Typography sx={{ px: 0.5, py: 0.5, fontSize: '0.75rem' }}>{formData.metadata.revNo}</Typography>
                                 ) : (
                                     <TextField fullWidth variant="standard" value={formData.metadata.revNo}
@@ -434,7 +460,7 @@ export default function AdstoneSiteInductionForm() {
                         {/* Row 3: Approved by | Value | Date | Page */}
                         <Box sx={{ display: 'flex', fontSize: '0.75rem' }}>
                             <Box sx={{ width: '15%', p: 0.75, fontWeight: 700, borderRight: `1.5px solid ${borderColor}`, display: 'flex', alignItems: 'center' }}>
-                                {(downloading || action === 'download') ? (
+                                {contentReadOnly ? (
                                     <Typography sx={{ fontWeight: 700, fontSize: '0.75rem' }}>{headerLabels.approvedByLabel}</Typography>
                                 ) : (
                                     <TextField
@@ -446,7 +472,7 @@ export default function AdstoneSiteInductionForm() {
                                 )}
                             </Box>
                             <Box sx={{ width: '25%', borderRight: `2px solid ${borderColor}`, p: 0 }}>
-                                {downloading ? (
+                                {contentReadOnly ? (
                                     <Typography sx={{ px: 1, py: 0.5, fontSize: '0.85rem' }}>{formData.metadata.approvedBy}</Typography>
                                 ) : (
                                     <TextField fullWidth variant="standard" value={formData.metadata.approvedBy}
@@ -456,7 +482,7 @@ export default function AdstoneSiteInductionForm() {
                             </Box>
                             <Box sx={{ width: '30%', borderRight: `2px solid ${borderColor}`, p: 0, display: 'flex', alignItems: 'center' }}>
                                 <Box sx={{ pl: 1, pr: 0.5 }}>
-                                    {(downloading || action === 'download') ? (
+                                    {contentReadOnly ? (
                                         <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>{headerLabels.dateLabel}</Typography>
                                     ) : (
                                         <TextField
@@ -467,7 +493,7 @@ export default function AdstoneSiteInductionForm() {
                                         />
                                     )}
                                 </Box>
-                                {downloading ? (
+                                {contentReadOnly ? (
                                     <Typography sx={{ px: 0.5, py: 0.5, fontSize: '0.85rem' }}>{formData.metadata.date}</Typography>
                                 ) : (
                                     <TextField fullWidth variant="standard" value={formData.metadata.date}
@@ -477,7 +503,7 @@ export default function AdstoneSiteInductionForm() {
                             </Box>
                             <Box sx={{ width: '30%', p: 0, display: 'flex', alignItems: 'center' }}>
                                 <Typography sx={{ pl: 1, pr: 0.5, fontWeight: 700, fontSize: '0.75rem' }}>Page</Typography>
-                                {downloading ? (
+                                {contentReadOnly ? (
                                     <Typography sx={{ px: 0.5, py: 0.5, fontSize: '0.75rem' }}>{formData.metadata.page}</Typography>
                                 ) : (
                                     <TextField fullWidth variant="standard" value={formData.metadata.page}
@@ -489,7 +515,7 @@ export default function AdstoneSiteInductionForm() {
                     </Box>
 
                     {/* FORM CONTENT */}
-                    <Box sx={{ p: downloading ? 1.5 : 4 }}>
+                    <Box sx={{ p: pdfLayout ? 1.5 : 4 }}>
 
 
                         {/* BASIC DETAILS TABLE */}
@@ -502,8 +528,8 @@ export default function AdstoneSiteInductionForm() {
                             ].map((row, idx) => (
                                 <Box key={row.field} sx={{ display: 'flex', borderBottom: idx < 3 ? `1px solid ${borderColor}` : 'none' }}>
                                     <Box sx={{ width: '25%', p: 0, fontWeight: 700, bgcolor: '#F9FAFB', borderRight: `1.5px solid ${borderColor}` }}>
-                                        {(downloading || action === 'download') ? 
-                                            (<Typography sx={{ p: downloading ? 0.5 : 1, fontWeight: 700, fontSize: downloading ? '0.7rem' : '1rem' }}>{row.label}</Typography>) : 
+                                        {contentReadOnly ? 
+                                            (<Typography sx={{ p: pdfLayout ? 0.5 : 1, fontWeight: 700, fontSize: pdfLayout ? '0.7rem' : '1rem' }}>{row.label}</Typography>) : 
                                             (<TextField 
                                                 fullWidth 
                                                 variant="standard" 
@@ -514,7 +540,7 @@ export default function AdstoneSiteInductionForm() {
                                         }
                                     </Box>
                                     <Box sx={{ width: '75%', p: 0 }}>
-                                        {downloading ? (
+                                        {contentReadOnly ? (
                                             <Typography sx={{ px: 1.5, py: 0.5, fontSize: '0.75rem' }}>{formData[row.field]}</Typography>
                                         ) : (
                                             <TextField 
@@ -531,7 +557,7 @@ export default function AdstoneSiteInductionForm() {
                         </Box>
 
                         <Box sx={{ mb: 2 }}>
-                            {(downloading || action === 'download') ? 
+                            {contentReadOnly ? 
                                 (<Typography sx={{ fontStyle: 'italic', fontSize: '0.95rem' }}>{headerLabels.disclaimer}</Typography>) : 
                                 (<TextField 
                                     fullWidth 
@@ -550,7 +576,7 @@ export default function AdstoneSiteInductionForm() {
                                 <TableHead>
                                     <TableRow sx={{ bgcolor: '#F3F4F6' }}>
                                         <TableCell sx={{ border: `1px solid ${borderColor}`, fontWeight: 700, width: '40%', p: 0 }}>
-                                            {(downloading || action === 'download') ? 
+                                            {contentReadOnly ? 
                                                 (<Typography sx={{ px: 1, fontWeight: 700 }}>{headerLabels.docTitle}</Typography>) : 
                                                 (<TextField 
                                                     fullWidth 
@@ -562,7 +588,7 @@ export default function AdstoneSiteInductionForm() {
                                             }
                                         </TableCell>
                                         <TableCell align="center" sx={{ border: `1px solid ${borderColor}`, fontWeight: 700, width: '15%', p: 0 }}>
-                                            {(downloading || action === 'download') ? 
+                                            {contentReadOnly ? 
                                                 (<Typography align="center" sx={{ px: 1, fontWeight: 700, fontSize: '0.75rem' }}>{headerLabels.tickBriefed}</Typography>) : 
                                                 (<TextField 
                                                     fullWidth 
@@ -575,7 +601,7 @@ export default function AdstoneSiteInductionForm() {
                                             }
                                         </TableCell>
                                         <TableCell align="center" sx={{ border: `1px solid ${borderColor}`, fontWeight: 700, width: '15%', p: 0 }}>
-                                            {(downloading || action === 'download') ? 
+                                            {contentReadOnly ? 
                                                 (<Typography align="center" sx={{ px: 1, fontWeight: 700 }}>{headerLabels.date}</Typography>) : 
                                                 (<TextField 
                                                     fullWidth 
@@ -587,7 +613,7 @@ export default function AdstoneSiteInductionForm() {
                                             }
                                         </TableCell>
                                         <TableCell align="center" sx={{ border: `1px solid ${borderColor}`, fontWeight: 700, width: '15%', p: 0 }}>
-                                            {(downloading || action === 'download') ? 
+                                            {contentReadOnly ? 
                                                 (<Typography align="center" sx={{ px: 1, fontWeight: 700, fontSize: '0.75rem' }}>{headerLabels.sigInductee}</Typography>) : 
                                                 (<TextField 
                                                     fullWidth 
@@ -600,7 +626,7 @@ export default function AdstoneSiteInductionForm() {
                                             }
                                         </TableCell>
                                         <TableCell align="center" sx={{ border: `1px solid ${borderColor}`, fontWeight: 700, width: '15%', p: 0 }}>
-                                            {(downloading || action === 'download') ? 
+                                            {contentReadOnly ? 
                                                 (<Typography align="center" sx={{ px: 1, fontWeight: 700, fontSize: '0.75rem' }}>{headerLabels.sigInductor}</Typography>) : 
                                                 (<TextField 
                                                     fullWidth 
@@ -612,13 +638,18 @@ export default function AdstoneSiteInductionForm() {
                                                 />)
                                             }
                                         </TableCell>
+                                        {!pdfLayout && (
+                                            <TableCell
+                                                sx={{ border: `1px solid ${borderColor}`, width: 52, maxWidth: 52, p: 0, verticalAlign: "middle", bgcolor: "#F3F4F6" }}
+                                            />
+                                        )}
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
                                     {formData.briefingItems.map((item, idx) => (
                                         <TableRow key={idx}>
                                             <TableCell sx={{ border: `1px solid ${borderColor}`, p: '6px', minHeight: 35, verticalAlign: 'middle' }}>
-                                                {downloading ? (
+                                                {contentReadOnly ? (
                                                     <Typography sx={{ fontSize: '0.7rem', whiteSpace: 'pre-wrap', lineHeight: 1.25 }}>
                                                         {item.title}
                                                     </Typography>
@@ -644,12 +675,13 @@ export default function AdstoneSiteInductionForm() {
                                                 )}
                                             </TableCell>
                                             <TableCell align="center" sx={{ border: `1px solid ${borderColor}`, p: 0 }}>
-                                                {downloading ? (
+                                                {contentReadOnly ? (
                                                     item.checked ? <Typography sx={{ fontSize: '1rem', fontWeight: 800 }}>✓</Typography> : ''
                                                 ) : (
                                                     <Checkbox 
                                                         size="small"
                                                         checked={item.checked} 
+                                                        disabled={contentReadOnly}
                                                         onChange={(e) => handleBriefingItemChange(idx, "checked", e.target.checked)} 
                                                         sx={{ 
                                                             p: 0.5, 
@@ -660,7 +692,7 @@ export default function AdstoneSiteInductionForm() {
                                                 )}
                                             </TableCell>
                                             <TableCell align="center" sx={{ border: `1px solid ${borderColor}`, p: 0 }}>
-                                                {downloading ? (
+                                                {contentReadOnly ? (
                                                     <Typography sx={{ fontSize: '0.7rem' }}>{item.date}</Typography>
                                                 ) : (
                                                     <TextField 
@@ -673,17 +705,40 @@ export default function AdstoneSiteInductionForm() {
                                                 )}
                                             </TableCell>
                                             <TableCell align="center" sx={{ border: `1px solid ${borderColor}`, p: 0 }}>
-                                                <SignatureField 
-                                                    value={item.signInductee} 
-                                                    onUpload={(e) => handleSignatureUpload(e, "signInductee", idx)} 
+                                                <SignatureField
+                                                    value={item.signInductee}
+                                                    field="signInductee"
+                                                    index={idx}
+                                                    compact
                                                 />
                                             </TableCell>
                                             <TableCell align="center" sx={{ border: `1px solid ${borderColor}`, p: 0 }}>
-                                                <SignatureField 
-                                                    value={item.signInductor} 
-                                                    onUpload={(e) => handleSignatureUpload(e, "signInductor", idx)} 
+                                                <SignatureField
+                                                    value={item.signInductor}
+                                                    field="signInductor"
+                                                    index={idx}
+                                                    compact
                                                 />
                                             </TableCell>
+                                            {!pdfLayout && (
+                                                <TableCell
+                                                    align="center"
+                                                    sx={{ border: `1px solid ${borderColor}`, width: 52, maxWidth: 52, p: 0, verticalAlign: "middle" }}
+                                                >
+                                                    <GeneralFormTableRowControls
+                                                        downloading={downloading}
+                                                        action={action}
+                                                        rowIndex={idx}
+                                                        rowCount={formData.briefingItems.length}
+                                                        minRows={MIN_ADSTONE_BRIEFING_ITEM_ROWS}
+                                                        maxRows={25}
+                                                        borderColor={borderColor}
+                                                        onInsertAfter={insertBriefingItemAfter}
+                                                        onRemoveAt={removeBriefingItemAt}
+                                                        accessLocked={!canEdit}
+                                                    />
+                                                </TableCell>
+                                            )}
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -691,7 +746,7 @@ export default function AdstoneSiteInductionForm() {
                         </TableContainer>
 
                         <Box sx={{ mb: 4 }}>
-                            {(downloading || action === 'download') ? 
+                            {contentReadOnly ? 
                                 (<Typography sx={{ fontSize: '0.9rem', lineHeight: 1.4 }}>{headerLabels.agreement}</Typography>) : 
                                 (<TextField 
                                     fullWidth 
@@ -707,7 +762,7 @@ export default function AdstoneSiteInductionForm() {
                         {/* TIGHTENING OF BOLTS SECTION */}
                         <Box sx={{ mb: 6 }}>
                             <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center' }}>
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography variant="h6" sx={{ fontWeight: 800 }}>{headerLabels.tighteningHeader}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -719,7 +774,7 @@ export default function AdstoneSiteInductionForm() {
                                 }
                             </Box>
                                                        <Box sx={{ mb: 3 }}>
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography sx={{ fontWeight: 700, fontSize: '0.95rem' }}>{headerLabels.erectorResp}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -732,7 +787,7 @@ export default function AdstoneSiteInductionForm() {
                                 }
                                 <Box sx={{ display: 'flex', alignItems: 'center', mt: 1.5 }}>
                                     <Box sx={{ width: 'auto', mr: 2, whiteSpace: 'nowrap' }}>
-                                        {(downloading || action === 'download') ? 
+                                        {contentReadOnly ? 
                                             (<Typography sx={{ color: '#D32F2F', fontWeight: 600 }}>{headerLabels.erectorSignLabel}</Typography>) : 
                                             (<TextField 
                                                 variant="standard" 
@@ -743,17 +798,16 @@ export default function AdstoneSiteInductionForm() {
                                         }
                                     </Box>
                                     <Box sx={{ flex: 1, borderBottom: '1px dotted #D32F2F', minHeight: 40, display: 'flex', alignItems: 'center' }}>
-                                        <SignatureField 
-                                            value={formData.erectorSignature} 
-                                            onUpload={(e) => handleSignatureUpload(e, "erectorSignature")}
-                                            label="Sign Here"
+                                        <SignatureField
+                                            value={formData.erectorSignature}
+                                            field="erectorSignature"
                                         />
                                     </Box>
                                 </Box>
                             </Box>
  
                             <Box>
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography sx={{ fontWeight: 700, fontSize: '0.95rem' }}>{headerLabels.supervisorResp}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -766,7 +820,7 @@ export default function AdstoneSiteInductionForm() {
                                 }
                                 <Box sx={{ display: 'flex', alignItems: 'center', mt: 1.5 }}>
                                     <Box sx={{ width: 'auto', mr: 2, whiteSpace: 'nowrap' }}>
-                                        {(downloading || action === 'download') ? 
+                                        {contentReadOnly ? 
                                             (<Typography sx={{ color: '#D32F2F', fontWeight: 600 }}>{headerLabels.supervisorSignLabel}</Typography>) : 
                                             (<TextField 
                                                 variant="standard" 
@@ -777,10 +831,9 @@ export default function AdstoneSiteInductionForm() {
                                         }
                                     </Box>
                                     <Box sx={{ flex: 1, borderBottom: '1px dotted #D32F2F', minHeight: 40, display: 'flex', alignItems: 'center' }}>
-                                        <SignatureField 
-                                            value={formData.supervisorSignature} 
-                                            onUpload={(e) => handleSignatureUpload(e, "supervisorSignature")}
-                                            label="Sign Here"
+                                        <SignatureField
+                                            value={formData.supervisorSignature}
+                                            field="supervisorSignature"
                                         />
                                     </Box>
                                 </Box>
@@ -800,10 +853,12 @@ export default function AdstoneSiteInductionForm() {
                 open={saveDialogOpen}
                 onClose={() => setSaveDialogOpen(false)}
                 onSave={confirmSave}
-                existingId={id}
+                existingId={persistedResponseId}
                 defaultName={formMetadata.name || `Induction Briefing - ${new Date().toLocaleDateString()}`}
                 defaultTags={formMetadata.tags}
                 saving={saving}
+                templateFlow
+                nameFieldLabel="Template name"
             />
         </Layout>
     );

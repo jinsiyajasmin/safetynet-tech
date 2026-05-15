@@ -6,8 +6,5 @@ npm-debug.log
 README.md
 dist
 uploads
-prisma/migrations
 *.pdf
-scratch/
 test-*.js
-test_db.js

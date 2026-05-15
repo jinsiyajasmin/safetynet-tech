@@ -14,7 +14,7 @@ const {
 const { requireAuth, requireRole } = require("../middleware/auth");
 router.get("/", listClients);
 router.get("/:id", getClient);
-router.get("/:id/users", getUsersByClient);
+router.get("/:id/users", requireAuth, getUsersByClient);
 
 router.post(
   "/",

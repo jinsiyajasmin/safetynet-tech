@@ -18,6 +18,7 @@ import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { useNavigate, Link as RouterLink } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { shouldLandOnClientsHub } from "../utils/postAuthRedirect";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -59,14 +60,7 @@ export default function LoginPage() {
         password: values.password,
       };
 
-      // DEBUG: inspect baseURL so we know final URL
-      // (keep this while debugging, remove later)
-      console.log("api.baseURL:", api.defaults.baseURL);
-
-      // This should request: {api.baseURL}/auth/login  (e.g. http://localhost:4000/api/auth/login)
       const res = await api.post("/auth/login", payload);
-
-      console.log("login response:", res?.data, "requested URL:", res?.config?.url ?? res?.config);
 
       // expected response: { success: true, token, user }
       // OR { success: true, requireOtp: true }
@@ -84,12 +78,7 @@ export default function LoginPage() {
           // Sync AuthContext immediately
           refreshUser();
 
-          // redirect by role
-          if (
-            user?.role === "superadmin" ||
-            user?.role === "admin" ||
-            user?.companyname?.trim()?.toLowerCase() === "safetynett"
-          ) {
+          if (shouldLandOnClientsHub(user)) {
             navigate("/clients");
           } else {
             navigate("/general-forms");
@@ -99,12 +88,14 @@ export default function LoginPage() {
 
     } catch (err) {
       console.error("Login error:", err);
-      console.error("Requested URL:", err.config?.baseURL ? `${err.config.baseURL}${err.config.url}` : err.config?.url);
       const status = err?.response?.status;
       const data = err?.response?.data;
 
       if (status === 401 || status === 403) setError(data?.message || "Invalid credentials");
-      else if (!err?.response) setError("No response from server — check backend");
+      else if (!err?.response)
+        setError(
+          "Cannot reach the API. Docker: `docker compose up --build -d` then http://localhost:8080. Local dev: backend on port 4000 plus `npm run dev` (Vite proxies /api)."
+        );
       else setError(data?.message || `Sign in failed (status ${status})`);
     } finally {
       setLoading(false);

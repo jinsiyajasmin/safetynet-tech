@@ -37,6 +37,7 @@ import FormRenderer from "../components/FormRenderer";
 import HealthSafetyConcernForm from "../components/HealthSafetyConcernForm";
 import WeeklySupervisorInspectionForm from "../components/WeeklySupervisorInspectionForm";
 import api from "../services/api";
+import { getBackendOrigin } from "../utils/backendOrigin.js";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
@@ -44,7 +45,7 @@ import jsPDF from "jspdf";
 const computeLogoUrl = (logo) => {
     if (!logo) return null;
     if (/^https?:\/\//i.test(logo)) return logo;
-    const host = import.meta.env.VITE_BACKEND_URL || "https://api.site-mateai.co.uk";
+    const host = getBackendOrigin();
     return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
 };
 

@@ -140,6 +140,18 @@ exports.getClient = asyncHandler(async (req, res) => {
 
 
 exports.getUsersByClient = asyncHandler(async (req, res) => {
+  if (!req.user?.id) {
+    return res.status(401).json({ success: false, message: "Not authenticated" });
+  }
+
+  const actor = await prisma.user.findUnique({
+    where: { id: req.user.id },
+    select: { role: true },
+  });
+  if (!actor || actor.role !== "superadmin") {
+    return res.status(403).json({ success: false, message: "Insufficient permissions" });
+  }
+
   const { id } = req.params;
   console.log("GET /clients/:id/users -> id:", id);
 
@@ -162,7 +174,8 @@ exports.getUsersByClient = asyncHandler(async (req, res) => {
       select: {
         id: true, username: true, firstName: true, lastName: true, email: true,
         jobTitle: true, companyname: true, mobile: true, role: true, active: true,
-        clientId: true, createdAt: true, updatedAt: true
+        clientId: true, createdAt: true, updatedAt: true,
+        lastLoginAt: true, lastSeenAt: true,
         // Exclude password
       }
     });
@@ -175,7 +188,8 @@ exports.getUsersByClient = asyncHandler(async (req, res) => {
     select: {
       id: true, username: true, firstName: true, lastName: true, email: true,
       jobTitle: true, companyname: true, mobile: true, role: true, active: true,
-      clientId: true, createdAt: true, updatedAt: true
+      clientId: true, createdAt: true, updatedAt: true,
+      lastLoginAt: true, lastSeenAt: true,
       // Exclude password
     }
   });

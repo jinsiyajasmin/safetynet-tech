@@ -81,29 +81,16 @@ exports.login = asyncHandler(async (req, res) => {
         const { email, password, otp } = req.body || {};
 
         if (!email || !password) {
-            return res.status(400).json({ success: false, message: 'Email and password are required' });
+            return res.status(400).json({ success: false, message: "Email and password are required" });
         }
 
-        const normalizedEmail = String(email).toLowerCase().trim();
-
-        const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-        if (!user) {
-            return res.status(401).json({ success: false, message: 'Invalid email or password' });
-        }
-
-        // Check password
-        const result = await authService.login({ email: normalizedEmail, password });
-
-        if (!result || !result.user) {
-            return res.status(401).json({ success: false, message: 'Invalid email or password' });
-        }
+        const result = await authService.login({ email, password });
 
         const userObj = result.user.toObject ? result.user.toObject() : { ...result.user };
 
-        // Check if active
-        const isActive = typeof userObj.active === 'boolean' ? userObj.active : true;
+        const isActive = typeof userObj.active === "boolean" ? userObj.active : true;
         if (!isActive) {
-            return res.status(403).json({ success: false, message: 'User is blocked.' });
+            return res.status(403).json({ success: false, message: "User is blocked." });
         }
 
         delete userObj.password;
@@ -112,8 +99,14 @@ exports.login = asyncHandler(async (req, res) => {
         return res.json({ success: true, user: userObj, token: result.token });
 
     } catch (err) {
-        console.error('AUTH LOGIN ERROR:', err);
-        res.status(err.status || 500).json({ success: false, message: err.message || 'Server error' });
+        console.error("AUTH LOGIN ERROR:", err);
+        const status = err.status || 500;
+        const body = {
+            success: false,
+            message: err.message || "Server error",
+        };
+        if (err.code) body.code = err.code;
+        return res.status(status).json(body);
     }
 });
 

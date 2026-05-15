@@ -2,17 +2,23 @@ import React, { useState, useEffect } from "react";
 import { useCompanyLogo } from "../hooks/useCompanyLogo";
 import { 
     Box, Typography, Button, Paper, TextField, CircularProgress, 
-    IconButton, Checkbox, Radio, RadioGroup, FormControlLabel
+    IconButton, Checkbox, Radio, RadioGroup, FormControlLabel, Alert
 } from "@mui/material";
 import SaveChoiceDialog from "../components/SaveChoiceDialog";
+import SignatureCapture from "../components/SignatureCapture";
+import GeneralFormTableRowControls, {
+    GeneralFormTableRowControlsHeaderSpacer,
+} from "../components/GeneralFormTableRowControls";
 import { ArrowLeft } from "lucide-react";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useGeneralFormRouteSubmissionIds } from "../hooks/useGeneralFormRouteSubmissionIds";
 import Layout from "../components/Layout";
 import { useTheme } from "../context/ThemeContext";
 import api from "../services/api";
 import { getOrCreateTemplateForm } from "../services/formUtils";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
 import { useRef } from "react";
+import { useGeneralFormTemplateAccess } from "../hooks/useGeneralFormTemplateAccess";
 
 const SCORING_STANDARDS = [
     { title: "ST 1 – Work at Heights: Scaffolding & Edge protection", subtitle: "(scaffold structure, fall protection, car top, voids, protection from falling objects)" },
@@ -40,10 +46,9 @@ const SCORING_STANDARDS = [
 export default function ManagementSiteInspectionForm() {
   const logoUrl = useCompanyLogo();
     const { isDarkMode } = useTheme();
-    const { id } = useParams();
+    const { persistedResponseId, seedSubmissionId, fromTemplateId } = useGeneralFormRouteSubmissionIds();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const siteId = searchParams.get("siteId");
     const category = searchParams.get("category") || "General forms";
     const action = searchParams.get("action");
     const containerRef = useRef(null);
@@ -89,28 +94,41 @@ export default function ManagementSiteInspectionForm() {
         Array(20).fill({ compliant: "", comments: "" })
     );
 
-    const [actions, setActions] = useState(
-        Array(6).fill({ actionRequired: "", byWho: "", byWhen: "", dateClosed: "" })
+    const EMPTY_ACTION = { actionRequired: "", byWho: "", byWhen: "", dateClosed: "" };
+    const [actions, setActions] = useState(() =>
+        Array.from({ length: 6 }, () => ({ ...EMPTY_ACTION }))
+    );
+    const [persistedSiteId, setPersistedSiteId] = useState(null);
+
+    const { canEdit, siteId, pdfLayout, contentReadOnly } = useGeneralFormTemplateAccess(
+        action,
+        downloading,
+        persistedSiteId
     );
 
     useEffect(() => {
-        if (id) {
-            loadSubmission(id);
-        }
-    }, [id]);
+        if (!persistedResponseId && !fromTemplateId) setPersistedSiteId(null);
+    }, [persistedResponseId, fromTemplateId]);
 
     useEffect(() => {
-        if (!loading && action === "download" && id) {
+        if (seedSubmissionId) {
+            loadSubmission(seedSubmissionId);
+        }
+    }, [seedSubmissionId]);
+
+    useEffect(() => {
+        const docKey = persistedResponseId || seedSubmissionId;
+        if (!loading && action === "download" && docKey) {
             setDownloading(true);
             setTimeout(() => {
-                downloadPdfFromRef(containerRef, `ManagementInspection_${id}`, () => {
+                downloadPdfFromRef(containerRef, `ManagementInspection_${docKey}`, () => {
                     setDownloading(false);
                     // Close the newly opened tab
                     window.close();
                 });
             }, 800);
         }
-    }, [loading, action, id]);
+    }, [loading, action, persistedResponseId, seedSubmissionId]);
 
     const loadSubmission = async (submissionId) => {
         setLoading(true);
@@ -119,6 +137,7 @@ export default function ManagementSiteInspectionForm() {
             if (res.data?.success) {
                 const submission = res.data.data.find(r => r.id === submissionId || r._id === submissionId);
                 if (submission && submission.answers) {
+                    setPersistedSiteId(submission.answers.siteId ?? null);
                     if (submission.answers.docInfo) setDocInfo(submission.answers.docInfo);
                     if (submission.answers.headerData) setHeaderData(submission.answers.headerData);
                     if (submission.answers.headerLabels) setHeaderLabels(submission.answers.headerLabels);
@@ -145,11 +164,7 @@ export default function ManagementSiteInspectionForm() {
     };
 
     const handleSaveClick = () => {
-        if (id) {
-            setSaveDialogOpen(true);
-        } else {
-            executeSave(false);
-        }
+        setSaveDialogOpen(true);
     };
 
     const executeSave = async (asNew = false, name = "", tags = "") => {
@@ -167,8 +182,8 @@ export default function ManagementSiteInspectionForm() {
             };
             if (siteId) formData.siteId = siteId;
             
-            if (id && !asNew) {
-                await api.put(`/forms/responses/${id}`, { answers: formData });
+            if (persistedResponseId && !asNew) {
+                await api.put(`/forms/responses/${persistedResponseId}`, { answers: formData });
             } else {
                 const formId = await getOrCreateTemplateForm("Management Site Inspection Report");
                 await api.post(`/forms/${formId}/responses`, {
@@ -205,6 +220,18 @@ export default function ManagementSiteInspectionForm() {
         setActions(newActions);
     };
 
+    const insertActionAfter = (index) => {
+        setActions((a) => {
+            if (a.length >= 25) return a;
+            const next = [...a];
+            next.splice(index + 1, 0, { ...EMPTY_ACTION });
+            return next;
+        });
+    };
+    const removeActionAt = (index) => {
+        setActions((a) => (a.length <= 1 ? a : a.filter((_, i) => i !== index)));
+    };
+
     // Colors & Styling
     const borderColor = isDarkMode ? "#374151" : "#CCC";
     const headerBgColor = isDarkMode ? "rgba(255,255,255,0.05)" : "#F9FAFB";
@@ -217,6 +244,11 @@ export default function ManagementSiteInspectionForm() {
 
     return (
         <Layout pageTitle="Management Site Inspection Report">
+            {!canEdit && (
+                <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+                    You can view this template but only a Super Admin, Company Admin, or Supervisor can edit or save it. Use a site pack link to fill this form for a site.
+                </Alert>
+            )}
             <Box sx={{ mb: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', gap: 2 }}>
                     <IconButton onClick={() => siteId ? navigate('/sitepack-management', { state: { siteId, moduleTitle: category } }) : navigate('/general-forms')} sx={{ bgcolor: isDarkMode ? '#374151' : '#E5E7EB' }}>
@@ -226,7 +258,7 @@ export default function ManagementSiteInspectionForm() {
                 <Button 
                     variant="contained" 
                     onClick={handleSaveClick}
-                    disabled={saving}
+                    disabled={saving || !canEdit || downloading}
                     sx={{ 
                         bgcolor: "#E89F17", 
                         color: "#FFFFFF", 
@@ -241,10 +273,10 @@ export default function ManagementSiteInspectionForm() {
             </Box>
 
             <Box sx={{ width: '100%', overflowX: 'auto', mb: 8 }}>
-                <Box sx={{ minWidth: (downloading || action === 'download') ? "1000px" : "100%", display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, justifyContent: 'center', px: { xs: 2, md: 0 } }}>
+                <Box sx={{ minWidth: pdfLayout ? "1000px" : "100%", display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, justifyContent: 'center', px: { xs: 2, md: 0 } }}>
                     <Paper 
                         ref={containerRef}
-                        elevation={3} 
+                        elevation={pdfLayout ? 0 : 3} 
                         sx={{ 
                             width: "100%", 
                             maxWidth: "1000px", 
@@ -252,7 +284,8 @@ export default function ManagementSiteInspectionForm() {
                             bgcolor: isDarkMode ? "#222" : "#FFFFFF", 
                             color: textColor,
                             borderRadius: 2,
-                            border: "2px solid #000000"
+                            border: pdfLayout ? "1px solid #ccc" : "2px solid #000000",
+                            boxShadow: pdfLayout ? "none" : undefined
                         }}
                     >
                         {/* HEADER LOGOS & INFO */}
@@ -261,8 +294,8 @@ export default function ManagementSiteInspectionForm() {
                         <Box sx={{ width: { xs: '100%', md: '30%' }, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRight: `1px solid ${borderColor}` }}>
                             {docInfo.logo ? (
                                 <>
-                                    <Box component="img" src={docInfo.logo} alt="Uploaded Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: (action !== 'download') ? 1 : 0 }} />
-                                    {(action !== 'download') && (
+                                    <Box component="img" src={docInfo.logo} alt="Uploaded Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: !contentReadOnly ? 1 : 0 }} />
+                                    {!contentReadOnly && (
                                         <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
                                             Change
                                             <input type="file" hidden accept="image/*" onChange={(e) => {
@@ -277,7 +310,7 @@ export default function ManagementSiteInspectionForm() {
                                     )}
                                 </>
                             ) : (
-                                (action !== 'download') ? (
+                                !contentReadOnly ? (
                                     <Button variant="outlined" component="label" size="small">
                                         Upload Logo
                                         <input type="file" hidden accept="image/*" onChange={(e) => {
@@ -298,7 +331,7 @@ export default function ManagementSiteInspectionForm() {
                             {/* Center Info */}
                             <Box sx={{ width: { xs: '100%', md: '40%' }, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
                                 <Box sx={{ flex: 1, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', p: 1, borderBottom: `1px solid ${borderColor}` }}>
-                                    {(downloading || action === 'download') ? (
+                                    {contentReadOnly ? (
                                         <Typography sx={{ fontWeight: 'bold' }}>{headerLabels.formTitle}</Typography>
                                     ) : (
                                         <TextField
@@ -312,7 +345,7 @@ export default function ManagementSiteInspectionForm() {
                                 </Box>
                                 <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
                                     <Box sx={{ width: { xs: '100%', md: '40%' }, p: 1, borderRight: `1px solid ${borderColor}` }}>
-                                        {(downloading || action === 'download') ? (
+                                        {contentReadOnly ? (
                                             <Typography sx={{ fontWeight: 'inherit' }}>{headerLabels.dateLabel}</Typography>
                                         ) : (
                                             <TextField
@@ -325,12 +358,12 @@ export default function ManagementSiteInspectionForm() {
                                         )}
                                     </Box>
                                     <Box sx={{ width: { xs: '100%', md: '60%' }, p: 0 }}>
-                                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.date || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.date} onChange={e => setDocInfo({...docInfo, date: e.target.value})} />)}
+                                        {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.date || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.date} onChange={e => setDocInfo({...docInfo, date: e.target.value})} />)}
                                     </Box>
                                 </Box>
                                 <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
                                     <Box sx={{ width: { xs: '100%', md: '40%' }, p: 1, borderRight: `1px solid ${borderColor}` }}>
-                                        {(downloading || action === 'download') ? (
+                                        {contentReadOnly ? (
                                             <Typography sx={{ fontWeight: 'inherit' }}>{headerLabels.docNoLabel}</Typography>
                                         ) : (
                                             <TextField
@@ -343,13 +376,13 @@ export default function ManagementSiteInspectionForm() {
                                         )}
                                     </Box>
                                     <Box sx={{ width: { xs: '100%', md: '60%' }, p: 0 }}>
-                                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.docNo || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.docNo} onChange={e => setDocInfo({...docInfo, docNo: e.target.value})} />)}
+                                        {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.docNo || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, height: '100%' } }} value={docInfo.docNo} onChange={e => setDocInfo({...docInfo, docNo: e.target.value})} />)}
                                     </Box>
                                 </Box>
                                 <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
                                     <Box sx={{ width: { xs: '100%', md: '40%' }, p: 0, borderRight: `1px solid ${borderColor}`, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center' }}>
                                         <Box sx={{ pl: 1, pr: 0.5, whiteSpace: 'nowrap' }}>
-                                            {(downloading || action === 'download') ? (
+                                            {contentReadOnly ? (
                                                 <Typography sx={{ fontWeight: 'inherit' }}>{headerLabels.approvedByLabel}</Typography>
                                             ) : (
                                                 <TextField
@@ -360,7 +393,7 @@ export default function ManagementSiteInspectionForm() {
                                                 />
                                             )}
                                         </Box>
-                                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.approvedBy || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 0.5, py: 1, height: '100%' } }} value={docInfo.approvedBy} onChange={e => setDocInfo({...docInfo, approvedBy: e.target.value})} />)}
+                                        {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.approvedBy || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 0.5, py: 1, height: '100%' } }} value={docInfo.approvedBy} onChange={e => setDocInfo({...docInfo, approvedBy: e.target.value})} />)}
                                     </Box>
                                     <Box sx={{ width: { xs: '100%', md: '60%' }, p: 1 }}>Page 1 of 2</Box>
                                 </Box>
@@ -369,8 +402,8 @@ export default function ManagementSiteInspectionForm() {
                         <Box sx={{ width: { xs: '100%', md: '30%' }, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                             {docInfo.logoRight ? (
                                 <>
-                                    <Box component="img" src={docInfo.logoRight} alt="Uploaded Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: (action !== 'download') ? 1 : 0 }} />
-                                    {(action !== 'download') && (
+                                    <Box component="img" src={docInfo.logoRight} alt="Uploaded Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: !contentReadOnly ? 1 : 0 }} />
+                                    {!contentReadOnly && (
                                         <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
                                             Change
                                             <input type="file" hidden accept="image/*" onChange={(e) => {
@@ -385,7 +418,7 @@ export default function ManagementSiteInspectionForm() {
                                     )}
                                 </>
                             ) : (
-                                (action !== 'download') ? (
+                                !contentReadOnly ? (
                                     <Button variant="outlined" component="label" size="small">
                                         Upload Logo
                                         <input type="file" hidden accept="image/*" onChange={(e) => {
@@ -416,7 +449,7 @@ export default function ManagementSiteInspectionForm() {
                             ].map((row, index) => (
                                 <Box key={row.key} sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: index < 3 ? `1px solid ${borderColor}` : 'none' }}>
                                     <Box sx={{ width: { xs: '100%', md: '40%' }, p: 0, fontWeight: 'bold', borderRight: `1px solid ${borderColor}`, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center' }}>
-                                        {(downloading || action === 'download') ? 
+                                        {contentReadOnly ? 
                                             (<Typography sx={{ p: cellPadding, fontWeight: 'bold' }}>{headerLabels[row.key]}</Typography>) : 
                                             (<TextField 
                                                 fullWidth 
@@ -428,7 +461,7 @@ export default function ManagementSiteInspectionForm() {
                                         }
                                     </Box>
                                     <Box sx={{ width: { xs: '100%', md: '60%' }, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
-                                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{headerData[row.key] || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 2, py: 1 } }} value={headerData[row.key]} onChange={updateHeader(row.key)} />)}
+                                        {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{headerData[row.key] || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 2, py: 1 } }} value={headerData[row.key]} onChange={updateHeader(row.key)} />)}
                                     </Box>
                                 </Box>
                             ))}
@@ -457,6 +490,7 @@ export default function ManagementSiteInspectionForm() {
                                                 checked={statusData.projectStatus === "green"} 
                                                 onChange={() => setStatusData({...statusData, projectStatus: "green"})} 
                                                 value="green" 
+                                                disabled={contentReadOnly}
                                                 sx={{ color: isDarkMode ? '#FFF' : 'inherit' }}
                                             />
                                         </Box>
@@ -474,6 +508,7 @@ export default function ManagementSiteInspectionForm() {
                                                 checked={statusData.projectStatus === "amber"} 
                                                 onChange={() => setStatusData({...statusData, projectStatus: "amber"})} 
                                                 value="amber" 
+                                                disabled={contentReadOnly}
                                                 sx={{ color: isDarkMode ? '#FFF' : 'inherit' }}
                                             />
                                         </Box>
@@ -491,6 +526,7 @@ export default function ManagementSiteInspectionForm() {
                                                 checked={statusData.projectStatus === "red"} 
                                                 onChange={() => setStatusData({...statusData, projectStatus: "red"})} 
                                                 value="red" 
+                                                disabled={contentReadOnly}
                                                 sx={{ color: isDarkMode ? '#FFF' : 'inherit' }}
                                             />
                                         </Box>
@@ -506,21 +542,21 @@ export default function ManagementSiteInspectionForm() {
                                     <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
                                         <Box sx={{ flex: 1, bgcolor: sectionTitleBgColor, color: '#FFF', p: 0.5, textAlign: 'center', fontWeight: 'bold', borderRight: `1px solid ${borderColor}`, fontSize: '0.85rem' }}>Installation Director</Box>
                                         <Box sx={{ width: '50px', display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', justifyContent: 'center' }}>
-                                            <Checkbox checked={statusData.installationDirector} onChange={updateStatusCheckbox("installationDirector")} sx={{ color: isDarkMode ? '#FFF' : 'inherit' }} />
+                                            <Checkbox checked={statusData.installationDirector} onChange={updateStatusCheckbox("installationDirector")} disabled={contentReadOnly} sx={{ color: isDarkMode ? '#FFF' : 'inherit' }} />
                                         </Box>
                                     </Box>
 
                                     <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
                                         <Box sx={{ flex: 1, bgcolor: sectionTitleBgColor, color: '#FFF', p: 0.5, textAlign: 'center', fontWeight: 'bold', borderRight: `1px solid ${borderColor}`, fontSize: '0.85rem' }}>SHEQ Advisor</Box>
                                         <Box sx={{ width: '50px', display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', justifyContent: 'center' }}>
-                                            <Checkbox checked={statusData.sheqAdvisor} onChange={updateStatusCheckbox("sheqAdvisor")} sx={{ color: isDarkMode ? '#FFF' : 'inherit' }} />
+                                            <Checkbox checked={statusData.sheqAdvisor} onChange={updateStatusCheckbox("sheqAdvisor")} disabled={contentReadOnly} sx={{ color: isDarkMode ? '#FFF' : 'inherit' }} />
                                         </Box>
                                     </Box>
                                     
                                     <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
                                         <Box sx={{ flex: 1, bgcolor: sectionTitleBgColor, color: '#FFF', p: 0.5, textAlign: 'center', fontWeight: 'bold', borderRight: `1px solid ${borderColor}`, fontSize: '0.85rem' }}>Principal Contractor</Box>
                                         <Box sx={{ width: '50px', display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', justifyContent: 'center' }}>
-                                            <Checkbox checked={statusData.principalContractorTick} onChange={updateStatusCheckbox("principalContractorTick")} sx={{ color: isDarkMode ? '#FFF' : 'inherit' }} />
+                                            <Checkbox checked={statusData.principalContractorTick} onChange={updateStatusCheckbox("principalContractorTick")} disabled={contentReadOnly} sx={{ color: isDarkMode ? '#FFF' : 'inherit' }} />
                                         </Box>
                                     </Box>
 
@@ -562,7 +598,7 @@ export default function ManagementSiteInspectionForm() {
                                         <Typography sx={{ fontSize: '0.75rem', mt: 0.5, lineHeight: 1.1 }}>{std.subtitle}</Typography>
                                     </Box>
                                     <Box sx={{ width: { xs: '100%', md: '15%' }, borderRight: `1px solid ${borderColor}` }}>
-                                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'center' }}>{measures[index].compliant || ' '}</Typography>) : (<TextField multiline 
+                                        {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'center' }}>{measures[index].compliant || ' '}</Typography>) : (<TextField multiline 
                                             fullWidth 
                                             variant="standard" 
                                             InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1, textAlign: 'center', height: '100%' } }} 
@@ -572,7 +608,7 @@ export default function ManagementSiteInspectionForm() {
                                         />)}
                                     </Box>
                                     <Box sx={{ width: { xs: '100%', md: '40%' } }}>
-                                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{measures[index].comments || ' '}</Typography>) : (<TextField 
+                                        {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{measures[index].comments || ' '}</Typography>) : (<TextField 
                                             fullWidth 
                                             multiline
                                             minRows={2}
@@ -592,26 +628,49 @@ export default function ManagementSiteInspectionForm() {
                                 Comments/Actions <span style={{fontSize: '0.8rem', fontWeight: 'normal'}}>(Please state any comments or correctives actions required in this box)</span>
                             </Box>
                             <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}`, bgcolor: isDarkMode ? '#222' : '#555', color: '#FFF', fontWeight: 'bold' }}>
+                                <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
                                 <Box sx={{ width: { xs: '100%', md: '50%' }, p: 1, textAlign: 'center', borderRight: `1px solid ${borderColor}` }}>Actions Required</Box>
                                 <Box sx={{ width: { xs: '100%', md: '20%' }, p: 1, textAlign: 'center', borderRight: `1px solid ${borderColor}` }}>By Who</Box>
                                 <Box sx={{ width: { xs: '100%', md: '15%' }, p: 1, textAlign: 'center', borderRight: `1px solid ${borderColor}` }}>By When</Box>
                                 <Box sx={{ width: { xs: '100%', md: '15%' }, p: 1, textAlign: 'center' }}>Date Closed</Box>
+                                </Box>
+                                <GeneralFormTableRowControlsHeaderSpacer
+                                    downloading={downloading}
+                                    action={action}
+                                    borderColor={borderColor}
+                                    headerBgColor={isDarkMode ? '#222' : '#555'}
+                                    accessLocked={!canEdit}
+                                />
                             </Box>
-                            
+
                             {actions.map((act, index) => (
                                 <Box key={index} sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: index < actions.length - 1 ? `1px solid ${borderColor}` : 'none' }}>
+                                    <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
                                     <Box sx={{ width: { xs: '100%', md: '50%' }, borderRight: `1px solid ${borderColor}` }}>
-                                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{act.actionRequired || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1 } }} value={act.actionRequired} onChange={updateAction(index, "actionRequired")} />)}
+                                        {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{act.actionRequired || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1 } }} value={act.actionRequired} onChange={updateAction(index, "actionRequired")} />)}
                                     </Box>
                                     <Box sx={{ width: { xs: '100%', md: '20%' }, borderRight: `1px solid ${borderColor}` }}>
-                                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{act.byWho || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1 } }} value={act.byWho} onChange={updateAction(index, "byWho")} />)}
+                                        {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{act.byWho || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1 } }} value={act.byWho} onChange={updateAction(index, "byWho")} />)}
                                     </Box>
                                     <Box sx={{ width: { xs: '100%', md: '15%' }, borderRight: `1px solid ${borderColor}` }}>
-                                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{act.byWhen || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1 } }} value={act.byWhen} onChange={updateAction(index, "byWhen")} />)}
+                                        {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{act.byWhen || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1 } }} value={act.byWhen} onChange={updateAction(index, "byWhen")} />)}
                                     </Box>
                                     <Box sx={{ width: { xs: '100%', md: '15%' } }}>
-                                        {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{act.dateClosed || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1 } }} value={act.dateClosed} onChange={updateAction(index, "dateClosed")} />)}
+                                        {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{act.dateClosed || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 1 } }} value={act.dateClosed} onChange={updateAction(index, "dateClosed")} />)}
                                     </Box>
+                                    </Box>
+                                    <GeneralFormTableRowControls
+                                        downloading={downloading}
+                                        action={action}
+                                        rowIndex={index}
+                                        rowCount={actions.length}
+                                        minRows={1}
+                                        maxRows={25}
+                                        borderColor={borderColor}
+                                        onInsertAfter={insertActionAfter}
+                                        onRemoveAt={removeActionAt}
+                                        accessLocked={!canEdit}
+                                    />
                                 </Box>
                             ))}
                         </Box>
@@ -619,42 +678,13 @@ export default function ManagementSiteInspectionForm() {
                                             {/* Signature Section */}
                         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 6, mb: 2 }}>
                             <Box sx={{ width: '250px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                {docInfo.signature ? (
-                                    <>
-                                        <Box component="img" src={docInfo.signature} alt="Signature" sx={{ width: '100%', maxHeight: '80px', objectFit: 'contain', borderBottom: `1px solid ${borderColor}`, mb: 1 }} />
-                                        {(action !== 'download') && (
-                                            <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
-                                                Change Signature
-                                                <input type="file" hidden accept="image/*" onChange={(e) => {
-                                                    const file = e.target.files[0];
-                                                    if (file) {
-                                                        const reader = new FileReader();
-                                                        reader.onload = (ev) => setDocInfo({...docInfo, signature: ev.target.result});
-                                                        reader.readAsDataURL(file);
-                                                    }
-                                                }} />
-                                            </Button>
-                                        )}
-                                    </>
-                                ) : (
-                                    (action !== 'download') ? (
-                                        <Box sx={{ width: '100%', height: '60px', borderBottom: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1 }}>
-                                            <Button variant="outlined" component="label" size="small">
-                                                Upload Signature
-                                                <input type="file" hidden accept="image/*" onChange={(e) => {
-                                                    const file = e.target.files[0];
-                                                    if (file) {
-                                                        const reader = new FileReader();
-                                                        reader.onload = (ev) => setDocInfo({...docInfo, signature: ev.target.result});
-                                                        reader.readAsDataURL(file);
-                                                    }
-                                                }} />
-                                            </Button>
-                                        </Box>
-                                    ) : (
-                                        <Box sx={{ width: '100%', height: '60px', borderBottom: `1px solid ${borderColor}`, mb: 1 }} />
-                                    )
-                                )}
+                                <Box sx={{ width: '100%', borderBottom: `1px solid ${borderColor}`, mb: 1, pb: 1 }}>
+                                    <SignatureCapture
+                                        value={docInfo.signature || null}
+                                        onChange={(url) => setDocInfo({ ...docInfo, signature: url || "" })}
+                                        readOnly={contentReadOnly}
+                                    />
+                                </Box>
                                 <Typography sx={{ fontWeight: 'bold', fontSize: '0.9rem' }}>Signature</Typography>
                             </Box>
                         </Box>
@@ -667,10 +697,12 @@ export default function ManagementSiteInspectionForm() {
                 open={saveDialogOpen}
                 onClose={() => setSaveDialogOpen(false)}
                 onSave={executeSave}
-                existingId={id}
+                existingId={persistedResponseId}
                 defaultName={formMetadata.name || `Management Inspection - ${new Date().toLocaleDateString()}`}
                 defaultTags={formMetadata.tags}
                 saving={saving}
+                templateFlow
+                nameFieldLabel="Template name"
             />
         </Layout>
     );

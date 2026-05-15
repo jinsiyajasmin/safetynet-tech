@@ -1,5 +1,25 @@
 // src/middleware/auth.js
 const jwt = require('jsonwebtoken');
+const prisma = require('../prismaClient');
+const { isSafetynettCompanyName } = require('../utils/company');
+
+/** Throttled DB write so listing "online" users does not update on every request. */
+const LAST_SEEN_THROTTLE_MS = 60 * 1000;
+const lastSeenWriteAt = new Map();
+
+function touchUserLastSeen(userId) {
+  if (!userId) return;
+  const now = Date.now();
+  const prev = lastSeenWriteAt.get(userId) || 0;
+  if (now - prev < LAST_SEEN_THROTTLE_MS) return;
+  lastSeenWriteAt.set(userId, now);
+  prisma.user
+    .update({
+      where: { id: userId },
+      data: { lastSeenAt: new Date() },
+    })
+    .catch(() => {});
+}
 
 exports.requireAuth = (req, res, next) => {
   const authHeader = req.headers.authorization || '';
@@ -8,7 +28,9 @@ exports.requireAuth = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // { id, email, role, clientId }
+    req.user = decoded; // { id, email, role, clientId, companyname }
+    const userId = decoded.id ?? decoded.userId ?? decoded.sub;
+    touchUserLastSeen(userId);
     next();
   } catch (err) {
     return res.status(401).json({ success: false, message: 'Invalid token' });
@@ -19,9 +41,8 @@ exports.requireRole = (roles) => (req, res, next) => {
   if (!req.user)
     return res.status(401).json({ success: false, message: 'Not authenticated' });
 
-  // SafetyNett users (Global Admins) bypass role check
-  const companyName = (req.user.companyname || req.user.company || "").toString().trim().toLowerCase();
-  const isSafetynett = companyName === "safetynett";
+  // Safetynett org (global admins) bypass role check — same rule as authService / frontend
+  const isSafetynett = isSafetynettCompanyName(req.user.companyname || req.user.company);
 
   if (isSafetynett) { 
     return next();

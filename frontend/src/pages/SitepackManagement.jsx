@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
     Box,
     Typography,
@@ -144,6 +144,48 @@ const MODULES_CONFIG_ADSTONE = [
     { title: "Incident reporting", icon: <AlertOctagon size={32} /> },
 ];
 
+/** Cards may show a custom saved name; routing must use the real template title from the API. */
+function getSitepackFormTemplateTitle(menuDoc) {
+    if (!menuDoc) return "";
+    return (
+        menuDoc.rawResponse?.form?.title ||
+        (typeof menuDoc.templateTitle === "string" ? menuDoc.templateTitle : "") ||
+        menuDoc.title ||
+        ""
+    );
+}
+
+function getSitepackStandardFormPath(menuDoc, responseId) {
+    const t = getSitepackFormTemplateTitle(menuDoc);
+    const routes = {
+        "Tool Box Talk Register": `/general-forms/tool-box-talk/${responseId}`,
+        "RAMS Briefing Form": `/general-forms/rams-briefing/${responseId}`,
+        "Site Induction Register": `/general-forms/site-induction/${responseId}`,
+        "Management Site Inspection Report": `/general-forms/management-site-inspection/${responseId}`,
+        "Daily Safe Start Briefing Sheet": `/general-forms/daily-safe-start-briefing/${responseId}`,
+        "Audit Action Form": `/general-forms/audit-action-form/${responseId}`,
+        "Site Induction Form": `/general-forms/site-induction-form/${responseId}`,
+        "Adstone Site Induction Form": `/general-forms/adstone-site-induction/${responseId}`,
+        "LOLER Inspection Form": `/general-forms/loler-inspection-form/${responseId}`,
+        "PUWER Inspection Form": `/general-forms/puwer-inspection-form/${responseId}`,
+    };
+    return routes[t] || null;
+}
+
+function getSitepackFormPathForResponse(menuDoc, responseId) {
+    const std = getSitepackStandardFormPath(menuDoc, responseId);
+    if (std) return std;
+    const formId = menuDoc?.rawResponse?.formId;
+    if (!formId) return null;
+    return `/forms/${formId}/use?responseId=${encodeURIComponent(responseId)}`;
+}
+
+function pathWithSearchParams(path, params) {
+    const qs = new URLSearchParams(params).toString();
+    if (!qs) return path;
+    return path.includes("?") ? `${path}&${qs}` : `${path}?${qs}`;
+}
+
 export default function SitepackManagement() {
     const { isDarkMode } = useTheme();
     // Get user and determine modules config
@@ -186,6 +228,8 @@ export default function SitepackManagement() {
     const [createFormModalOpen, setCreateFormModalOpen] = useState(false);
     const [graphModalOpen, setGraphModalOpen] = useState(false);
     const [formBuilderForms, setFormBuilderForms] = useState([]);
+    const [savedGeneralSubmissions, setSavedGeneralSubmissions] = useState([]);
+    const [createFormModalLoading, setCreateFormModalLoading] = useState(false);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [viewModalOpen, setViewModalOpen] = useState(false);
     const [viewDocUrl, setViewDocUrl] = useState(null);
@@ -252,13 +296,8 @@ export default function SitepackManagement() {
 
                     // Update modules with counts (docs + forms)
                     setModules(prev => prev.map(m => {
-                        let docTotal = counts[m.title] || 0;
-                        let formTotal = formCountsByCategory[m.title] || 0;
-                        
-                        // Legacy support for "Friday Pack Forms"
-                        if (m.title === "Friday Pack Forms") {
-                            formTotal += formCountsByCategory["Friday Pack Forms"] || 0;
-                        }
+                        const docTotal = counts[m.title] || 0;
+                        const formTotal = formCountsByCategory[m.title] || 0;
 
                         return {
                             ...m,
@@ -334,22 +373,50 @@ export default function SitepackManagement() {
         }
     }, [selectedSite, selectedModule]);
 
-    // Load custom forms for the Create Form dialog
-    useEffect(() => {
-        if (createFormModalOpen) {
-            const fetchCustomForms = async () => {
-                try {
-                    const res = await api.get('/forms');
-                    if (res.data?.success) {
-                        setFormBuilderForms(res.data.data);
-                    }
-                } catch (e) {
-                    console.error("Failed to fetch custom forms", e);
-                }
-            };
-            fetchCustomForms();
+    const generalFormTitleToPath = useMemo(() => {
+        const m = Object.fromEntries(TEMPLATES.map((t) => [t.title, t.path]));
+        if (isAdstone) {
+            m["Adstone Site Induction Form"] = "/general-forms/adstone-site-induction";
         }
-    }, [createFormModalOpen]);
+        return m;
+    }, [isAdstone]);
+
+    // Load custom form definitions + saved general-form responses for the Create Form dialog
+    useEffect(() => {
+        if (!createFormModalOpen) return;
+        let cancelled = false;
+        const load = async () => {
+            setCreateFormModalLoading(true);
+            setSavedGeneralSubmissions([]);
+            setFormBuilderForms([]);
+            try {
+                const [formsRes, responsesRes] = await Promise.all([
+                    api.get("/forms"),
+                    api.get("/forms/responses"),
+                ]);
+                if (cancelled) return;
+                if (formsRes.data?.success) {
+                    setFormBuilderForms(formsRes.data.data || []);
+                }
+                if (responsesRes.data?.success) {
+                    const list = responsesRes.data.data || [];
+                    const knownTitles = new Set(Object.keys(generalFormTitleToPath));
+                    const saved = list
+                        .filter((r) => r.form?.title && knownTitles.has(r.form.title))
+                        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                    setSavedGeneralSubmissions(saved);
+                }
+            } catch (e) {
+                console.error("Failed to load Create Form dialog data", e);
+            } finally {
+                if (!cancelled) setCreateFormModalLoading(false);
+            }
+        };
+        load();
+        return () => {
+            cancelled = true;
+        };
+    }, [createFormModalOpen, generalFormTitleToPath]);
 
     // Handlers
     const handleSiteClick = (site) => {
@@ -453,6 +520,26 @@ export default function SitepackManagement() {
         setPreviewModalOpen(true);
     };
 
+    const handleSelectSavedGeneralSubmission = (submission) => {
+        const siteId = selectedSite._id || selectedSite.id;
+        const category = encodeURIComponent("Friday Pack Forms");
+        const path = generalFormTitleToPath[submission.form?.title];
+        if (!path) return;
+        const rid = submission.id || submission._id;
+        // fromTemplate: hydrate from saved general form but POST a new response for this site (do not overwrite the template).
+        navigate(`${path}?siteId=${siteId}&category=${category}&fromTemplate=${encodeURIComponent(rid)}`);
+    };
+
+    const handlePreviewSavedGeneralSubmission = (submission) => {
+        const siteId = selectedSite._id || selectedSite.id;
+        const category = encodeURIComponent("Friday Pack Forms");
+        const path = generalFormTitleToPath[submission.form?.title];
+        if (!path) return;
+        const rid = submission.id || submission._id;
+        setPreviewUrl(`${path}?siteId=${siteId}&category=${category}&fromTemplate=${encodeURIComponent(rid)}&preview=true`);
+        setPreviewModalOpen(true);
+    };
+
     const handleMenuClick = (event, doc) => {
         setAnchorEl(event.currentTarget);
         setMenuDoc(doc);
@@ -470,21 +557,10 @@ export default function SitepackManagement() {
             handleMenuClose();
             const siteId = selectedSite._id || selectedSite.id;
             const resId = menuDoc.id || menuDoc._id;
-            let path = "";
-            const formTitle = menuDoc.title;
-            if (formTitle === "Tool Box Talk Register") path = `/general-forms/tool-box-talk/${resId}`;
-            else if (formTitle === "RAMS Briefing Form") path = `/general-forms/rams-briefing/${resId}`;
-            else if (formTitle === "Site Induction Register") path = `/general-forms/site-induction/${resId}`;
-            else if (formTitle === "Management Site Inspection Report") path = `/general-forms/management-site-inspection/${resId}`;
-            else if (formTitle === "Daily Safe Start Briefing Sheet") path = `/general-forms/daily-safe-start-briefing/${resId}`;
-            else if (formTitle === "Audit Action Form") path = `/general-forms/audit-action-form/${resId}`;
-            else if (formTitle === "Site Induction Form") path = `/general-forms/site-induction-form/${resId}`;
-            else if (formTitle === "Adstone Site Induction Form" || menuDoc.rawResponse?.form?.title === "Adstone Site Induction Form") path = `/general-forms/adstone-site-induction/${resId}`;
-            else if (formTitle === "LOLER Inspection Form") path = `/general-forms/loler-inspection-form/${resId}`;
-            else if (formTitle === "PUWER Inspection Form") path = `/general-forms/puwer-inspection-form/${resId}`;
-            else path = `/forms/${menuDoc.rawResponse?.formId}/use?responseId=${resId}`;
-
-            navigate(`${path}?siteId=${siteId}&category=${encodeURIComponent(selectedModule.title)}`);
+            const path = getSitepackFormPathForResponse(menuDoc, resId);
+            if (!path) return;
+            const category = selectedModule?.title || "Friday Pack Forms";
+            navigate(pathWithSearchParams(path, { siteId, category }));
             return;
         }
 
@@ -507,21 +583,11 @@ export default function SitepackManagement() {
             handleMenuClose();
             const siteId = selectedSite._id || selectedSite.id;
             const resId = menuDoc.id || menuDoc._id;
-            let path = "";
-            const formTitle = menuDoc.title;
-            if (formTitle === "Tool Box Talk Register") path = `/general-forms/tool-box-talk/${resId}`;
-            else if (formTitle === "RAMS Briefing Form") path = `/general-forms/rams-briefing/${resId}`;
-            else if (formTitle === "Site Induction Register") path = `/general-forms/site-induction/${resId}`;
-            else if (formTitle === "Management Site Inspection Report") path = `/general-forms/management-site-inspection/${resId}`;
-            else if (formTitle === "Daily Safe Start Briefing Sheet") path = `/general-forms/daily-safe-start-briefing/${resId}`;
-            else if (formTitle === "Audit Action Form") path = `/general-forms/audit-action-form/${resId}`;
-            else if (formTitle === "Site Induction Form") path = `/general-forms/site-induction-form/${resId}`;
-            else if (formTitle === "LOLER Inspection Form") path = `/general-forms/loler-inspection-form/${resId}`;
-            else if (formTitle === "PUWER Inspection Form") path = `/general-forms/puwer-inspection-form/${resId}`;
-            else path = `/forms/${menuDoc.rawResponse?.formId}/use?responseId=${resId}`;
-
-            const queryChar = path.includes('?') ? '&' : '?';
-            window.open(`${path}${queryChar}siteId=${siteId}&category=Friday+Pack+Forms&action=download`, '_blank');
+            const path = getSitepackFormPathForResponse(menuDoc, resId);
+            if (!path) return;
+            const category = selectedModule?.title || "Friday Pack Forms";
+            const url = pathWithSearchParams(path, { siteId, category, action: "download" });
+            window.open(url, "_blank");
             return;
         }
 
@@ -536,13 +602,14 @@ export default function SitepackManagement() {
             handleMenuClose();
             const siteId = selectedSite._id || selectedSite.id;
             const resId = menuDoc.id || menuDoc._id;
-            const formTitle = menuDoc.title;
-            const standardForms = ['Tool Box Talk Register', 'RAMS Briefing Form', 'Site Induction Register', 'Management Site Inspection Report', 'Daily Safe Start Briefing Sheet', 'Audit Action Form', 'Site Induction Form', 'LOLER Inspection Form', 'PUWER Inspection Form'];
+            const templateTitle = getSitepackFormTemplateTitle(menuDoc);
+            const standardForms = ['Tool Box Talk Register', 'RAMS Briefing Form', 'Site Induction Register', 'Management Site Inspection Report', 'Daily Safe Start Briefing Sheet', 'Audit Action Form', 'Site Induction Form', 'LOLER Inspection Form', 'PUWER Inspection Form', 'Adstone Site Induction Form'];
             
             // Only supported for custom form builder forms
-            if (!standardForms.includes(formTitle)) {
+            if (!standardForms.includes(templateTitle)) {
                  const path = `/forms/${menuDoc.rawResponse?.formId}/use?responseId=${resId}`;
-                 window.open(`${path}&siteId=${siteId}&category=Friday+Pack+Forms&action=download_word`, '_blank');
+                 const category = selectedModule?.title || "Friday Pack Forms";
+                 window.open(pathWithSearchParams(path, { siteId, category, action: "download_word" }), "_blank");
             }
             return;
         }
@@ -1269,7 +1336,7 @@ export default function SitepackManagement() {
                         <ListItemText primary="Download as PDF" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
                     </MenuItem>
                 )}
-                {selectedModule?.title !== "Induction" && menuDoc?.isFormBase && !['Tool Box Talk Register', 'RAMS Briefing Form', 'Site Induction Register', 'Management Site Inspection Report', 'Daily Safe Start Briefing Sheet', 'Audit Action Form', 'Site Induction Form', 'LOLER Inspection Form', 'PUWER Inspection Form'].includes(menuDoc?.title) && (
+                {selectedModule?.title !== "Induction" && menuDoc?.isFormBase && !['Tool Box Talk Register', 'RAMS Briefing Form', 'Site Induction Register', 'Management Site Inspection Report', 'Daily Safe Start Briefing Sheet', 'Audit Action Form', 'Site Induction Form', 'LOLER Inspection Form', 'PUWER Inspection Form', 'Adstone Site Induction Form'].includes(getSitepackFormTemplateTitle(menuDoc)) && (
                     <MenuItem onClick={handleDownloadWord} sx={{ gap: 1.5, py: 1.5 }}>
                         <FileText size={18} color="#6B7280" />
                         <ListItemText primary="Download as Word" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
@@ -1475,7 +1542,150 @@ export default function SitepackManagement() {
                     </IconButton>
                 </DialogTitle>
                 <DialogContent sx={{ p: 4, bgcolor: isDarkMode ? "#111827" : "#F9FAFB" }}>
-                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>General Templates</Typography>
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
+                        Saved general forms
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Forms you edited and saved from General Forms appear here. Pick one to start from that version for this site’s Friday pack.
+                    </Typography>
+                    {createFormModalLoading ? (
+                        <Box sx={{ display: "flex", justifyContent: "center", py: 3, mb: 4 }}>
+                            <CircularProgress size={32} sx={{ color: "hsl(38, 70%, 55%)" }} />
+                        </Box>
+                    ) : savedGeneralSubmissions.length === 0 ? (
+                        <Paper
+                            elevation={0}
+                            sx={{
+                                p: 3,
+                                mb: 4,
+                                borderRadius: 2,
+                                bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                                border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
+                            }}
+                        >
+                            <Typography variant="body2" color="text.secondary">
+                                No saved general forms yet. Open General Forms, edit a template, save it with a name, then it will show here.
+                            </Typography>
+                        </Paper>
+                    ) : (
+                        <Grid container spacing={2} sx={{ mb: 4 }}>
+                            {savedGeneralSubmissions.map((sub) => {
+                                const primary =
+                                    sub.name ||
+                                    sub.answers?.name ||
+                                    sub.form?.title ||
+                                    "Untitled";
+                                const secondary =
+                                    sub.form?.title &&
+                                    primary !== sub.form.title
+                                        ? sub.form.title
+                                        : null;
+                                const rid = sub.id || sub._id;
+                                return (
+                                    <Grid item xs={12} sm={6} md={4} key={rid}>
+                                        <Card
+                                            onClick={() => handleSelectSavedGeneralSubmission(sub)}
+                                            elevation={0}
+                                            sx={{
+                                                position: "relative",
+                                                cursor: "pointer",
+                                                borderRadius: 3,
+                                                width: "100%",
+                                                minHeight: 120,
+                                                display: "flex",
+                                                flexDirection: "column",
+                                                bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                                                border: isDarkMode
+                                                    ? "1px solid #374151"
+                                                    : "1px solid #E5E7EB",
+                                                transition: "all 0.2s",
+                                                "&:hover": {
+                                                    borderColor: "#E89F17",
+                                                    transform: "translateY(-3px)",
+                                                    boxShadow: isDarkMode
+                                                        ? "0 4px 12px rgba(0,0,0,0.5)"
+                                                        : "0 4px 12px rgba(0,0,0,0.05)",
+                                                },
+                                            }}
+                                        >
+                                            <IconButton
+                                                size="small"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handlePreviewSavedGeneralSubmission(sub);
+                                                }}
+                                                sx={{
+                                                    position: "absolute",
+                                                    top: 8,
+                                                    right: 8,
+                                                    color: isDarkMode ? "#60A5FA" : "#0B4DA6",
+                                                    bgcolor: isDarkMode
+                                                        ? "rgba(55, 65, 81, 0.5)"
+                                                        : "rgba(243, 244, 246, 0.5)",
+                                                    "&:hover": {
+                                                        bgcolor: isDarkMode ? "#374151" : "#E5E7EB",
+                                                    },
+                                                }}
+                                            >
+                                                <VisibilityOutlinedIcon fontSize="small" />
+                                            </IconButton>
+                                            <CardContent
+                                                sx={{
+                                                    p: 2,
+                                                    pr: 4,
+                                                    display: "flex",
+                                                    flexDirection: "column",
+                                                    flexGrow: 1,
+                                                }}
+                                            >
+                                                <Typography
+                                                    variant="subtitle1"
+                                                    fontWeight={700}
+                                                    sx={{
+                                                        lineHeight: 1.2,
+                                                        mb: 0.5,
+                                                        color: isDarkMode ? "#F9FAFB" : "#111827",
+                                                    }}
+                                                >
+                                                    {primary}
+                                                </Typography>
+                                                {secondary && (
+                                                    <Typography
+                                                        variant="caption"
+                                                        sx={{
+                                                            display: "block",
+                                                            color: isDarkMode ? "#9CA3AF" : "#6B7280",
+                                                            mb: 1,
+                                                        }}
+                                                    >
+                                                        {secondary}
+                                                    </Typography>
+                                                )}
+                                                <Typography
+                                                    variant="body2"
+                                                    sx={{
+                                                        color: isDarkMode ? "#9CA3AF" : "#6B7280",
+                                                        mt: "auto",
+                                                    }}
+                                                >
+                                                    Saved{" "}
+                                                    {new Date(sub.createdAt).toLocaleDateString("en-GB", {
+                                                        day: "2-digit",
+                                                        month: "short",
+                                                        year: "numeric",
+                                                    })}
+                                                </Typography>
+                                            </CardContent>
+                                        </Card>
+                                    </Grid>
+                                );
+                            })}
+                        </Grid>
+                    )}
+
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
+                        Blank templates
+                    </Typography>
                     <Grid container spacing={2} sx={{ mb: 4 }}>
                         {TEMPLATES.map(template => (
                             <Grid item xs={12} sm={6} md={4} key={template.id}>

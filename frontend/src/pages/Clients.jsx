@@ -30,6 +30,7 @@ import {
 } from "@mui/icons-material";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../services/api";
+import { getBackendOrigin } from "../utils/backendOrigin.js";
 import Layout from "../components/Layout";
 import { useTheme as useAppTheme } from "../context/ThemeContext";
 
@@ -38,8 +39,7 @@ const computeLogoUrl = (logo) => {
   if (!logo) return null;
   if (/^https?:\/\//i.test(logo)) return logo;
   // If we have a relative path, prepend the backend URL
-  // We can grab it from import.meta.env.VITE_BACKEND_URL or rely on a helper
-  const host = import.meta.env.VITE_BACKEND_URL || "https://api.site-mateai.co.uk";
+  const host = getBackendOrigin();
   return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
 };
 

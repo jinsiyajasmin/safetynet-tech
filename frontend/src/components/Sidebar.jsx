@@ -24,6 +24,7 @@ import {
   TrendingUp,
   Sun,
   Moon,
+  PenLine,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
@@ -37,11 +38,11 @@ const ACTIVE_BG = "hsl(38, 70%, 55%)";
 const TEXT_COLOR = "#9CA3AF";
 const BG_COLOR = "#1B212C";
 
-/* === ROLE CONSTANTS === */
-const ALL_ROLES = ["superadmin", "admin", "company_admin", "site_manager", "supervisor", "worker"];
-const ADMIN_PLUS = ["superadmin", "admin", "company_admin"];
-const MANAGER_PLUS = ["superadmin", "admin", "company_admin", "site_manager"];
-const SUPERVISOR_PLUS = ["superadmin", "admin", "company_admin", "site_manager", "supervisor"];
+/* === ROLE CONSTANTS (Prisma roles only) === */
+const ALL_ROLES = ["superadmin", "company_admin", "site_manager", "supervisor", "worker"];
+const COMPANY_ADMINS = ["superadmin", "company_admin"];
+const MANAGER_PLUS = ["superadmin", "company_admin", "site_manager"];
+const SUPERVISOR_PLUS = ["superadmin", "company_admin", "site_manager", "supervisor"];
 
 const MENU_GROUPS = [
   {
@@ -63,13 +64,13 @@ const MENU_GROUPS = [
     heading: "Users",
     icon: <Users size={20} />,
     to: "/users",
-    roles: ADMIN_PLUS,
+    roles: COMPANY_ADMINS,
   },
   {
     id: "user-access",
     heading: "User access",
     icon: <UserCog size={20} />,
-    roles: ADMIN_PLUS,
+    roles: ["superadmin"],
     items: [
       { id: "enable-user", label: "Enable user access", to: "/enable-user" },
     ],
@@ -80,7 +81,7 @@ const MENU_GROUPS = [
     icon: <Building2 size={20} />,
     roles: MANAGER_PLUS,
     items: [
-      { id: "create-sites", label: "Create Sites", to: "/create-sites", roles: ADMIN_PLUS },
+      { id: "create-sites", label: "Create Sites", to: "/create-sites", roles: COMPANY_ADMINS },
       { id: "sitepack-management", label: "Sitepack Management", to: "/sitepack-management" },
     ],
   },
@@ -89,6 +90,13 @@ const MENU_GROUPS = [
     heading: "General forms",
     icon: <FileText size={20} />,
     to: "/general-forms",
+    roles: ALL_ROLES,
+  },
+  {
+    id: "saved-signatures",
+    heading: "Saved signatures",
+    icon: <PenLine size={20} />,
+    to: "/saved-signatures",
     roles: ALL_ROLES,
   },
   {
@@ -182,8 +190,12 @@ export default function Sidebar({ sx = {} }) {
   };
 
   const canSeeGroup = (group) => {
-    if (isSafetyNett) return true; // Safetynett sees everything
-    if (!group.roles) return true;  // no restriction defined → visible to all
+    if (group.id === "users") {
+      const raw = (currentUser?.role || "").toString().toLowerCase();
+      return raw === "superadmin" || raw === "company_admin";
+    }
+    if (isSafetyNett) return true;
+    if (!group.roles) return true;
     return group.roles.includes(role);
   };
 

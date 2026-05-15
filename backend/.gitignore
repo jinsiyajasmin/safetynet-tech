@@ -1,5 +1,5 @@
 node_modules
-# Keep environment variables out of version control
+# Canonical env is the repo root `.env` (loaded via loadEnv.js). Ignore any local copy here.
 .env
 
 /src/generated/prisma

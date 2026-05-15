@@ -3,12 +3,14 @@ import {
     Box, Typography, Grid, Card, CardContent, CardActionArea, 
     Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Paper, 
     Button, CircularProgress, IconButton, TextField, InputAdornment, Chip,
-    Dialog, DialogTitle, DialogContent, DialogActions
+    Dialog, DialogTitle, DialogContent, DialogActions, Alert
 } from "@mui/material";
 import { FileText, Search, Edit3, Trash2, ExternalLink } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
+import { canEditGeneralFormTemplatesList } from "../utils/generalFormTemplateAccess";
 import api from "../services/api";
 
 const TEMPLATES = [
@@ -76,7 +78,17 @@ const TEMPLATES = [
 
 export default function GeneralFormsList() {
     const { isDarkMode } = useTheme();
+    const { role } = useAuth();
     const navigate = useNavigate();
+    const canManageTemplates = canEditGeneralFormTemplatesList(role);
+
+    const submissionHasSiteContext = (sub) => {
+        const sid = sub.answers?.siteId;
+        return sid != null && String(sid).trim() !== "";
+    };
+
+    const userCanOpenSubmissionEditor = (sub) =>
+        canManageTemplates || submissionHasSiteContext(sub);
 
     const [searchParams] = useSearchParams();
     const search = searchParams.get("search") || "";
@@ -126,11 +138,17 @@ export default function GeneralFormsList() {
     const getEditPath = (submission) => {
         const title = submission.form?.title;
         const template = TEMPLATES.find(t => t.title === title);
+        const rid = submission.id || submission._id;
         if (template) {
-            return `${template.path}/${submission.id || submission._id}`;
+            let path = `${template.path}/${rid}`;
+            const sid = submission.answers?.siteId;
+            if (sid != null && String(sid).trim() !== "") {
+                path += `?siteId=${encodeURIComponent(String(sid).trim())}`;
+            }
+            return path;
         }
         // Fallback to generic form viewer if it's a dynamic form
-        return `/forms/${submission.formId}/use?action=edit&responseId=${submission.id || submission._id}`;
+        return `/forms/${submission.formId}/use?action=edit&responseId=${rid}`;
     };
 
     const filteredTemplates = TEMPLATES.filter((form) =>
@@ -156,6 +174,23 @@ export default function GeneralFormsList() {
                 </Box>
             </Box>
 
+            <Alert
+                severity="info"
+                sx={{
+                    mb: 3,
+                    borderRadius: 2,
+                    alignItems: "center",
+                    bgcolor: isDarkMode ? "rgba(232, 159, 23, 0.12)" : "rgba(232, 159, 23, 0.08)",
+                    color: isDarkMode ? "#F9FAFB" : "#374151",
+                    border: `1px solid ${isDarkMode ? "rgba(232, 159, 23, 0.35)" : "rgba(232, 159, 23, 0.35)"}`,
+                    "& .MuiAlert-icon": { color: "#E89F17" },
+                }}
+            >
+                {canManageTemplates
+                    ? "From this page you can edit template fields, name the template when you save, then use it for the site pack. Only Super Admin, Company Admin, and Supervisor can change templates."
+                    : "You can open submissions that belong to a site pack (they include site context). Only Super Admin, Company Admin, and Supervisor can create or edit general form templates from the cards below."}
+            </Alert>
+
             <Typography variant="h6" sx={{ fontWeight: 600, color: isDarkMode ? "#F9FAFB" : "#111827", mb: 2 }}>
                 Available Templates
             </Typography>
@@ -171,12 +206,16 @@ export default function GeneralFormsList() {
                             display: 'flex',
                             flexDirection: 'column',
                             transition: "all 0.2s",
-                            "&:hover": { borderColor: "#E89F17", transform: "translateY(-4px)" }
+                            opacity: canManageTemplates ? 1 : 0.55,
+                            "&:hover": canManageTemplates
+                                ? { borderColor: "#E89F17", transform: "translateY(-4px)" }
+                                : {},
                         }}
                         elevation={0}
                     >
                         <CardActionArea
-                            onClick={() => navigate(form.path)}
+                            disabled={!canManageTemplates}
+                            onClick={() => canManageTemplates && navigate(form.path)}
                             sx={{ height: "100%", p: 2 }}
                         >
                             <CardContent sx={{ height: "100%", display: "flex", flexDirection: "column", p: 1 }}>
@@ -297,7 +336,11 @@ export default function GeneralFormsList() {
                                                 <Button
                                                     size="small"
                                                     startIcon={<Edit3 size={16} />}
-                                                    onClick={() => navigate(getEditPath(sub))}
+                                                    disabled={!userCanOpenSubmissionEditor(sub)}
+                                                    onClick={() => {
+                                                        if (!userCanOpenSubmissionEditor(sub)) return;
+                                                        navigate(getEditPath(sub));
+                                                    }}
                                                     sx={{ 
                                                         color: "#E89F17", 
                                                         textTransform: 'none',
@@ -307,8 +350,12 @@ export default function GeneralFormsList() {
                                                     Edit
                                                 </Button>
                                                 <IconButton 
-                                                    size="small" 
-                                                    onClick={() => handleDeleteConfirm(sub.id || sub._id)}
+                                                    size="small"
+                                                    disabled={!canManageTemplates}
+                                                    onClick={() => {
+                                                        if (!canManageTemplates) return;
+                                                        handleDeleteConfirm(sub.id || sub._id);
+                                                    }}
                                                     sx={{ color: isDarkMode ? "#EF4444" : "#DC2626" }}
                                                 >
                                                     <Trash2 size={16} />

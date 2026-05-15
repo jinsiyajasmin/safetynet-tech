@@ -10,6 +10,7 @@ import {
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
+import { shouldLandOnClientsHub } from "../utils/postAuthRedirect";
 
 export default function Setup2FA() {
     const navigate = useNavigate();
@@ -45,9 +46,13 @@ export default function Setup2FA() {
             if (res.data?.success) {
                 setMessage({ type: "success", text: "2FA Enabled Successfully!" });
                 setTimeout(() => {
-                    // Redirect based on user role/company logic, similar to Login
-                    // We can re-fetch user or just blindly go to dashboard
-                    navigate("/clients"); // Or /company
+                    let user = null;
+                    try {
+                        user = JSON.parse(localStorage.getItem("user") || "null");
+                    } catch {
+                        user = null;
+                    }
+                    navigate(shouldLandOnClientsHub(user) ? "/clients" : "/general-forms");
                 }, 1500);
             }
         } catch (err) {

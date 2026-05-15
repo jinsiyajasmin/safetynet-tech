@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
+import { getBackendOrigin } from '../utils/backendOrigin.js';
 
 const computeLogoUrl = (logo) => {
     if (!logo) return null;
     if (/^https?:\/\//i.test(logo)) return logo;
-    const host = import.meta.env.VITE_BACKEND_URL || "https://api.site-mateai.co.uk";
+    const host = getBackendOrigin();
     return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
 };
 

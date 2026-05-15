@@ -11,8 +11,9 @@ COPY . .
 # We pass the backend URL as a build argument
 ARG VITE_BACKEND_URL
 ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
-ARG VITE_MAINTENANCE_MODE
-ENV VITE_MAINTENANCE_MODE=$VITE_MAINTENANCE_MODE
+# When "true", SPA calls same-origin /api (proxied by nginx to the backend service).
+ARG VITE_USE_RELATIVE_API
+ENV VITE_USE_RELATIVE_API=$VITE_USE_RELATIVE_API
 
 RUN npm run build
 
@@ -21,6 +22,9 @@ FROM nginx:stable-alpine
 
 # Copy the build output from the previous stage
 COPY --from=build /app/dist /usr/share/nginx/html
+
+# Nginx workers run as non-root; assets copied with mode 600 (e.g. from some hosts) cause "Permission denied"
+RUN chmod -R a+rX /usr/share/nginx/html
 
 # Copy a custom nginx configuration to handle React routing
 COPY nginx.conf /etc/nginx/conf.d/default.conf

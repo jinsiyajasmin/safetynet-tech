@@ -16,6 +16,8 @@ import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { validateSignupForm } from "../utils/signupFormValidation";
+import { shouldLandOnClientsHub } from "../utils/postAuthRedirect";
 
 export default function SignupPage() {
   const navigate = useNavigate();
@@ -52,24 +54,7 @@ export default function SignupPage() {
     setForm((s) => ({ ...s, [which]: !s[which] }));
 
   const validate = () => {
-    const e = {};
-    if (!form.username.trim()) e.username = "Username is required";
-    if (!form.firstName.trim()) e.firstName = "First name is required";
-    if (!form.lastName.trim()) e.lastName = "Last name is required";
-    if (!form.email.trim()) e.email = "Email is required";
-    else if (!/^\S+@\S+\.\S+$/.test(form.email)) e.email = "Enter a valid email";
-    if (!form.employer.trim()) e.employer = "Company name is required";
-    if (!form.mobile.trim()) e.mobile = "Mobile number is required";
-    else if (!/^\+?\d{7,15}$/.test(form.mobile.replace(/\s+/g, "")))
-      e.mobile = "Enter a valid phone number (7–15 digits)";
-
-    if (!form.password) e.password = "Password is required";
-    else if (form.password.length < 6) e.password = "Use at least 6 characters";
-
-    if (!form.passwordConfirm) e.passwordConfirm = "Please confirm password";
-    else if (form.password !== form.passwordConfirm)
-      e.passwordConfirm = "Passwords do not match";
-
+    const e = validateSignupForm(form);
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -121,24 +106,9 @@ export default function SignupPage() {
 
         // redirect after short delay so user sees success toast
         setTimeout(() => {
-          const role = user?.role?.toLowerCase();
-
-          // company field may be employer or companyname depending on backend
-          const company =
-            user?.companyname ||
-            user?.employer ||
-            user?.company ||
-            "";
-
-          const normalizedCompany = company.trim().toLowerCase();
-
-          const isSuperAdmin = role === "superadmin";
-          const isSafetyNettCompany = normalizedCompany === "safetynett";
-
-          if (isSuperAdmin || isSafetyNettCompany) {
+          if (shouldLandOnClientsHub(user)) {
             navigate("/clients");
           } else {
-            // Non-Safetynett accounts go straight to the dashboard
             navigate("/concern-reports");
           }
         }, 900);
@@ -180,33 +150,44 @@ export default function SignupPage() {
   };
 
   return (
-    <Box sx={{ display: "flex", height: "100vh", overflow: "hidden" }}>
-      {/* LEFT SIDE — Image (30% width) */}
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: { xs: "column", md: "row" },
+        minHeight: "100vh",
+        height: { md: "100vh" },
+        overflow: "hidden",
+      }}
+    >
+      {/* Illustration — public/signup.svg; root path matches Vite/nginx; visible on all breakpoints */}
       <Box
         sx={{
-          width: "45%",
-          minWidth: "300px",
-          display: { xs: "none", md: "flex" },
+          width: { xs: "100%", md: "45%" },
+          minWidth: { md: "300px" },
+          minHeight: { xs: 180, md: 0 },
+          display: "flex",
           alignItems: "center",
           justifyContent: "center",
           bgcolor: "#1B42BA",
-          p: 3,
+          p: { xs: 2, md: 3 },
+          flexShrink: 0,
         }}
       >
         <Box
           component="img"
-          src="signup.svg"
+          src="/signup.svg"
           alt="Signup illustration"
           sx={{
             width: "100%",
-            maxWidth: "500px",
+            maxWidth: { xs: 360, md: 500 },
             height: "auto",
+            maxHeight: { xs: 200, md: "none" },
             objectFit: "contain",
           }}
         />
       </Box>
 
-      {/* RIGHT SIDE — Signup Form (70% width) */}
+      {/* Form */}
       <Box
         sx={{
           flex: 1,
@@ -233,7 +214,17 @@ export default function SignupPage() {
             </Alert>
           )}
 
-          <Box component="form" noValidate onSubmit={handleSubmit}>
+          <Box
+            component="form"
+            noValidate
+            onSubmit={handleSubmit}
+            sx={{
+              "& .MuiFormHelperText-root.Mui-error": {
+                color: "error.main",
+                fontWeight: 500,
+              },
+            }}
+          >
             <TextField
               label="Username"
               fullWidth
@@ -243,6 +234,7 @@ export default function SignupPage() {
               onChange={handleChange("username")}
               error={!!errors.username}
               helperText={errors.username}
+              inputProps={{ maxLength: 30, autoComplete: "username" }}
             />
 
             <Grid container spacing={2} sx={{ mt: 0.5 }}>
@@ -255,6 +247,7 @@ export default function SignupPage() {
                   onChange={handleChange("firstName")}
                   error={!!errors.firstName}
                   helperText={errors.firstName}
+                  inputProps={{ maxLength: 50, autoComplete: "given-name" }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -266,6 +259,7 @@ export default function SignupPage() {
                   onChange={handleChange("lastName")}
                   error={!!errors.lastName}
                   helperText={errors.lastName}
+                  inputProps={{ maxLength: 50, autoComplete: "family-name" }}
                 />
               </Grid>
             </Grid>
@@ -280,6 +274,7 @@ export default function SignupPage() {
               onChange={handleChange("email")}
               error={!!errors.email}
               helperText={errors.email}
+              inputProps={{ maxLength: 254, autoComplete: "email" }}
             />
 
             <Grid container spacing={2} sx={{ mt: 0.5 }}>
@@ -290,6 +285,9 @@ export default function SignupPage() {
                   size="small"
                   value={form.jobTitle}
                   onChange={handleChange("jobTitle")}
+                  error={!!errors.jobTitle}
+                  helperText={errors.jobTitle}
+                  inputProps={{ maxLength: 120 }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -301,6 +299,7 @@ export default function SignupPage() {
                   onChange={handleChange("employer")}
                   error={!!errors.employer}
                   helperText={errors.employer}
+                  inputProps={{ maxLength: 200 }}
                 />
               </Grid>
             </Grid>
@@ -315,6 +314,7 @@ export default function SignupPage() {
               onChange={handleChange("mobile")}
               error={!!errors.mobile}
               helperText={errors.mobile}
+              inputProps={{ inputMode: "tel", autoComplete: "tel" }}
             />
 
             <TextField
@@ -327,6 +327,7 @@ export default function SignupPage() {
               onChange={handleChange("password")}
               error={!!errors.password}
               helperText={errors.password}
+              inputProps={{ maxLength: 128, autoComplete: "new-password" }}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
@@ -348,6 +349,7 @@ export default function SignupPage() {
               onChange={handleChange("passwordConfirm")}
               error={!!errors.passwordConfirm}
               helperText={errors.passwordConfirm}
+              inputProps={{ maxLength: 128, autoComplete: "new-password" }}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">

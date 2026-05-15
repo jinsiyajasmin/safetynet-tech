@@ -1,6 +1,8 @@
 const prisma = require("../prismaClient");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { validatePlainName } = require("../utils/plainTextName");
+const { isSafetynettCompanyName } = require("../utils/company");
 
 exports.signup = async (payload) => {
   if (!process.env.JWT_SECRET) {
@@ -22,8 +24,20 @@ exports.signup = async (payload) => {
 
   const normalizedUsername = String(username || "").trim();
   const normalizedEmail = String(email || "").trim().toLowerCase();
-  const normalizedFirstName = String(firstName || "").trim();
-  const normalizedLastName = String(lastName || "").trim();
+  const fn = validatePlainName(firstName, "First name");
+  const ln = validatePlainName(lastName, "Last name");
+  if (!fn.ok) {
+    const err = new Error(fn.message);
+    err.status = 400;
+    throw err;
+  }
+  if (!ln.ok) {
+    const err = new Error(ln.message);
+    err.status = 400;
+    throw err;
+  }
+  const normalizedFirstName = fn.value;
+  const normalizedLastName = ln.value;
   const normalizedMobile = String(mobile || "").trim();
   const normalizedJobTitle = jobTitle ? String(jobTitle).trim() : null;
 
@@ -84,6 +98,7 @@ exports.signup = async (payload) => {
 
   console.log("Signup Step 4: Creating user");
   // 4️⃣ Create user linked to client
+  const now = new Date();
   const user = await prisma.user.create({
     data: {
       username: normalizedUsername,
@@ -95,6 +110,8 @@ exports.signup = async (payload) => {
       mobile: normalizedMobile,
       password: hashed,
       clientId: client.id,
+      lastLoginAt: now,
+      lastSeenAt: now,
     }
   });
   console.log(`User created: ${user.id}`);
@@ -102,7 +119,7 @@ exports.signup = async (payload) => {
   console.log("Signup Step 5: Generating token");
   // 5️⃣ Generate token
   // Safetynett users are always superadmin
-  const effectiveRole = (user.companyname || "").trim().toLowerCase() === "safetynett"
+  const effectiveRole = isSafetynettCompanyName(user.companyname)
     ? "superadmin"
     : user.role;
 
@@ -126,75 +143,93 @@ exports.signup = async (payload) => {
 
 exports.login = async ({ email, password }) => {
   if (!email || !password) {
-    const e = new Error('Email and password required');
+    const e = new Error("Email and password required");
     e.status = 400;
     throw e;
   }
 
-  const lookup = String(email).trim();
-  console.log('DEBUG: login attempt for ->', lookup);
+  const rawLogin = String(email).trim();
+  const looksLikeEmail = rawLogin.includes("@");
+  const emailNormalized = rawLogin.toLowerCase();
 
-  // find by email (case-insensitive) or username exact
-  // find by email (case-insensitive) or username exact
   const user = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { email: { equals: lookup, mode: 'insensitive' } },
-        { username: { equals: lookup, mode: 'insensitive' } }
-      ]
-    },
-    include: { client: true }
+    where: looksLikeEmail
+      ? { email: { equals: emailNormalized, mode: "insensitive" } }
+      : {
+          OR: [
+            { email: { equals: emailNormalized, mode: "insensitive" } },
+            { username: { equals: rawLogin, mode: "insensitive" } },
+          ],
+        },
+    include: { client: true },
   });
 
   if (!user) {
-    console.warn('DEBUG: user not found for ->', lookup);
-    const e = new Error('Invalid credentials');
+    const e = new Error(
+      looksLikeEmail
+        ? "No account exists for this email address."
+        : "No account found with this email or username."
+    );
     e.status = 401;
+    e.code = looksLikeEmail ? "EMAIL_NOT_FOUND" : "USER_NOT_FOUND";
     throw e;
   }
 
-  console.log('DEBUG: user found id=', user.id, 'email=', user.email, 'username=', user.username);
-
   if (!user.password) {
-    console.warn('DEBUG: user has no password stored (id=', user.id, ')');
-    const e = new Error('Invalid credentials');
+    const e = new Error("This account cannot sign in with a password. Contact your administrator.");
     e.status = 401;
+    e.code = "NO_PASSWORD";
     throw e;
   }
 
   const matches = await bcrypt.compare(password, user.password);
-  console.log('DEBUG: bcrypt compare result ->', matches);
-
   if (!matches) {
-    console.warn('DEBUG: password mismatch for user id=', user.id);
-    const e = new Error('Invalid credentials');
+    const e = new Error("Incorrect password.");
     e.status = 401;
+    e.code = "INVALID_PASSWORD";
+    throw e;
+  }
+
+  const now = new Date();
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: now, lastSeenAt: now },
+  });
+
+  const refreshed = await prisma.user.findFirst({
+    where: { id: user.id },
+    include: { client: true },
+  });
+  if (!refreshed) {
+    const e = new Error("Account could not be loaded after sign-in.");
+    e.status = 500;
     throw e;
   }
 
   if (!process.env.JWT_SECRET) {
-    throw Object.assign(new Error('JWT_SECRET missing'), { status: 500 });
+    throw Object.assign(new Error("JWT_SECRET missing"), { status: 500 });
   }
 
   // Safetynett users are always superadmin
-  const effectiveRole = (user.companyname || "").trim().toLowerCase() === "safetynett"
+  const effectiveRole = isSafetynettCompanyName(refreshed.companyname)
     ? "superadmin"
-    : user.role;
+    : refreshed.role;
 
   const token = jwt.sign(
     {
-      id: user.id,
-      email: user.email,
+      id: refreshed.id,
+      email: refreshed.email,
       role: effectiveRole,
-      clientId: user.clientId,
-      companyname: user.companyname
+      clientId: refreshed.clientId,
+      companyname: refreshed.companyname
     },
     process.env.JWT_SECRET,
     { expiresIn: '7d' }
   );
 
-  const u = { ...user, role: effectiveRole };
+  const u = { ...refreshed, role: effectiveRole };
   delete u.password;
+  delete u.twoFactorSecret;
   return { user: u, token };
 };
 

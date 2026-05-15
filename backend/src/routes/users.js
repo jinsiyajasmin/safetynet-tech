@@ -3,8 +3,13 @@ const router = express.Router();
 const usersController = require("../controllers/userController");
 const { requireAuth, requireRole } = require("../middleware/auth");
 
-// Check if user exists (public helper used during invite flow)
-router.post("/check-user", requireAuth, usersController.checkUser);
+// Check if user exists — superadmin only (Enable user access page)
+router.post(
+  "/check-user",
+  requireAuth,
+  requireRole(["superadmin"]),
+  usersController.checkUser
+);
 
 // Get stats — superadmin only
 router.get(
@@ -22,11 +27,11 @@ router.post(
   usersController.inviteUser
 );
 
-// List all users — company_admin and above
+// List all users — superadmin and company_admin only (Users page)
 router.get(
   "/",
   requireAuth,
-  requireRole(["superadmin", "company_admin", "site_manager"]),
+  requireRole(["superadmin", "company_admin"]),
   usersController.listAllUsers
 );
 

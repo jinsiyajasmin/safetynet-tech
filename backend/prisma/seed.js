@@ -25,7 +25,7 @@ async function main() {
 
     // 2. Create Super Admin User
     const adminEmail = 'admin@safetynet.com';
-    const adminPassword = 'password123';
+    const adminPassword = 'AdminPass1!';
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
     let admin = await prisma.user.findUnique({

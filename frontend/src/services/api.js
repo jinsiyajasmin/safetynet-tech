@@ -1,38 +1,23 @@
 // src/api.js
 import axios from "axios";
-
-// Dynamically determine the base URL
-const isLocalhost = Boolean(
-  window.location.hostname === "localhost" ||
-    window.location.hostname === "[::1]" ||
-    window.location.hostname.match(
-      /^127(?:\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$/
-    )
-);
-
-// If local, use localhost:4000, else use the production domain.
-const base = isLocalhost 
-  ? "http://localhost:4000" 
-  : (import.meta.env.VITE_BACKEND_URL || "https://api.site-mateai.co.uk");
-
-console.log("🚀 API Base URL:", base);
+import { getBackendOrigin } from "../utils/backendOrigin.js";
 
 const api = axios.create({
-  baseURL: base + "/api",
   timeout: 15000,
 });
 
 api.interceptors.request.use(
   (config) => {
+    const origin = getBackendOrigin().replace(/\/$/, "");
+    config.baseURL = `${origin}/api`;
     const token = localStorage.getItem("token");
     if (token) {
+      config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 export default api;

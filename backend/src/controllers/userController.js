@@ -2,9 +2,38 @@ const asyncHandler = require("express-async-handler");
 const prisma = require("../prismaClient");
 const bcrypt = require("bcryptjs");
 const { sendEmail } = require("../services/emailService");
+const { validatePlainName } = require("../utils/plainTextName");
+const { validateNewPassword } = require("../utils/passwordPolicy");
+const { isSafetynettCompanyName } = require("../utils/company");
+
+const ADMIN_LIST_ROLES = ["superadmin", "company_admin"];
+
+function reqUserDbId(req) {
+  const u = req.user;
+  if (!u) return null;
+  return u.id ?? u.userId ?? u.sub ?? null;
+}
+
+/** Same elevation as authService / requireRole: Safetynett org → superadmin for admin APIs. */
+function effectiveAdminRole(actor) {
+  if (!actor) return null;
+  if (isSafetynettCompanyName(actor.companyname)) return "superadmin";
+  return actor.role;
+}
 
 // Role hierarchy — higher index = higher privilege
 const ROLE_HIERARCHY = ["worker", "supervisor", "site_manager", "company_admin", "superadmin"];
+
+function toIsoOrNull(v) {
+  if (v == null) return null;
+  try {
+    const d = v instanceof Date ? v : new Date(v);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString();
+  } catch {
+    return null;
+  }
+}
 
 // Roles a given role is allowed to assign
 const ASSIGNABLE_ROLES = {
@@ -24,22 +53,55 @@ exports.getAdminStats = asyncHandler(async (req, res) => {
 });
 
 exports.listAllUsers = asyncHandler(async (req, res) => {
+  const actorId = reqUserDbId(req);
+  const actor = actorId
+    ? await prisma.user.findUnique({
+        where: { id: actorId },
+        select: { role: true, clientId: true, companyname: true },
+      })
+    : null;
+  const eff = effectiveAdminRole(actor);
+  if (!actor || !ADMIN_LIST_ROLES.includes(eff)) {
+    return res.status(403).json({ success: false, message: "Insufficient permissions" });
+  }
+
   try {
+    const where = eff === "company_admin" ? { clientId: actor.clientId } : {};
+
     const users = await prisma.user.findMany({
-      orderBy: { createdAt: 'desc' }
+      where,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        username: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        companyname: true,
+        mobile: true,
+        role: true,
+        active: true,
+        clientId: true,
+        createdAt: true,
+        lastLoginAt: true,
+        lastSeenAt: true,
+      },
     });
 
     const formatted = users.map((u) => ({
-      _id: u.id, // alias for frontend compatibility
+      _id: u.id,
       id: u.id,
       username: u.username,
       firstName: u.firstName,
       lastName: u.lastName,
       email: u.email,
       companyname: u.companyname || "",
+      clientId: u.clientId,
       role: u.role || "worker",
       active: typeof u.active === "boolean" ? u.active : true,
-      createdAt: u.createdAt,
+      createdAt: toIsoOrNull(u.createdAt),
+      lastLoginAt: toIsoOrNull(u.lastLoginAt),
+      lastSeenAt: toIsoOrNull(u.lastSeenAt),
     }));
 
     res.json({ success: true, users: formatted });
@@ -53,9 +115,44 @@ exports.updateUser = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { firstName, lastName, email, password, role, jobTitle, companyname, mobile } = req.body;
 
+  const actorId = reqUserDbId(req);
+  const actor = actorId
+    ? await prisma.user.findUnique({
+        where: { id: actorId },
+        select: { role: true, clientId: true, companyname: true },
+      })
+    : null;
+  const eff = effectiveAdminRole(actor);
+  if (!actor || !ADMIN_LIST_ROLES.includes(eff)) {
+    return res.status(403).json({ success: false, message: "Insufficient permissions" });
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, clientId: true, role: true },
+  });
+  if (!target) {
+    return res.status(404).json({ success: false, message: "User not found" });
+  }
+  if (eff === "company_admin" && target.clientId !== actor.clientId) {
+    return res.status(403).json({ success: false, message: "Insufficient permissions" });
+  }
+
   const data = {};
-  if (firstName) data.firstName = firstName.trim();
-  if (lastName) data.lastName = lastName.trim();
+  if (firstName !== undefined && firstName !== null) {
+    const r = validatePlainName(firstName, "First name");
+    if (!r.ok) {
+      return res.status(400).json({ success: false, message: r.message });
+    }
+    data.firstName = r.value;
+  }
+  if (lastName !== undefined && lastName !== null) {
+    const r = validatePlainName(lastName, "Last name");
+    if (!r.ok) {
+      return res.status(400).json({ success: false, message: r.message });
+    }
+    data.lastName = r.value;
+  }
   if (email) data.email = email.trim().toLowerCase();
 
   if (jobTitle) data.jobTitle = jobTitle.trim();
@@ -63,12 +160,21 @@ exports.updateUser = asyncHandler(async (req, res) => {
   if (mobile) data.mobile = mobile.trim();
 
   if (password) {
+    const pr = validateNewPassword(password);
+    if (!pr.ok) {
+      return res.status(400).json({ success: false, message: pr.message });
+    }
     const salt = await bcrypt.genSalt(10);
     data.password = await bcrypt.hash(password, salt);
   }
   if (role) {
-    // optional: validate role enum
     if (["superadmin", "company_admin", "site_manager", "supervisor", "worker"].includes(role)) {
+      if (eff === "company_admin") {
+        const allowed = ASSIGNABLE_ROLES.company_admin || [];
+        if (!allowed.includes(role)) {
+          return res.status(403).json({ success: false, message: "You cannot assign this role" });
+        }
+      }
       data.role = role;
     }
   }
@@ -88,6 +194,29 @@ exports.updateStatus = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "Invalid 'active' value (expected boolean)" });
   }
 
+  const actorId = reqUserDbId(req);
+  const actor = actorId
+    ? await prisma.user.findUnique({
+        where: { id: actorId },
+        select: { role: true, clientId: true, companyname: true },
+      })
+    : null;
+  const eff = effectiveAdminRole(actor);
+  if (!actor || !ADMIN_LIST_ROLES.includes(eff)) {
+    return res.status(403).json({ success: false, message: "Insufficient permissions" });
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, clientId: true },
+  });
+  if (!target) {
+    return res.status(404).json({ success: false, message: "User not found" });
+  }
+  if (eff === "company_admin" && target.clientId !== actor.clientId) {
+    return res.status(403).json({ success: false, message: "Insufficient permissions" });
+  }
+
   const user = await prisma.user.update({
     where: { id },
     data: { active }
@@ -101,9 +230,24 @@ exports.updateStatus = asyncHandler(async (req, res) => {
 exports.getUserById = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
+  const actorId = reqUserDbId(req);
+  const actor = actorId
+    ? await prisma.user.findUnique({
+        where: { id: actorId },
+        select: { role: true, clientId: true, companyname: true },
+      })
+    : null;
+  const eff = effectiveAdminRole(actor);
+  if (!actor || !ADMIN_LIST_ROLES.includes(eff)) {
+    return res.status(403).json({ success: false, message: "Insufficient permissions" });
+  }
+
   const user = await prisma.user.findUnique({ where: { id } });
   if (!user) {
     return res.status(404).json({ success: false, message: "User not found" });
+  }
+  if (eff === "company_admin" && user.clientId !== actor.clientId) {
+    return res.status(403).json({ success: false, message: "Insufficient permissions" });
   }
 
   const out = {
@@ -119,7 +263,9 @@ exports.getUserById = asyncHandler(async (req, res) => {
     role: user.role ?? "worker",
     active: typeof user.active === "boolean" ? user.active : true,
     avatar: user.avatar ?? null,
-    createdAt: user.createdAt,
+    createdAt: toIsoOrNull(user.createdAt),
+    lastLoginAt: toIsoOrNull(user.lastLoginAt),
+    lastSeenAt: toIsoOrNull(user.lastSeenAt),
   };
 
   res.json({ success: true, user: out });
@@ -167,7 +313,27 @@ exports.checkUser = asyncHandler(async (req, res) => {
 
 // ─── INVITE / CREATE USER ────────────────────────────────────────────────────
 exports.inviteUser = asyncHandler(async (req, res) => {
-  const inviter = req.user; // decoded JWT payload
+  const actorId = reqUserDbId(req);
+  const actor = actorId
+    ? await prisma.user.findUnique({
+        where: { id: actorId },
+        select: { id: true, role: true, clientId: true, companyname: true, email: true },
+      })
+    : null;
+  const eff = effectiveAdminRole(actor);
+  if (!actor || !ADMIN_LIST_ROLES.includes(eff)) {
+    return res.status(403).json({ success: false, message: "Insufficient permissions" });
+  }
+
+  const inviter = {
+    ...req.user,
+    id: actor.id,
+    role: eff,
+    clientId: actor.clientId,
+    companyname: actor.companyname,
+    email: actor.email,
+  };
+
   const { firstName, lastName, email, mobile, role, password, companyname, username, clientId: bodyClientId } = req.body;
 
   // Validate required fields
@@ -175,6 +341,14 @@ exports.inviteUser = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "firstName, lastName, email, and password are required" });
   }
 
+  const fn = validatePlainName(firstName, "First name");
+  const ln = validatePlainName(lastName, "Last name");
+  if (!fn.ok) {
+    return res.status(400).json({ success: false, message: fn.message });
+  }
+  if (!ln.ok) {
+    return res.status(400).json({ success: false, message: ln.message });
+  }
   const assignedRole = role || "worker";
 
   // Privilege escalation check — inviter cannot assign a role higher than allowed
@@ -193,6 +367,11 @@ exports.inviteUser = asyncHandler(async (req, res) => {
   const clientId = (inviter.role === 'superadmin' && bodyClientId) ? bodyClientId : inviter.clientId;
   if (!clientId) {
     return res.status(400).json({ success: false, message: "Inviter has no associated client/company" });
+  }
+
+  const pwdCheck = validateNewPassword(password);
+  if (!pwdCheck.ok) {
+    return res.status(400).json({ success: false, message: pwdCheck.message });
   }
 
   // Generate username if not provided
@@ -219,8 +398,8 @@ exports.inviteUser = asyncHandler(async (req, res) => {
   const newUser = await prisma.user.create({
     data: {
       username:    finalUsername,
-      firstName:   firstName.trim(),
-      lastName:    lastName.trim(),
+      firstName:   fn.value,
+      lastName:    ln.value,
       email:       email.toLowerCase().trim(),
       mobile:      (mobile || "").trim(),
       password:    hashedPassword,
@@ -236,7 +415,7 @@ exports.inviteUser = asyncHandler(async (req, res) => {
     const emailHtml = `
       <div style="font-family: sans-serif; color: #1B212C; max-width: 600px; margin: auto; border: 1px solid #eee; padding: 20px; border-radius: 10px;">
         <h2 style="color: #0B4DA6; border-bottom: 2px solid #0B4DA6; padding-bottom: 10px;">Welcome to Sitemate</h2>
-        <p>Hello <strong>${firstName}</strong>,</p>
+        <p>Hello <strong>${fn.value}</strong>,</p>
         <p>Your account has been created successfully on the Sitemate platform. You can now log in using the credentials below:</p>
         
         <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 5px solid #0B4DA6;">

@@ -11,6 +11,7 @@ import {
     Button,
 } from "@mui/material";
 import { useTheme } from "../context/ThemeContext";
+import SignatureCapture from "./SignatureCapture";
 
 export default function FormRenderer({
     form,
@@ -513,60 +514,27 @@ export default function FormRenderer({
             {f.type === "signature" && (() => {
                 const alignMap = { left: 'flex-start', center: 'center', right: 'flex-end' };
                 const justifyContent = alignMap[f.alignment] || 'flex-start';
+                const displayValue =
+                    values[f.id + "_preview"] ||
+                    (typeof values[f.id] === "string" ? values[f.id] : null) ||
+                    null;
                 return (
                     <Box sx={{ display: 'flex', justifyContent, width: '100%' }}>
-                        <Box sx={{ width: isNested ? '100%' : '300px', maxWidth: '100%' }}>
-                            {(values[f.id] || values[f.id + "_preview"]) ? (
-                                <Box sx={{ mb: isNested ? 0.5 : 1, position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
-                                    <Box
-                                        component="img"
-                                        src={
-                                            values[f.id + "_preview"] ||
-                                            (typeof values[f.id] === 'string' ? values[f.id] : null) ||
-                                            ""
-                                        }
-                                        alt="signature"
-                                        sx={{ display: 'block', maxWidth: '100%', maxHeight: isNested ? 80 : 150, borderRadius: 2, border: '1px solid #ddd' }}
-                                    />
-                                    {!readOnly && (
-                                        <Button size="small" color="error" onClick={() => {
-                                            handleChange(f.id, null);
-                                            handleChange(f.id + "_preview", null);
-                                        }} sx={{ display: 'block', mt: 1 }}>Remove</Button>
-                                    )}
-                                </Box>
-                            ) : (
-                                !readOnly ? (
-                                    <Box sx={{ display: 'flex', gap: 1, flexDirection: isNested ? 'column' : 'row', width: '100%' }}>
-                                        <Button variant="outlined" component="label" fullWidth sx={{ height: isNested ? 50 : 120, borderStyle: 'dashed', borderRadius: "12px", fontSize: isNested ? '0.75rem' : 'inherit', flex: 1 }}>
-                                            Upload Signature
-                                            <input hidden accept="image/*" type="file" onChange={(e) => {
-                                                const file = e.target.files[0];
-                                                if (file) {
-                                                    const url = URL.createObjectURL(file);
-                                                    handleChange(f.id, file); // Store File object
-                                                    handleChange(f.id + "_preview", url); // Store preview URL
-                                                }
-                                            }} />
-                                        </Button>
-                                        <Button variant="outlined" component="label" fullWidth sx={{ height: isNested ? 50 : 120, borderStyle: 'dashed', borderRadius: "12px", fontSize: isNested ? '0.75rem' : 'inherit', flex: 1 }}>
-                                            Upload Logo
-                                            <input hidden accept="image/*" type="file" onChange={(e) => {
-                                                const file = e.target.files[0];
-                                                if (file) {
-                                                    const url = URL.createObjectURL(file);
-                                                    handleChange(f.id, file); // Store File object
-                                                    handleChange(f.id + "_preview", url); // Store preview URL
-                                                }
-                                            }} />
-                                        </Button>
-                                    </Box>
-                                ) : (
-                                    <Box sx={{ border: "1px solid #cbd5e1", borderRadius: "8px", height: isNested ? 40 : 120, width: "100%", bgcolor: "#fff", display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}>
-                                        <Typography color="text.secondary" sx={{ fontSize: isNested ? '0.65rem' : 'inherit' }}>Signature (Pending)</Typography>
-                                    </Box>
-                                )
-                            )}
+                        <Box sx={{ width: isNested ? '100%' : '340px', maxWidth: '100%' }}>
+                            <SignatureCapture
+                                value={displayValue}
+                                onChange={(url) => {
+                                    if (url == null) {
+                                        handleChange(f.id, null);
+                                        handleChange(f.id + "_preview", null);
+                                    } else {
+                                        handleChange(f.id, url);
+                                        handleChange(f.id + "_preview", null);
+                                    }
+                                }}
+                                readOnly={readOnly}
+                                compact={isNested}
+                            />
                         </Box>
                     </Box>
                 );

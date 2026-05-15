@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import SignatureCapture from "./SignatureCapture";
 
 // --- STABLE HELPER COMPONENTS (Defined outside to prevent focus loss) ---
 
@@ -1006,21 +1007,24 @@ const HealthSafetyConcernForm = ({ values: externalValues, onChange, readOnly = 
         <div style={{ width: 320 }}>
           <div style={styles.label}>Signature</div>
           <div style={styles.sigBox}>
-            {values.signature_preview || values.signature ? (
-              <img src={values.signature_preview || values.signature} alt="Signature" style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain" }} />
-            ) : (
-              <>
-                UPLOAD SIGNATURE IMAGE
-                {!readOnly && (
-                  <input
-                    type="file"
-                    accept="image/*"
-                    style={styles.fileInput}
-                    onChange={(e) => previewImg(e.target.files[0], "signature")}
-                  />
-                )}
-              </>
-            )}
+          <SignatureCapture
+            value={
+              values.signature_preview ||
+              (typeof values.signature === "string" ? values.signature : null) ||
+              null
+            }
+            onChange={(url) => {
+              if (url == null) {
+                handleChange("signature", null);
+                handleChange("signature_preview", null);
+              } else {
+                handleChange("signature", url);
+                handleChange("signature_preview", null);
+              }
+            }}
+            readOnly={readOnly}
+            compact
+          />
           </div>
         </div>
       </div>

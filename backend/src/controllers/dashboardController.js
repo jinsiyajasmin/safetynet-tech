@@ -26,16 +26,16 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
         // Process Responses
         const categories = {};
         const inspectionScores = [];
-        const monthlyTrends = {};
+        const monthlyTrends = {}; // key: YYYY-MM
         const recentActions = [];
 
         allResponses.forEach(resp => {
             const cat = resp.category || resp.form?.title || "Other";
             categories[cat] = (categories[cat] || 0) + 1;
 
-            // Monthly Trend
-            const month = new Date(resp.createdAt).toLocaleString('default', { month: 'short' });
-            monthlyTrends[month] = (monthlyTrends[month] || 0) + 1;
+            const d = new Date(resp.createdAt);
+            const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+            monthlyTrends[monthKey] = (monthlyTrends[monthKey] || 0) + 1;
 
             // Extract Inspection Data
             if (cat.includes("Weekly supervisor")) {
@@ -48,12 +48,13 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
 
             // Recent Actions (extracting from answers if they have remedial actions)
             // This is a bit complex as answers are dynamic, but we can sample
-            if (recentActions.length < 5) {
+            if (recentActions.length < 6) {
+                const answers = resp.answers && typeof resp.answers === "object" ? resp.answers : {};
+                const heading = (answers.report_heading && String(answers.report_heading).trim()) || cat;
                 recentActions.push({
-                    title: cat,
+                    title: heading,
                     subtitle: new Date(resp.createdAt).toLocaleDateString(),
-                    priority: "Medium", // Default
-                    status: "Completed",
+                    status: "Submitted",
                     id: resp.id
                 });
             }
@@ -66,12 +67,21 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
 
         // Format for Charts
         const barChartData = Object.keys(categories).map(cat => ({
-            name: cat.length > 15 ? cat.substring(0, 15) + "..." : cat,
+            name: cat.length > 22 ? `${cat.substring(0, 22)}…` : cat,
+            fullName: cat,
             value: categories[cat]
         }));
 
-        const areaChartData = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-            .map(m => ({ name: m, completed: monthlyTrends[m] || 0 }));
+        const now = new Date();
+        const areaChartData = [];
+        for (let i = 5; i >= 0; i--) {
+            const dt = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const monthKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+            areaChartData.push({
+                name: dt.toLocaleString("en-GB", { month: "short" }),
+                completed: monthlyTrends[monthKey] || 0
+            });
+        }
 
         res.json({
             success: true,
@@ -84,14 +94,9 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
                 complianceRate: `${avgCompliance}%`
             },
             charts: {
-                areaChartData: areaChartData.slice(-6), // Last 6 months
-                barChartData: barChartData.sort((a, b) => b.value - a.value).slice(0, 5), 
-                pieChartData: [
-                    { name: "H&S", value: categories["Health & Safety concern"] || 0, color: "#1e3a8a" },
-                    { name: "Sustainability", value: categories["Sustainability concern"] || 0, color: "#10b981" },
-                    { name: "Quality", value: categories["Quality concern"] || 0, color: "#6366f1" },
-                    { name: "Positive", value: categories["Positive observation"] || 0, color: "#f59e0b" },
-                ].filter(d => d.value > 0)
+                areaChartData,
+                barChartData: barChartData.sort((a, b) => b.value - a.value).slice(0, 8),
+                pieChartData: []
             },
             recentActions
         });

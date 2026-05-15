@@ -16,6 +16,7 @@ import api from "../services/api";
 import { getOrCreateTemplateForm } from "../services/formUtils";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
 import SaveChoiceDialog from "../components/SaveChoiceDialog";
+import SignatureCapture from "../components/SignatureCapture";
 
 const SCORING_STANDARDS = [
     { title: "ST 1 – Work at Heights: Scaffolding & Edge protection", subtitle: "(scaffold structure, fall protection, car top, voids, protection from falling objects)" },
@@ -2222,42 +2223,21 @@ export default function SheqInstallationForm({
                                     </IconButton>
                                 </Tooltip>
                             )}
-                            <Box sx={{ width: '300px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                                <Box sx={{ 
-                                    width: '100%', 
-                                    height: '80px', 
+                            <Box sx={{ width: '300px', display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+                                <Box sx={{
+                                    width: '100%',
+                                    minHeight: '80px',
                                     borderBottom: `2px solid ${customBlue}`,
                                     mb: 1.5,
-                                    display: 'flex',
-                                    alignItems: 'flex-end',
-                                    justifyContent: 'flex-end',
-                                    overflow: 'hidden'
+                                    py: 1,
                                 }}>
-                                    {docInfo.signature ? (
-                                        <img src={docInfo.signature} alt="Signature" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
-                                    ) : (
-                                        <Typography sx={{ color: 'text.secondary', fontSize: '0.8rem', fontStyle: 'italic', opacity: 0.5, pb: 1 }}>Digital Signature Space</Typography>
-                                    )}
+                                    <SignatureCapture
+                                        value={docInfo.signature || null}
+                                        onChange={(url) => setDocInfo((prev) => ({ ...prev, signature: url || "" }))}
+                                        readOnly={downloading}
+                                    />
                                 </Box>
                                 <Typography sx={{ fontWeight: 'bold', color: customBlue, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right', width: '100%' }}>Signature</Typography>
-                                {!downloading && (
-                                    <Button 
-                                        variant="text" 
-                                        component="label" 
-                                        size="small"
-                                        sx={{ mt: 1, textTransform: 'none', color: customBlue }}
-                                    >
-                                        {docInfo.signature ? "Change Signature" : "Upload Signature"}
-                                        <input type="file" hidden accept="image/*" onChange={(e) => {
-                                            const file = e.target.files[0];
-                                            if (file) {
-                                                const reader = new FileReader();
-                                                reader.onload = (ev) => setDocInfo(prev => ({ ...prev, signature: ev.target.result }));
-                                                reader.readAsDataURL(file);
-                                            }
-                                        }} />
-                                    </Button>
-                                )}
                             </Box>
                         </Box>
                     )}

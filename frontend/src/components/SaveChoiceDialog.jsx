@@ -23,18 +23,25 @@ export default function SaveChoiceDialog({
     existingId, 
     defaultName = "", 
     defaultTags = "",
-    saving = false 
+    saving = false,
+    /** General forms: clearer copy and empty name for brand-new templates. */
+    templateFlow = false,
+    dialogTitle,
+    nameFieldLabel = "Form Name",
 }) {
     const { isDarkMode } = useTheme();
     const [name, setName] = useState(defaultName);
     const [tags, setTags] = useState(defaultTags);
 
     useEffect(() => {
-        if (open) {
+        if (!open) return;
+        if (templateFlow && !existingId) {
+            setName((defaultName || "").trim());
+        } else {
             setName(defaultName || `Submission - ${new Date().toLocaleDateString()}`);
-            setTags(defaultTags);
         }
-    }, [open, defaultName, defaultTags]);
+        setTags(defaultTags);
+    }, [open, defaultName, defaultTags, templateFlow, existingId]);
 
     const handleAction = (asNew) => {
         if (!name.trim()) {
@@ -61,7 +68,7 @@ export default function SaveChoiceDialog({
         >
             <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, color: isDarkMode ? "#F9FAFB" : "#111827" }}>
-                    Save Submission
+                    {dialogTitle || (templateFlow ? "Save general form template" : "Save submission")}
                 </Typography>
                 <IconButton onClick={onClose} size="small" sx={{ color: "text.secondary" }}>
                     <X size={20} />
@@ -76,8 +83,8 @@ export default function SaveChoiceDialog({
                         </Typography>
                         <TextField
                             fullWidth
-                            label="Form Name"
-                            placeholder="e.g. Tool Box Talk - Phase 1"
+                            label={nameFieldLabel}
+                            placeholder={templateFlow ? "e.g. Toolbox talk template – Q2 2026" : "e.g. Tool Box Talk - Phase 1"}
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             size="medium"
@@ -114,7 +121,9 @@ export default function SaveChoiceDialog({
 
                     <Box>
                         <Typography variant="body2" sx={{ mb: 2, fontWeight: 500, color: isDarkMode ? "#9CA3AF" : "#6B7280" }}>
-                            Select how you want to save your progress
+                            {templateFlow && !existingId
+                                ? "Enter a name, then save. This name is stored with the template."
+                                : "Select how you want to save your progress"}
                         </Typography>
                         
                         <Box sx={{ display: 'grid', gridTemplateColumns: existingId ? '1fr 1fr' : '1fr', gap: 2 }}>
@@ -179,7 +188,7 @@ export default function SaveChoiceDialog({
                 </Box>
             </DialogContent>
 
-            <DialogActions sx={{ px: 3, pb: 3 }}>
+            <DialogActions sx={{ px: 3, pb: 3, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
                 <Button 
                     variant="text" 
                     onClick={onClose} 
@@ -187,6 +196,16 @@ export default function SaveChoiceDialog({
                 >
                     Discard Changes
                 </Button>
+                {!existingId && (
+                    <Button
+                        variant="contained"
+                        disabled={saving}
+                        onClick={() => handleAction(true)}
+                        sx={{ textTransform: "none", bgcolor: "#E89F17", "&:hover": { bgcolor: "#cc8b14" } }}
+                    >
+                        {saving ? "Saving…" : templateFlow ? "Save template" : "Save"}
+                    </Button>
+                )}
             </DialogActions>
         </Dialog>
     );

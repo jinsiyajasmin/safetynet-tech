@@ -2,24 +2,29 @@ import React, { useState, useEffect, useRef } from "react";
 import { useCompanyLogo } from "../hooks/useCompanyLogo";
 import { 
     Box, Typography, Button, Paper, TextField, CircularProgress, 
-    IconButton
+    IconButton, Alert
 } from "@mui/material";
 import SaveChoiceDialog from "../components/SaveChoiceDialog";
+import SignatureCapture from "../components/SignatureCapture";
+import GeneralFormTableRowControls, {
+    GeneralFormTableRowControlsHeaderSpacer,
+} from "../components/GeneralFormTableRowControls";
 import { ArrowLeft } from "lucide-react";
 import Layout from "../components/Layout";
 import { useTheme } from "../context/ThemeContext";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useGeneralFormRouteSubmissionIds } from "../hooks/useGeneralFormRouteSubmissionIds";
 import api from "../services/api";
 import { getOrCreateTemplateForm } from "../services/formUtils";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
+import { useGeneralFormTemplateAccess } from "../hooks/useGeneralFormTemplateAccess";
 
 export default function PuwerInspectionForm() {
   const logoUrl = useCompanyLogo();
     const { isDarkMode } = useTheme();
-    const { id } = useParams();
+    const { persistedResponseId, seedSubmissionId, fromTemplateId } = useGeneralFormRouteSubmissionIds();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const siteId = searchParams.get("siteId");
     const category = searchParams.get("category") || "General forms";
     const action = searchParams.get("action");
     const containerRef = useRef(null);
@@ -66,32 +71,47 @@ export default function PuwerInspectionForm() {
         inspectedBy: "Inspected by"
     });
 
-    const [tableRows, setTableRows] = useState(Array(12).fill({
+    const EMPTY_PUWER_ROW = {
         dateOfInspection: "",
         descriptionOfPlant: "",
         idNo: "",
         dateOfPatInspection: "",
         detailsOfInspection: "",
-        inspectedBy: ""
-    }));
+        inspectedBy: "",
+    };
+    const [tableRows, setTableRows] = useState(() =>
+        Array.from({ length: 12 }, () => ({ ...EMPTY_PUWER_ROW }))
+    );
+    const [persistedSiteId, setPersistedSiteId] = useState(null);
+
+    const { canEdit, siteId, pdfLayout, contentReadOnly } = useGeneralFormTemplateAccess(
+        action,
+        downloading,
+        persistedSiteId
+    );
 
     useEffect(() => {
-        if (id) {
-            loadSubmission(id);
+        if (!persistedResponseId && !fromTemplateId) setPersistedSiteId(null);
+    }, [persistedResponseId, fromTemplateId]);
+
+    useEffect(() => {
+        if (seedSubmissionId) {
+            loadSubmission(seedSubmissionId);
         }
-    }, [id]);
+    }, [seedSubmissionId]);
 
     useEffect(() => {
-        if (!loading && action === "download" && id) {
+        const docKey = persistedResponseId || seedSubmissionId;
+        if (!loading && action === "download" && docKey) {
             setDownloading(true);
             setTimeout(() => {
-                downloadPdfFromRef(containerRef, `PuwerInspectionForm_${id}`, () => {
+                downloadPdfFromRef(containerRef, `PuwerInspectionForm_${docKey}`, () => {
                     setDownloading(false);
                     window.close();
                 });
             }, 800);
         }
-    }, [loading, action, id]);
+    }, [loading, action, persistedResponseId, seedSubmissionId]);
 
     const loadSubmission = async (submissionId) => {
         setLoading(true);
@@ -100,6 +120,7 @@ export default function PuwerInspectionForm() {
             if (res.data?.success) {
                 const submission = res.data.data.find(r => r.id === submissionId || r._id === submissionId);
                 if (submission && submission.answers) {
+                    setPersistedSiteId(submission.answers.siteId ?? null);
                     if (submission.answers.docInfo) setDocInfo(submission.answers.docInfo);
                     if (submission.answers.topSection) setTopSection(submission.answers.topSection);
                     if (submission.answers.headerLabels) setHeaderLabels(submission.answers.headerLabels);
@@ -118,11 +139,7 @@ export default function PuwerInspectionForm() {
     };
 
     const handleSaveClick = () => {
-        if (id) {
-            setSaveDialogOpen(true);
-        } else {
-            executeSave(false);
-        }
+        setSaveDialogOpen(true);
     };
 
     const executeSave = async (asNew = false, name = "", tags = "") => {
@@ -138,8 +155,8 @@ export default function PuwerInspectionForm() {
             };
             if (siteId) payload.siteId = siteId;
             
-            if (id && !asNew) {
-                await api.put(`/forms/responses/${id}`, { answers: payload });
+            if (persistedResponseId && !asNew) {
+                await api.put(`/forms/responses/${persistedResponseId}`, { answers: payload });
             } else {
                 const formId = await getOrCreateTemplateForm("PUWER Inspection Form");
                 await api.post(`/forms/${formId}/responses`, {
@@ -172,6 +189,18 @@ export default function PuwerInspectionForm() {
         setTableRows(newRows);
     };
 
+    const insertPuwerRowAfter = (index) => {
+        setTableRows((rows) => {
+            if (rows.length >= 40) return rows;
+            const next = [...rows];
+            next.splice(index + 1, 0, { ...EMPTY_PUWER_ROW });
+            return next;
+        });
+    };
+    const removePuwerRowAt = (index) => {
+        setTableRows((rows) => (rows.length <= 1 ? rows : rows.filter((_, i) => i !== index)));
+    };
+
     const borderColor = isDarkMode ? "#374151" : "#CCC";
     const headerBgColor = isDarkMode ? "rgba(255,255,255,0.05)" : "#222222";
     const textColor = isDarkMode ? "#F9FAFB" : "#111827";
@@ -181,6 +210,11 @@ export default function PuwerInspectionForm() {
 
     return (
         <Layout pageTitle="PUWER Inspection Register">
+            {!canEdit && (
+                <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+                    You can view this template but only a Super Admin, Company Admin, or Supervisor can edit or save it. Use a site pack link to fill this form for a site.
+                </Alert>
+            )}
             <Box sx={{ mb: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', gap: 2 }}>
                     <IconButton onClick={() => siteId ? navigate('/sitepack-management', { state: { siteId, moduleTitle: category } }) : navigate('/general-forms')} sx={{ bgcolor: isDarkMode ? '#374151' : '#E5E7EB' }}>
@@ -190,7 +224,7 @@ export default function PuwerInspectionForm() {
                 <Button 
                     variant="contained" 
                     onClick={handleSaveClick}
-                    disabled={saving}
+                    disabled={saving || !canEdit || downloading}
                     sx={{ 
                         bgcolor: "#E89F17", 
                         color: "#FFFFFF", 
@@ -207,16 +241,16 @@ export default function PuwerInspectionForm() {
             <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, justifyContent: 'center', mb: 8, overflowX: "auto", px: { xs: 2, md: 0 } }}>
                 <Paper 
                     ref={containerRef}
-                    elevation={ (downloading || action === 'download') ? 0 : 3 } 
+                    elevation={pdfLayout ? 0 : 3} 
                     sx={{ 
                         width: "100%", 
-                        minWidth: (downloading || action === 'download') ? "1000px" : "100%",
+                        minWidth: pdfLayout ? "1000px" : "100%",
                         maxWidth: "1000px", 
                         p: { xs: 2, md: 5 }, 
                         bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF", 
                         color: textColor,
                         borderRadius: 2,
-                        border: (downloading || action === 'download') ? "1px solid #ccc" : "none",
+                        border: pdfLayout ? "1px solid #ccc" : "none",
                         fontFamily: 'Arial, sans-serif'
                     }}
                 >
@@ -226,8 +260,8 @@ export default function PuwerInspectionForm() {
                         <Box sx={{ width: { xs: '100%', md: '30%' }, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRight: `1px solid ${borderColor}` }}>
                             {docInfo.logo ? (
                                 <>
-                                    <Box component="img" src={docInfo.logo} alt="Uploaded Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: (action !== 'download') ? 1 : 0 }} />
-                                    {(action !== 'download') && (
+                                    <Box component="img" src={docInfo.logo} alt="Uploaded Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: !contentReadOnly ? 1 : 0 }} />
+                                    {!contentReadOnly && (
                                         <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
                                             Change Logo
                                             <input type="file" hidden accept="image/*" onChange={(e) => {
@@ -242,7 +276,7 @@ export default function PuwerInspectionForm() {
                                     )}
                                 </>
                             ) : (
-                                (action !== 'download') ? (
+                                !contentReadOnly ? (
                                     <Button variant="outlined" component="label" size="small">
                                         Upload Logo
                                         <input type="file" hidden accept="image/*" onChange={(e) => {
@@ -262,7 +296,7 @@ export default function PuwerInspectionForm() {
                         
                         <Box sx={{ width: { xs: '100%', md: '40%' }, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${borderColor}` }}>
                             <Box sx={{ flex: 1, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem', p: 1, borderBottom: `1px solid ${borderColor}` }}>
-                                {(downloading || action === 'download') ? (
+                                {contentReadOnly ? (
                                     <Typography sx={{ fontWeight: 'bold', fontSize: '1.2rem' }}>{headerLabels.formTitle}</Typography>
                                 ) : (
                                     <TextField
@@ -276,7 +310,7 @@ export default function PuwerInspectionForm() {
                             </Box>
                             <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
                                 <Box sx={{ width: { xs: '100%', md: '40%' }, p: cellPadding, borderRight: `1px solid ${borderColor}` }}>
-                                    {(downloading || action === 'download') ? (
+                                    {contentReadOnly ? (
                                         <Typography sx={{ fontWeight: 'inherit' }}>{headerLabels.headerDateLabel}</Typography>
                                     ) : (
                                         <TextField
@@ -289,12 +323,12 @@ export default function PuwerInspectionForm() {
                                     )}
                                 </Box>
                                 <Box sx={{ width: { xs: '100%', md: '60%' }, p: 0 }}>
-                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.date || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, height: '100%' } }} value={docInfo.date} onChange={e => setDocInfo({...docInfo, date: e.target.value})} />)}
+                                    {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.date || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, height: '100%' } }} value={docInfo.date} onChange={e => setDocInfo({...docInfo, date: e.target.value})} />)}
                                 </Box>
                             </Box>
                             <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
                                 <Box sx={{ width: { xs: '100%', md: '40%' }, p: cellPadding, borderRight: `1px solid ${borderColor}` }}>
-                                    {(downloading || action === 'download') ? (
+                                    {contentReadOnly ? (
                                         <Typography sx={{ fontWeight: 'inherit' }}>{headerLabels.headerDocNoLabel}</Typography>
                                     ) : (
                                         <TextField
@@ -307,12 +341,12 @@ export default function PuwerInspectionForm() {
                                     )}
                                 </Box>
                                 <Box sx={{ width: { xs: '100%', md: '60%' }, p: 0 }}>
-                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.docNo || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, height: '100%' } }} value={docInfo.docNo} onChange={e => setDocInfo({...docInfo, docNo: e.target.value})} />)}
+                                    {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.docNo || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, height: '100%' } }} value={docInfo.docNo} onChange={e => setDocInfo({...docInfo, docNo: e.target.value})} />)}
                                 </Box>
                             </Box>
                             <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
                                 <Box sx={{ width: { xs: '100%', md: '40%' }, p: cellPadding, borderRight: `1px solid ${borderColor}` }}>
-                                    {(downloading || action === 'download') ? (
+                                    {contentReadOnly ? (
                                         <Typography sx={{ fontWeight: 'inherit' }}>{headerLabels.headerApprovedByLabel}</Typography>
                                     ) : (
                                         <TextField
@@ -325,7 +359,7 @@ export default function PuwerInspectionForm() {
                                     )}
                                 </Box>
                                 <Box sx={{ width: { xs: '100%', md: '40%' }, p: 0, borderRight: `1px solid ${borderColor}` }}>
-                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.approvedBy || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, height: '100%' } }} value={docInfo.approvedBy} onChange={e => setDocInfo({...docInfo, approvedBy: e.target.value})} />)}
+                                    {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{docInfo.approvedBy || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, height: '100%' } }} value={docInfo.approvedBy} onChange={e => setDocInfo({...docInfo, approvedBy: e.target.value})} />)}
                                 </Box>
                                 <Box sx={{ width: { xs: '100%', md: '20%' }, p: cellPadding }}>Page 1 of 1</Box>
                             </Box>
@@ -334,8 +368,8 @@ export default function PuwerInspectionForm() {
                         <Box sx={{ width: { xs: '100%', md: '30%' }, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                             {docInfo.logoRight ? (
                                 <>
-                                    <Box component="img" src={docInfo.logoRight} alt="Right Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: (action !== 'download') ? 1 : 0 }} />
-                                    {(action !== 'download') && (
+                                    <Box component="img" src={docInfo.logoRight} alt="Right Logo" sx={{ width: { xs: '100%', md: '80%' }, maxHeight: '100px', objectFit: 'contain', mb: !contentReadOnly ? 1 : 0 }} />
+                                    {!contentReadOnly && (
                                         <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
                                             Change Logo
                                             <input type="file" hidden accept="image/*" onChange={(e) => {
@@ -350,7 +384,7 @@ export default function PuwerInspectionForm() {
                                     )}
                                 </>
                             ) : (
-                                (action !== 'download') ? (
+                                !contentReadOnly ? (
                                     <Button variant="outlined" component="label" size="small">
                                         Upload Logo
                                         <input type="file" hidden accept="image/*" onChange={(e) => {
@@ -373,7 +407,7 @@ export default function PuwerInspectionForm() {
                     <Box sx={{ border: `1px solid ${borderColor}`, mb: 3 }}>
                         <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
                             <Box sx={{ width: { xs: '100%', md: '25%' }, p: 0, fontWeight: 'bold', borderRight: `1px solid ${borderColor}` }}>
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography sx={{ p: cellPadding, fontWeight: 'bold' }}>{headerLabels.projectName}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -385,10 +419,10 @@ export default function PuwerInspectionForm() {
                                 }
                             </Box>
                             <Box sx={{ width: { xs: '100%', md: '35%' }, p: 0, borderRight: `1px solid ${borderColor}` }}>
-                                {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{topSection.projectName || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={topSection.projectName} onChange={updateTopSection("projectName")} />)}
+                                {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{topSection.projectName || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={topSection.projectName} onChange={updateTopSection("projectName")} />)}
                             </Box>
                             <Box sx={{ width: { xs: '100%', md: '20%' }, p: 0, fontWeight: 'bold', borderRight: `1px solid ${borderColor}` }}>
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography sx={{ p: cellPadding, fontWeight: 'bold' }}>{headerLabels.projectManager}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -400,12 +434,12 @@ export default function PuwerInspectionForm() {
                                 }
                             </Box>
                             <Box sx={{ width: { xs: '100%', md: '20%' }, p: 0 }}>
-                                {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{topSection.projectManager || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={topSection.projectManager} onChange={updateTopSection("projectManager")} />)}
+                                {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{topSection.projectManager || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={topSection.projectManager} onChange={updateTopSection("projectManager")} />)}
                             </Box>
                         </Box>
                         <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: `1px solid ${borderColor}` }}>
                             <Box sx={{ width: { xs: '100%', md: '25%' }, p: 0, fontWeight: 'bold', borderRight: `1px solid ${borderColor}` }}>
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography sx={{ p: cellPadding, fontWeight: 'bold' }}>{headerLabels.principalContractor}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -417,10 +451,10 @@ export default function PuwerInspectionForm() {
                                 }
                             </Box>
                             <Box sx={{ width: { xs: '100%', md: '35%' }, p: 0, borderRight: `1px solid ${borderColor}` }}>
-                                {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{topSection.principalContractor || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={topSection.principalContractor} onChange={updateTopSection("principalContractor")} />)}
+                                {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{topSection.principalContractor || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={topSection.principalContractor} onChange={updateTopSection("principalContractor")} />)}
                             </Box>
                             <Box sx={{ width: { xs: '100%', md: '20%' }, p: 0, fontWeight: 'bold', borderRight: `1px solid ${borderColor}` }}>
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography sx={{ p: cellPadding, fontWeight: 'bold' }}>{headerLabels.siteSupervisor}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -432,7 +466,7 @@ export default function PuwerInspectionForm() {
                                 }
                             </Box>
                             <Box sx={{ width: { xs: '100%', md: '20%' }, p: 0 }}>
-                                {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{topSection.siteSupervisor || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={topSection.siteSupervisor} onChange={updateTopSection("siteSupervisor")} />)}
+                                {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{topSection.siteSupervisor || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={topSection.siteSupervisor} onChange={updateTopSection("siteSupervisor")} />)}
                             </Box>
                         </Box>
                         <Box sx={{ p: cellPadding, minHeight: '30px' }}></Box>
@@ -442,8 +476,9 @@ export default function PuwerInspectionForm() {
                     <Box sx={{ border: `1px solid ${borderColor}` }}>
                         {/* Table Header */}
                         <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, fontWeight: 'bold', borderBottom: `1px solid ${borderColor}` }}>
+                            <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
                             <Box sx={{ width: { xs: '100%', md: '12%' }, p: 0, borderRight: `1px solid ${borderColor}`, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center' }}>
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography sx={{ p: cellPadding, fontWeight: 'bold' }}>{headerLabels.dateInspection}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -455,7 +490,7 @@ export default function PuwerInspectionForm() {
                                 }
                             </Box>
                             <Box sx={{ width: { xs: '100%', md: '20%' }, p: 0, borderRight: `1px solid ${borderColor}`, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center' }}>
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography sx={{ p: cellPadding, fontWeight: 'bold' }}>{headerLabels.descriptionPlant}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -467,7 +502,7 @@ export default function PuwerInspectionForm() {
                                 }
                             </Box>
                             <Box sx={{ width: { xs: '100%', md: '10%' }, p: 0, borderRight: `1px solid ${borderColor}`, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center' }}>
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography sx={{ p: cellPadding, fontWeight: 'bold' }}>{headerLabels.idNo}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -479,7 +514,7 @@ export default function PuwerInspectionForm() {
                                 }
                             </Box>
                             <Box sx={{ width: { xs: '100%', md: '12%' }, p: 0, borderRight: `1px solid ${borderColor}`, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center' }}>
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography sx={{ p: cellPadding, fontWeight: 'bold' }}>{headerLabels.datePat}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -492,7 +527,7 @@ export default function PuwerInspectionForm() {
                                 }
                             </Box>
                             <Box sx={{ width: { xs: '100%', md: '34%' }, p: 0, borderRight: `1px solid ${borderColor}`, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography sx={{ p: cellPadding, fontWeight: 'bold' }}>{headerLabels.detailsLabel}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -502,7 +537,7 @@ export default function PuwerInspectionForm() {
                                         onChange={(e) => setHeaderLabels({...headerLabels, detailsLabel: e.target.value})}
                                     />)
                                 }
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography variant="caption" sx={{ display: 'block', px: cellPadding, fontWeight: 'normal' }}>{headerLabels.detailsSubLabel}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -514,7 +549,7 @@ export default function PuwerInspectionForm() {
                                 }
                             </Box>
                             <Box sx={{ width: { xs: '100%', md: '12%' }, p: 0, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, alignItems: 'center' }}>
-                                {(downloading || action === 'download') ? 
+                                {contentReadOnly ? 
                                     (<Typography sx={{ p: cellPadding, fontWeight: 'bold' }}>{headerLabels.inspectedBy}</Typography>) : 
                                     (<TextField 
                                         fullWidth 
@@ -525,29 +560,51 @@ export default function PuwerInspectionForm() {
                                     />)
                                 }
                             </Box>
+                            </Box>
+                            <GeneralFormTableRowControlsHeaderSpacer
+                                downloading={downloading}
+                                action={action}
+                                borderColor={borderColor}
+                                headerBgColor={headerBgColor}
+                                accessLocked={!canEdit}
+                            />
                         </Box>
 
                         {/* Table Rows */}
                         {tableRows.map((row, index) => (
                             <Box key={index} sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, borderBottom: index < tableRows.length - 1 ? `1px solid ${borderColor}` : 'none' }}>
+                                <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
                                 <Box sx={{ width: { xs: '100%', md: '12%' }, p: 0, borderRight: `1px solid ${borderColor}` }}>
-                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{row.dateOfInspection || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={row.dateOfInspection} onChange={e => updateTableRow(index, 'dateOfInspection', e.target.value)} />)}
+                                    {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{row.dateOfInspection || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={row.dateOfInspection} onChange={e => updateTableRow(index, 'dateOfInspection', e.target.value)} />)}
                                 </Box>
                                 <Box sx={{ width: { xs: '100%', md: '20%' }, p: 0, borderRight: `1px solid ${borderColor}` }}>
-                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{row.descriptionOfPlant || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={row.descriptionOfPlant} onChange={e => updateTableRow(index, 'descriptionOfPlant', e.target.value)} />)}
+                                    {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{row.descriptionOfPlant || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={row.descriptionOfPlant} onChange={e => updateTableRow(index, 'descriptionOfPlant', e.target.value)} />)}
                                 </Box>
                                 <Box sx={{ width: { xs: '100%', md: '10%' }, p: 0, borderRight: `1px solid ${borderColor}` }}>
-                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{row.idNo || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={row.idNo} onChange={e => updateTableRow(index, 'idNo', e.target.value)} />)}
+                                    {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{row.idNo || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={row.idNo} onChange={e => updateTableRow(index, 'idNo', e.target.value)} />)}
                                 </Box>
                                 <Box sx={{ width: { xs: '100%', md: '12%' }, p: 0, borderRight: `1px solid ${borderColor}` }}>
-                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{row.dateOfPatInspection || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={row.dateOfPatInspection} onChange={e => updateTableRow(index, 'dateOfPatInspection', e.target.value)} />)}
+                                    {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{row.dateOfPatInspection || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={row.dateOfPatInspection} onChange={e => updateTableRow(index, 'dateOfPatInspection', e.target.value)} />)}
                                 </Box>
                                 <Box sx={{ width: { xs: '100%', md: '34%' }, p: 0, borderRight: `1px solid ${borderColor}` }}>
-                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{row.detailsOfInspection || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={row.detailsOfInspection} onChange={e => updateTableRow(index, 'detailsOfInspection', e.target.value)} />)}
+                                    {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{row.detailsOfInspection || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={row.detailsOfInspection} onChange={e => updateTableRow(index, 'detailsOfInspection', e.target.value)} />)}
                                 </Box>
                                 <Box sx={{ width: { xs: '100%', md: '12%' }, p: 0 }}>
-                                    {(downloading || action === 'download') ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{row.inspectedBy || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={row.inspectedBy} onChange={e => updateTableRow(index, 'inspectedBy', e.target.value)} />)}
+                                    {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{row.inspectedBy || ' '}</Typography>) : (<TextField fullWidth multiline minRows={2} variant="standard" InputProps={{ disableUnderline: true, sx: { color: textColor, px: 1, py: 0.5 } }} value={row.inspectedBy} onChange={e => updateTableRow(index, 'inspectedBy', e.target.value)} />)}
                                 </Box>
+                            </Box>
+                            <GeneralFormTableRowControls
+                                downloading={downloading}
+                                action={action}
+                                rowIndex={index}
+                                rowCount={tableRows.length}
+                                minRows={1}
+                                maxRows={40}
+                                borderColor={borderColor}
+                                onInsertAfter={insertPuwerRowAfter}
+                                onRemoveAt={removePuwerRowAt}
+                                accessLocked={!canEdit}
+                            />
                             </Box>
                         ))}
                     </Box>
@@ -555,42 +612,13 @@ export default function PuwerInspectionForm() {
                                         {/* Signature Section */}
                         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 6, mb: 2 }}>
                             <Box sx={{ width: '250px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                {docInfo.signature ? (
-                                    <>
-                                        <Box component="img" src={docInfo.signature} alt="Signature" sx={{ width: '100%', maxHeight: '80px', objectFit: 'contain', borderBottom: `1px solid ${borderColor}`, mb: 1 }} />
-                                        {(action !== 'download') && (
-                                            <Button variant="text" size="small" component="label" sx={{ fontSize: '0.7rem' }}>
-                                                Change Signature
-                                                <input type="file" hidden accept="image/*" onChange={(e) => {
-                                                    const file = e.target.files[0];
-                                                    if (file) {
-                                                        const reader = new FileReader();
-                                                        reader.onload = (ev) => setDocInfo({...docInfo, signature: ev.target.result});
-                                                        reader.readAsDataURL(file);
-                                                    }
-                                                }} />
-                                            </Button>
-                                        )}
-                                    </>
-                                ) : (
-                                    (action !== 'download') ? (
-                                        <Box sx={{ width: '100%', height: '60px', borderBottom: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1 }}>
-                                            <Button variant="outlined" component="label" size="small">
-                                                Upload Signature
-                                                <input type="file" hidden accept="image/*" onChange={(e) => {
-                                                    const file = e.target.files[0];
-                                                    if (file) {
-                                                        const reader = new FileReader();
-                                                        reader.onload = (ev) => setDocInfo({...docInfo, signature: ev.target.result});
-                                                        reader.readAsDataURL(file);
-                                                    }
-                                                }} />
-                                            </Button>
-                                        </Box>
-                                    ) : (
-                                        <Box sx={{ width: '100%', height: '60px', borderBottom: `1px solid ${borderColor}`, mb: 1 }} />
-                                    )
-                                )}
+                                <Box sx={{ width: '100%', borderBottom: `1px solid ${borderColor}`, mb: 1, pb: 1 }}>
+                                    <SignatureCapture
+                                        value={docInfo.signature || null}
+                                        onChange={(url) => setDocInfo({ ...docInfo, signature: url || "" })}
+                                        readOnly={contentReadOnly}
+                                    />
+                                </Box>
                                 <Typography sx={{ fontWeight: 'bold', fontSize: '0.9rem' }}>Signature</Typography>
                             </Box>
                         </Box>
@@ -602,10 +630,12 @@ export default function PuwerInspectionForm() {
                 open={saveDialogOpen}
                 onClose={() => setSaveDialogOpen(false)}
                 onSave={executeSave}
-                existingId={id}
+                existingId={persistedResponseId}
                 defaultName={formMetadata.name || `PUWER Inspection - ${new Date().toLocaleDateString()}`}
                 defaultTags={formMetadata.tags}
                 saving={saving}
+                templateFlow
+                nameFieldLabel="Template name"
             />
         </Layout>
     );

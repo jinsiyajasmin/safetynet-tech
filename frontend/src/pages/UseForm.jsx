@@ -24,12 +24,13 @@ import { downloadPdfFromRef } from "../utils/pdfGenerator";
 import { downloadWordFromForm } from "../utils/wordGenerator";
 import { useRef } from "react";
 import FormRenderer from "../components/FormRenderer";
+import { getBackendOrigin } from "../utils/backendOrigin.js";
 
 // helper to build absolute URL for logos
 const computeLogoUrl = (logo) => {
     if (!logo) return null;
     if (/^https?:\/\//i.test(logo)) return logo;
-    const host = import.meta.env.VITE_BACKEND_URL || "https://api.site-mateai.co.uk";
+    const host = getBackendOrigin();
     return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
 };
 

@@ -12,6 +12,7 @@ import {
 } from "@mui/material";
 import Layout from "../components/Layout";
 import api from "../services/api";
+import { newPasswordError } from "../utils/passwordPolicy";
 
 const AccountSettings = () => {
     const [user, setUser] = useState(null);
@@ -66,6 +67,12 @@ const AccountSettings = () => {
         }
         if (passwords.newPassword !== passwords.confirmPassword) {
             setSnack({ open: true, message: "Passwords do not match", severity: "error" });
+            return;
+        }
+
+        const pwErr = newPasswordError(passwords.newPassword);
+        if (pwErr) {
+            setSnack({ open: true, message: pwErr, severity: "error" });
             return;
         }
 

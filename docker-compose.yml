@@ -1,4 +1,21 @@
-version: '3.8'
+# Stack: Postgres (local) + backend + frontend.
+#
+# Database URL
+# ------------
+# By default the backend uses the bundled Postgres service (`db`).
+# For Neon (or any external Postgres), set DATABASE_URL in a root `.env` file
+# (same file used by `env_file` on the backend service). Compose will substitute
+# it here — do not commit real credentials.
+#
+# Example (Neon):
+#   DATABASE_URL=postgresql://USER:PASSWORD@ep-xxxx.us-east-1.aws.neon.tech/neondb?sslmode=require
+#
+# Then run as usual:
+#   docker compose up -d --build
+#
+# The local `db` container still runs unless you remove it; it is optional if you
+# only use Neon — to save resources, use a deploy-specific compose or stop db:
+#   docker compose stop db
 
 services:
   db:
@@ -25,31 +42,42 @@ services:
     restart: always
     ports:
       - "4000:4000"
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=postgresql://safetyuser:safetypassword@db:5432/safetyapp_db?schema=public
-      - PORT=4000
-      - JWT_SECRET=1f0d54e6826aa98a37c6b25b6042cf78cc4fd8a10f967adb4b9a4b238fb830cfb8739e734ae7e97a3a2aaf6c5f31e6b4
-      - CLOUDINARY_CLOUD_NAME=dntdqpato
-      - CLOUDINARY_API_KEY=878363538579654
-      - CLOUDINARY_API_SECRET=1u7YwgN_vCdGvK26YeaOgopRbgo
+      # Root `.env` DATABASE_URL overrides this default (Neon, RDS, etc.).
+      DATABASE_URL: ${DATABASE_URL:-postgresql://safetyuser:safetypassword@db:5432/safetyapp_db?schema=public}
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - ./backend/uploads:/app/uploads
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:4000/api/health',(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
 
   frontend:
     build:
       context: ./frontend
       args:
-        - VITE_BACKEND_URL=http://localhost:4000
-        - VITE_MAINTENANCE_MODE=true
+        VITE_BACKEND_URL: http://localhost:4000
+        VITE_USE_RELATIVE_API: "true"
     container_name: safetyapp_frontend
     restart: always
     ports:
       - "8080:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   postgres_data:

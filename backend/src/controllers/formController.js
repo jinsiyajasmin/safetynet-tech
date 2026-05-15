@@ -1,5 +1,6 @@
 const prisma = require("../prismaClient");
 const { sendEmail } = require("../services/emailService");
+const { assertGeneralFormTemplateWrite } = require("../utils/generalFormTemplatePolicy");
 
 const STATIC_CONCERN_FORM_ID = "health-safety-concern-static-id";
 const STATIC_CONCERN_FORM_TITLE = "Concern Form";
@@ -167,6 +168,11 @@ exports.saveResponse = async (req, res) => {
     const { answers, category } = req.body;
     const formId = req.params.id;
 
+    const gate = assertGeneralFormTemplateWrite(req, answers, req.body);
+    if (!gate.ok) {
+      return res.status(gate.status).json({ success: false, message: gate.message });
+    }
+
     let form = await prisma.form.findUnique({ where: { id: formId } });
     if (!form && formId === STATIC_CONCERN_FORM_ID) {
       // Auto-create static concern form in fresh databases.
@@ -228,6 +234,14 @@ exports.getAllResponses = async (req, res) => {
 exports.deleteResponse = async (req, res) => {
   try {
     const { id } = req.params;
+    const existing = await prisma.formResponse.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Response not found" });
+    }
+    const gate = assertGeneralFormTemplateWrite(req, existing.answers || {}, {});
+    if (!gate.ok) {
+      return res.status(gate.status).json({ success: false, message: gate.message });
+    }
     await prisma.formResponse.delete({ where: { id } });
     res.json({ success: true, message: "Response deleted" });
   } catch (err) {
@@ -257,6 +271,10 @@ exports.updateResponse = async (req, res) => {
   try {
     const { id } = req.params;
     const { answers } = req.body;
+    const gate = assertGeneralFormTemplateWrite(req, answers || {}, req.body);
+    if (!gate.ok) {
+      return res.status(gate.status).json({ success: false, message: gate.message });
+    }
     const updated = await prisma.formResponse.update({
       where: { id },
       data: { answers },

@@ -1,7 +1,6 @@
 import Home from './pages/Home'
 import { Routes, Route, Navigate } from "react-router-dom";
 import SignupPage from "./pages/Signup";
-import Client from "./pages/Clients";
 import ErrorBoundary from './components/ErrorBoundary';
 import UsersPage from './pages/Users';
 import LoginPage from './pages/Login';
@@ -29,6 +28,7 @@ import SitepackManagement from './pages/SitepackManagement';
 import ConcernReportDashboard from './pages/ConcernReportDashboard';
 import AuditReportDashboard from './pages/AuditReportDashboard';
 import GeneralFormsList from './pages/GeneralFormsList';
+import SavedSignaturesPage from './pages/SavedSignaturesPage';
 import ToolBoxTalkForm from './pages/ToolBoxTalkForm';
 import RamsBriefingForm from './pages/RamsBriefingForm';
 import SiteInductionForm from './pages/SiteInductionForm';
@@ -43,8 +43,6 @@ import AdstoneSiteInductionForm from './pages/AdstoneSiteInductionForm';
 import SheqInstallationForm from './pages/SheqInstallationForm';
 import SheqInspectionSelectionPage from './pages/SheqInspectionSelectionPage';
 import ShqInstallationSelectionPage from './pages/ShqInstallationSelectionPage';
-import Maintenance from './pages/Maintenance';
-
 
 import { ThemeProvider } from './context/ThemeContext';
 
@@ -52,15 +50,8 @@ import { ThemeProvider } from './context/ThemeContext';
 const ADMIN_PLUS    = ["superadmin", "company_admin"];
 const MANAGER_PLUS  = ["superadmin", "company_admin", "site_manager"];
 const SUPERVISOR_PLUS = ["superadmin", "company_admin", "site_manager", "supervisor"];
-const ALL_ROLES     = ["superadmin", "company_admin", "site_manager", "supervisor", "worker"];
 
 function App() {
-  const isMaintenanceMode = import.meta.env.VITE_MAINTENANCE_MODE === 'true';
-
-  if (isMaintenanceMode) {
-    return <Maintenance />;
-  }
-
   return (
     <ThemeProvider>
       <ErrorBoundary>
@@ -77,30 +68,30 @@ function App() {
           {/* ── Superadmin only ───────────────────────────────────── */}
           <Route path="/clients" element={
             <RequireAuth>
-              <RoleGuard allowedRoles={["superadmin"]}>
+              <RoleGuard allowedRoles={["superadmin"]} matchStoredRoleOnly>
                 <ClientsPage />
               </RoleGuard>
             </RequireAuth>
           } />
 
-          {/* ── Admin+ (superadmin, company_admin) ───────────────── */}
+          {/* ── Admin+ (superadmin, company_admin) — users only ───── */}
           <Route path="/users" element={
             <RequireAuth>
-              <RoleGuard allowedRoles={ADMIN_PLUS}>
+              <RoleGuard allowedRoles={ADMIN_PLUS} matchStoredRoleOnly>
                 <UsersPage />
               </RoleGuard>
             </RequireAuth>
           } />
           <Route path="/clients/:id/users" element={
             <RequireAuth>
-              <RoleGuard allowedRoles={ADMIN_PLUS}>
+              <RoleGuard allowedRoles={["superadmin"]} matchStoredRoleOnly>
                 <UsersPage />
               </RoleGuard>
             </RequireAuth>
           } />
           <Route path="/enable-user" element={
             <RequireAuth>
-              <RoleGuard allowedRoles={ADMIN_PLUS}>
+              <RoleGuard allowedRoles={["superadmin"]} matchStoredRoleOnly>
                 <EnableUserAccessPage />
               </RoleGuard>
             </RequireAuth>
@@ -183,6 +174,7 @@ function App() {
 
           {/* General forms — all authenticated */}
           <Route path="/general-forms" element={<RequireAuth><GeneralFormsList /></RequireAuth>} />
+          <Route path="/saved-signatures" element={<RequireAuth><SavedSignaturesPage /></RequireAuth>} />
           <Route path="/general-forms/tool-box-talk" element={<RequireAuth><ToolBoxTalkForm /></RequireAuth>} />
           <Route path="/general-forms/tool-box-talk/:id" element={<RequireAuth><ToolBoxTalkForm /></RequireAuth>} />
           <Route path="/general-forms/rams-briefing" element={<RequireAuth><RamsBriefingForm /></RequireAuth>} />
