@@ -49,18 +49,8 @@ router.put("/responses/:id", requireAuth, updateResponse);
 // Single form operations
 router.get("/:id", requireAuth, getFormById);
 
-// Update/delete forms — site_manager and above
-router.put(
-  "/:id",
-  requireAuth,
-  requireRole(["superadmin", "company_admin", "site_manager", "supervisor"]),
-  updateForm
-);
-router.delete(
-  "/:id",
-  requireAuth,
-  requireRole(["superadmin", "company_admin", "site_manager", "supervisor"]),
-  deleteForm
-);
+// Update/delete form definitions — authenticated; controller enforces creator-only access
+router.put("/:id", requireAuth, updateForm);
+router.delete("/:id", requireAuth, deleteForm);
 
 module.exports = router;

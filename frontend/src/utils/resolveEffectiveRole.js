@@ -8,10 +8,15 @@ export function isSafetynettCompanyName(name) {
     .replace(/\s+/g, "") === "safetynett";
 }
 
-export function resolveEffectiveRole(user) {
+/** Account role from JWT/DB only — no Safetynett elevation. */
+export function getStoredRole(user) {
   if (!user) return "worker";
-  const dbRole = (user.role || "worker").toString().toLowerCase();
-  const company = user.companyname || user.company || user.employer || "";
+  return (user.role || "worker").toString().toLowerCase();
+}
+
+export function resolveEffectiveRole(user) {
+  const dbRole = getStoredRole(user);
+  const company = user?.companyname || user?.company || user?.employer || "";
   if (isSafetynettCompanyName(company) && dbRole === "company_admin") {
     return "superadmin";
   }

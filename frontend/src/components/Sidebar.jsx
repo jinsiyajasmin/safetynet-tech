@@ -104,7 +104,7 @@ const MENU_GROUPS = [
     heading: "Form Builder",
     icon: <FileText size={20} />,
     to: "/forms",
-    roles: ALL_ROLES,
+    roles: SUPERVISOR_PLUS,
   },
   {
     id: "report-concern",
@@ -189,6 +189,10 @@ export default function Sidebar({ sx = {} }) {
   };
 
   const canSeeGroup = (group) => {
+    if (group.id === "users") {
+      const stored = (currentUser?.role || "").toString().toLowerCase();
+      return stored === "superadmin" || stored === "company_admin";
+    }
     if (!group.roles) return true;
     return group.roles.includes(role);
   };

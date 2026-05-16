@@ -1,5 +1,19 @@
 const { isGlobalSiteAccess, buildSiteListWhere } = require("./siteAccess");
-const { buildOwnFormResponseWhere } = require("./formResponseAccess");
+
+/**
+ * Site IDs assigned to this site manager (managerId = user id).
+ * @param {import('@prisma/client').PrismaClient} prisma
+ * @param {string} managerUserId
+ * @returns {Promise<string[]>}
+ */
+async function getManagedSiteIds(prisma, managerUserId) {
+  if (!managerUserId) return [];
+  const sites = await prisma.site.findMany({
+    where: { managerId: managerUserId },
+    select: { id: true },
+  });
+  return sites.map((s) => s.id);
+}
 
 function canShowDashboardUsers(actor) {
   if (!actor) return false;
@@ -35,7 +49,7 @@ function getDashboardScopeMeta(actor) {
 
   if (global) {
     return {
-      label: "Your submissions",
+      label: "All organisations",
       role,
       capabilities: {
         showSites: true,
@@ -47,7 +61,7 @@ function getDashboardScopeMeta(actor) {
 
   if (role === "company_admin") {
     return {
-      label: "Your submissions",
+      label: actor.companyname || "Your company",
       role,
       capabilities: { showSites: true, showUsers, showCompliance: true },
     };
@@ -55,7 +69,7 @@ function getDashboardScopeMeta(actor) {
 
   if (role === "site_manager") {
     return {
-      label: "Your submissions",
+      label: actor.companyname ? `${actor.companyname} · your sites` : "Your sites",
       role,
       capabilities: { showSites: true, showUsers: false, showCompliance: true },
     };
@@ -63,7 +77,7 @@ function getDashboardScopeMeta(actor) {
 
   if (role === "supervisor") {
     return {
-      label: "Your submissions",
+      label: actor.companyname || "Your organisation",
       role,
       capabilities: { showSites: false, showUsers: false, showCompliance: true },
     };
@@ -77,10 +91,48 @@ function getDashboardScopeMeta(actor) {
 }
 
 /**
- * Dashboard charts/stats: each user sees only their own saved forms and templates.
+ * Prisma `where` for form responses visible on the dashboard.
+ * Site managers: submissions tied to their assigned sites (answers.siteId),
+ * plus their own submissions without a site context.
  */
-async function buildDashboardResponseWhere(_prisma, actor) {
-  return buildOwnFormResponseWhere(actor?.id);
+async function buildDashboardResponseWhere(prisma, actor) {
+  if (!actor?.id) return { id: { in: [] } };
+
+  if (isGlobalSiteAccess(actor)) {
+    return {};
+  }
+
+  const role = actor.role || "worker";
+
+  if (role === "company_admin" && actor.clientId) {
+    return { submittedBy: { clientId: actor.clientId } };
+  }
+
+  if (role === "site_manager") {
+    const siteIds = await getManagedSiteIds(prisma, actor.id);
+    const orClauses = [{ submittedById: actor.id }];
+
+    for (const siteId of siteIds) {
+      orClauses.push({
+        answers: {
+          path: ["siteId"],
+          equals: siteId,
+        },
+      });
+    }
+
+    if (orClauses.length === 1 && siteIds.length === 0) {
+      return { submittedById: actor.id };
+    }
+
+    return { OR: orClauses };
+  }
+
+  if (role === "supervisor" && actor.clientId) {
+    return { submittedBy: { clientId: actor.clientId } };
+  }
+
+  return { submittedById: actor.id };
 }
 
 module.exports = {
@@ -88,5 +140,6 @@ module.exports = {
   buildDashboardUserCountWhere,
   buildSiteListWhere,
   getDashboardScopeMeta,
+  getManagedSiteIds,
   canShowDashboardUsers,
 };

@@ -91,12 +91,9 @@ export default function UseForm() {
     const fetchResponse = async () => {
       if (!responseId) return;
       try {
-        const res = await api.get('/forms/responses');
-        if (res.data?.success) {
-          const submission = res.data.data.find(r => r.id === responseId || r._id === responseId);
-          if (submission && submission.answers) {
-            setValues(submission.answers);
-          }
+        const res = await api.get(`/forms/responses/${responseId}`);
+        if (res.data?.success && res.data.data?.answers) {
+          setValues(res.data.data.answers);
         }
       } catch (err) {
         console.error("Failed to load response", err);

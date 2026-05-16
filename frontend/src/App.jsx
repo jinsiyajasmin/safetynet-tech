@@ -22,6 +22,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import Setup2FA from "./pages/Setup2FA";
 
 import GenericReportPage from './pages/GenericReportPage';
+import UnauthorizedPage from './pages/UnauthorizedPage';
 import CreateSitesPage from './pages/CreateSitesPage';
 import SitepackManagement from './pages/SitepackManagement';
 import ConcernReportDashboard from './pages/ConcernReportDashboard';
@@ -47,8 +48,10 @@ import { ThemeProvider } from './context/ThemeContext';
 
 // ─── Role shorthand arrays ─────────────────────────────────────────────────────
 const ADMIN_PLUS    = ["superadmin", "company_admin"];
-const MANAGER_PLUS  = ["superadmin", "company_admin", "site_manager", "worker"];
-const SUPERVISOR_PLUS = ["superadmin", "company_admin", "site_manager", "supervisor", "worker"];
+const MANAGER_PLUS  = ["superadmin", "company_admin", "site_manager"];
+const SUPERVISOR_PLUS = ["superadmin", "company_admin", "site_manager", "supervisor"];
+/** Site pack, SHEQ, weekly inspections — workers may fill forms (API uses requireAuth). */
+const FIELD_OPS_ROLES = [...SUPERVISOR_PLUS, "worker"];
 
 function App() {
   return (
@@ -63,6 +66,8 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password/:token" element={<ResetPassword />} />
           <Route path="/setup-2fa" element={<Setup2FA />} />
+          <Route path="/unauthorized" element={<RequireAuth><UnauthorizedPage /></RequireAuth>} />
+
           {/* ── Superadmin only ───────────────────────────────────── */}
           <Route path="/clients" element={
             <RequireAuth>
@@ -98,21 +103,21 @@ function App() {
           {/* ── Manager+ (superadmin, company_admin, site_manager) ── */}
           <Route path="/forms" element={
             <RequireAuth>
-              <RoleGuard allowedRoles={MANAGER_PLUS}>
+              <RoleGuard allowedRoles={SUPERVISOR_PLUS}>
                 <ViewForms />
               </RoleGuard>
             </RequireAuth>
           } />
           <Route path="/form-build" element={
             <RequireAuth>
-              <RoleGuard allowedRoles={MANAGER_PLUS}>
+              <RoleGuard allowedRoles={SUPERVISOR_PLUS}>
                 <FormBuilderPage />
               </RoleGuard>
             </RequireAuth>
           } />
           <Route path="/forms/:id" element={
             <RequireAuth>
-              <RoleGuard allowedRoles={MANAGER_PLUS}>
+              <RoleGuard allowedRoles={SUPERVISOR_PLUS}>
                 <ViewSingleForm />
               </RoleGuard>
             </RequireAuth>
@@ -126,14 +131,14 @@ function App() {
           } />
           <Route path="/sitepack-management" element={
             <RequireAuth>
-              <RoleGuard allowedRoles={MANAGER_PLUS}>
+              <RoleGuard allowedRoles={FIELD_OPS_ROLES}>
                 <SitepackManagement />
               </RoleGuard>
             </RequireAuth>
           } />
           <Route path="/create-form" element={
             <RequireAuth>
-              <RoleGuard allowedRoles={MANAGER_PLUS}>
+              <RoleGuard allowedRoles={SUPERVISOR_PLUS}>
                 <CreateForm />
               </RoleGuard>
             </RequireAuth>
@@ -153,16 +158,16 @@ function App() {
           <Route path="/concern-positive-report" element={<RequireAuth><GenericReportPage pageTitle="Concern and positive feedback report" /></RequireAuth>} />
 
           {/* Supervisor+ inspection routes */}
-          <Route path="/weekly-supervisor" element={<RequireAuth><RoleGuard allowedRoles={SUPERVISOR_PLUS}><GenericReportPage pageTitle="Weekly supervisor health & safety inspection" /></RoleGuard></RequireAuth>} />
-          <Route path="/weekly-reports" element={<RequireAuth><RoleGuard allowedRoles={SUPERVISOR_PLUS}><GenericReportPage pageTitle="Weekly supervisor reports" /></RoleGuard></RequireAuth>} />
+          <Route path="/weekly-supervisor" element={<RequireAuth><RoleGuard allowedRoles={FIELD_OPS_ROLES}><GenericReportPage pageTitle="Weekly supervisor health & safety inspection" /></RoleGuard></RequireAuth>} />
+          <Route path="/weekly-reports" element={<RequireAuth><RoleGuard allowedRoles={FIELD_OPS_ROLES}><GenericReportPage pageTitle="Weekly supervisor reports" /></RoleGuard></RequireAuth>} />
 
-          {/* Manager+ SHEQ / lift routes */}
-          <Route path="/sheq-report" element={<RequireAuth><RoleGuard allowedRoles={MANAGER_PLUS}><GenericReportPage pageTitle="SHEQ Inspection" /></RoleGuard></RequireAuth>} />
-          <Route path="/sheq-inspection" element={<RequireAuth><RoleGuard allowedRoles={MANAGER_PLUS}><SheqInspectionSelectionPage /></RoleGuard></RequireAuth>} />
-          <Route path="/sheq-install-form" element={<RequireAuth><RoleGuard allowedRoles={MANAGER_PLUS}><SheqInstallationForm /></RoleGuard></RequireAuth>} />
-          <Route path="/sheq-install-form/:id" element={<RequireAuth><RoleGuard allowedRoles={MANAGER_PLUS}><SheqInstallationForm /></RoleGuard></RequireAuth>} />
+          {/* SHEQ / field ops — workers can submit; form builder stays supervisor+ */}
+          <Route path="/sheq-report" element={<RequireAuth><RoleGuard allowedRoles={FIELD_OPS_ROLES}><GenericReportPage pageTitle="SHEQ Inspection" /></RoleGuard></RequireAuth>} />
+          <Route path="/sheq-inspection" element={<RequireAuth><RoleGuard allowedRoles={FIELD_OPS_ROLES}><SheqInspectionSelectionPage /></RoleGuard></RequireAuth>} />
+          <Route path="/sheq-install-form" element={<RequireAuth><RoleGuard allowedRoles={FIELD_OPS_ROLES}><SheqInstallationForm /></RoleGuard></RequireAuth>} />
+          <Route path="/sheq-install-form/:id" element={<RequireAuth><RoleGuard allowedRoles={FIELD_OPS_ROLES}><SheqInstallationForm /></RoleGuard></RequireAuth>} />
 
-          <Route path="/shq-installation" element={<RequireAuth><RoleGuard allowedRoles={MANAGER_PLUS}><ShqInstallationSelectionPage /></RoleGuard></RequireAuth>} />
+          <Route path="/shq-installation" element={<RequireAuth><RoleGuard allowedRoles={FIELD_OPS_ROLES}><ShqInstallationSelectionPage /></RoleGuard></RequireAuth>} />
           
           {/* Redirects for old routes */}
           <Route path="/sheq-install" element={<Navigate to="/sheq-inspection" replace />} />

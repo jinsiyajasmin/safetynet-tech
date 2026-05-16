@@ -87,9 +87,11 @@ export function AuthProvider({ children }) {
     return userIdx >= minIdx;
   }, [role]);
 
-  /** Returns true if the current user has one of the allowed roles */
+  /** Returns true if the current user has one of the allowed roles (uses effective role). */
   const hasRole = useCallback((allowedRoles) => {
-    const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
+    const roles = (Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles]).map((r) =>
+      String(r).toLowerCase()
+    );
     return roles.includes(role);
   }, [role]);
 

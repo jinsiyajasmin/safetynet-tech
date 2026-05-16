@@ -344,7 +344,6 @@ export default function SitepackManagement() {
     const [uploadModalOpen, setUploadModalOpen] = useState(false);
     const [createFormModalOpen, setCreateFormModalOpen] = useState(false);
     const [graphModalOpen, setGraphModalOpen] = useState(false);
-    const [formBuilderForms, setFormBuilderForms] = useState([]);
     const [savedGeneralSubmissions, setSavedGeneralSubmissions] = useState([]);
     const [createFormModalLoading, setCreateFormModalLoading] = useState(false);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -507,16 +506,9 @@ export default function SitepackManagement() {
         const load = async () => {
             setCreateFormModalLoading(true);
             setSavedGeneralSubmissions([]);
-            setFormBuilderForms([]);
             try {
-                const [formsRes, responsesRes] = await Promise.all([
-                    api.get("/forms"),
-                    api.get("/forms/responses"),
-                ]);
+                const responsesRes = await api.get("/forms/responses");
                 if (cancelled) return;
-                if (formsRes.data?.success) {
-                    setFormBuilderForms(formsRes.data.data || []);
-                }
                 if (responsesRes.data?.success) {
                     const list = responsesRes.data.data || [];
                     const saved = list
@@ -1848,7 +1840,7 @@ export default function SitepackManagement() {
                         <Divider sx={{ mb: 3, borderColor: isDarkMode ? "#374151" : "#E5E7EB" }} />
 
                         {/* Blank templates */}
-                        <Box sx={{ mb: formBuilderForms.length > 0 ? 3 : 0 }}>
+                        <Box>
                             <Box
                                 sx={{
                                     display: "flex",
@@ -1894,62 +1886,6 @@ export default function SitepackManagement() {
                                 ))}
                             </Grid>
                         </Box>
-
-                        {formBuilderForms.length > 0 && (
-                            <>
-                                <Divider sx={{ mb: 3, borderColor: isDarkMode ? "#374151" : "#E5E7EB" }} />
-                                <Box>
-                                    <Box
-                                        sx={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "space-between",
-                                            gap: 1,
-                                            mb: 2,
-                                        }}
-                                    >
-                                        <Typography
-                                            variant="overline"
-                                            sx={{
-                                                fontWeight: 700,
-                                                letterSpacing: "0.08em",
-                                                color: isDarkMode ? "#9CA3AF" : "#6B7280",
-                                                lineHeight: 1.2,
-                                            }}
-                                        >
-                                            Custom forms
-                                        </Typography>
-                                        <Chip
-                                            size="small"
-                                            label={formBuilderForms.length}
-                                            sx={{
-                                                height: 22,
-                                                fontWeight: 600,
-                                                bgcolor: isDarkMode ? "#374151" : "#E5E7EB",
-                                                color: isDarkMode ? "#D1D5DB" : "#4B5563",
-                                            }}
-                                        />
-                                    </Box>
-                                    <Grid container spacing={2}>
-                                        {formBuilderForms.map((form) => (
-                                            <Grid item xs={12} sm={6} key={form.id || form._id}>
-                                                <FormPickerCard
-                                                    isDarkMode={isDarkMode}
-                                                    title={form.title}
-                                                    description="Custom dynamic form"
-                                                    onSelect={() =>
-                                                        handleSelectForm(null, true, form.id || form._id)
-                                                    }
-                                                    onPreview={() =>
-                                                        handlePreviewForm(null, true, form.id || form._id)
-                                                    }
-                                                />
-                                            </Grid>
-                                        ))}
-                                    </Grid>
-                                </Box>
-                            </>
-                        )}
                     </Box>
                 </DialogContent>
             </Dialog>

@@ -84,6 +84,29 @@ const getSubheading = (title) => {
 
 const STATIC_CONCERN_FORM_ID = "health-safety-concern-static-id";
 
+/** Built-in concern/weekly UI vs form-builder template chosen via "Choose Form". */
+function inferFormDisplayKind(form, pageTitle) {
+    if (!form) return null;
+    const formId = form.id || form._id;
+    if (formId === STATIC_CONCERN_FORM_ID) {
+        return pageTitle === "Weekly supervisor health & safety inspection" ? "weekly" : "concern";
+    }
+    if (
+        pageTitle === "Weekly supervisor health & safety inspection" &&
+        (!Array.isArray(form.fields) || form.fields.length === 0)
+    ) {
+        return "weekly";
+    }
+    return "builder";
+}
+
+function concernFormTypeFromPageTitle(pageTitle) {
+    if (pageTitle === "Sustainability concern") return "sustainability";
+    if (pageTitle === "Quality concern") return "quality";
+    if (pageTitle === "Positive observation") return "positive";
+    return "health_safety";
+}
+
 export default function GenericReportPage({ pageTitle }) {
     const themeContext = useTheme();
     const isDarkMode = themeContext?.isDarkMode;
@@ -103,6 +126,8 @@ export default function GenericReportPage({ pageTitle }) {
         setPage(0);
     };
     const [selectedForm, setSelectedForm] = useState(null);
+    /** @type {"concern"|"weekly"|"builder"|null} */
+    const [activeFormKind, setActiveFormKind] = useState(null);
     const [formValues, setFormValues] = useState({});
     const [logoUrl, setLogoUrl] = useState(null);
 
@@ -165,13 +190,6 @@ export default function GenericReportPage({ pageTitle }) {
     const [recipientEmail, setRecipientEmail] = useState("");
     const [emailingItem, setEmailingItem] = useState(null);
 
-    const isConcernStylePage =
-        pageTitle === "Health & Safety concern" ||
-        pageTitle === "Sustainability concern" ||
-        pageTitle === "Quality concern" ||
-        pageTitle === "Positive observation" ||
-        pageTitle === "Weekly supervisor health & safety inspection";
-
     const getSubmissionTitle = (row) =>
         row?.answers?.report_heading?.trim() ||
         row?.form?.title ||
@@ -196,29 +214,44 @@ export default function GenericReportPage({ pageTitle }) {
     useEffect(() => {
         setViewMode("initial");
         setSelectedForm(null);
+        setActiveFormKind(null);
         setFormValues({});
         fetchSubmissions();
     }, [pageTitle, fetchSubmissions]);
 
-    const handleOpenConcernForm = async () => {
-        // Concern forms are rendered by dedicated React components,
-        // so we do not need to fetch a DB form definition here.
+    const handleOpenConcernForm = () => {
+        const kind =
+            pageTitle === "Weekly supervisor health & safety inspection" ? "weekly" : "concern";
+        setActiveFormKind(kind);
         setSelectedForm({
             id: STATIC_CONCERN_FORM_ID,
-            title: "Concern Form",
-            fields: []
+            title: kind === "weekly" ? pageTitle : "Concern Form",
+            fields: [],
         });
         setFormValues({});
         setEditingId(null);
         setViewMode("filling");
     };
 
-    const handleSelectForm = (form) => {
-        setSelectedForm(form);
-        setFormValues({});
-        setEditingId(null);
-        setViewMode("filling");
-        setDialogOpen(false);
+    const handleSelectForm = async (form) => {
+        const formId = form?.id || form?._id;
+        if (!formId) return;
+        try {
+            const res = await api.get(`/forms/${formId}`);
+            if (!res.data?.success || !res.data.data) {
+                alert("Could not load the selected form.");
+                return;
+            }
+            setActiveFormKind("builder");
+            setSelectedForm(res.data.data);
+            setFormValues({});
+            setEditingId(null);
+            setViewMode("filling");
+            setDialogOpen(false);
+        } catch (err) {
+            console.error("Failed to load selected form", err);
+            alert("Could not load the selected form.");
+        }
     };
 
     const handleFormChange = (fieldId, value) => {
@@ -238,7 +271,10 @@ export default function GenericReportPage({ pageTitle }) {
         setIsSubmitting(true);
         try {
             let workingValues = { ...formValues };
-            if (isConcernStylePage && !workingValues.report_heading?.trim()) {
+            if (
+                (activeFormKind === "concern" || activeFormKind === "weekly") &&
+                !workingValues.report_heading?.trim()
+            ) {
                 workingValues.report_heading = selectedForm.title;
             }
 
@@ -276,6 +312,7 @@ export default function GenericReportPage({ pageTitle }) {
                 // Transition immediately instead of showing a modal
                 setEditingId(null);
                 setSelectedForm(displaySub.formId);
+                setActiveFormKind(inferFormDisplayKind(displaySub.formId, pageTitle));
                 setFormValues(displaySub.answers);
                 setViewMode("viewed");
                 setLastResponse(null);
@@ -294,6 +331,7 @@ export default function GenericReportPage({ pageTitle }) {
         if (lastResponse) {
             setEditingId(null);
             setSelectedForm(lastResponse.formId);
+            setActiveFormKind(inferFormDisplayKind(lastResponse.formId, pageTitle));
             setFormValues(lastResponse.answers);
             setViewMode("viewed");
             setLastResponse(null);
@@ -357,7 +395,9 @@ export default function GenericReportPage({ pageTitle }) {
 
             const formRes = await api.get(`/forms/${formId}`);
             if (formRes.data?.success) {
-                setSelectedForm(formRes.data.data);
+                const loadedForm = formRes.data.data;
+                setSelectedForm(loadedForm);
+                setActiveFormKind(inferFormDisplayKind(loadedForm, pageTitle));
                 setFormValues(sub.answers || {});
                 setEditingId(sub.id || sub._id);
                 setLastResponse(sub); // Store submission data including date
@@ -437,9 +477,8 @@ export default function GenericReportPage({ pageTitle }) {
                 const x = margin + (contentWidth - drawWidth) / 2;
                 pdf.addImage(imgData, "JPEG", x, margin, drawWidth, drawHeight);
                 
-                // Only add the standard footer if this is NOT a concern style page 
-                // (Concern forms have their own internal styled footer)
-                if (!isConcernStylePage) {
+                // Built-in concern/weekly forms include their own footer in the capture
+                if (activeFormKind === "builder") {
                     addFooter(1, 1);
                 }
 
@@ -477,8 +516,10 @@ export default function GenericReportPage({ pageTitle }) {
             }
 
             const totalPages = pdf.internal.getNumberOfPages();
-            for (let j = 1; j <= totalPages; j++) {
-                addFooter(j, totalPages);
+            if (activeFormKind === "builder") {
+                for (let j = 1; j <= totalPages; j++) {
+                    addFooter(j, totalPages);
+                }
             }
 
             pdf.save(`report-${selectedForm?.title || "download"}.pdf`);
@@ -712,37 +753,31 @@ export default function GenericReportPage({ pageTitle }) {
 
                     {(viewMode === "filling" || viewMode === "editing") && selectedForm && (
                         <Paper sx={{ 
-                            p: (pageTitle === "Health & Safety concern" || pageTitle === "Sustainability concern" || pageTitle === "Quality concern" || pageTitle === "Positive observation") ? 0 : 4, 
+                            p: activeFormKind === "builder" ? 4 : 0, 
                             borderRadius: 3, 
                             boxShadow: isDarkMode ? "0 4px 20px rgba(0,0,0,0.5)" : "0 1px 3px 0 rgba(0, 0, 0, 0.1)", 
                             border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB", 
                             bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
                             overflow: 'hidden'
                         }}>
-                            {(pageTitle === "Health & Safety concern" || pageTitle === "Sustainability concern" || pageTitle === "Quality concern" || pageTitle === "Positive observation" || pageTitle === "Weekly supervisor health & safety inspection") ? (
-                                <Box>
-                                    {pageTitle === "Weekly supervisor health & safety inspection" ? (
-                                        <WeeklySupervisorInspectionForm
-                                            values={formValues}
-                                            onChange={handleFormChange}
-                                            logoUrl={logoUrl}
-                                        />
-                                    ) : (
-                                        <HealthSafetyConcernForm 
-                                            values={formValues}
-                                            onChange={handleFormChange}
-                                            logoUrl={logoUrl}
-                                            formType={
-                                                pageTitle === "Sustainability concern" ? "sustainability" : 
-                                                (pageTitle === "Quality concern" ? "quality" : 
-                                                (pageTitle === "Positive observation" ? "positive" : "health_safety"))
-                                            }
-                                        />
-                                    )}
-                                </Box>
+                            {activeFormKind === "weekly" ? (
+                                <WeeklySupervisorInspectionForm
+                                    values={formValues}
+                                    onChange={handleFormChange}
+                                    logoUrl={logoUrl}
+                                />
+                            ) : activeFormKind === "concern" ? (
+                                <HealthSafetyConcernForm 
+                                    values={formValues}
+                                    onChange={handleFormChange}
+                                    logoUrl={logoUrl}
+                                    formType={concernFormTypeFromPageTitle(pageTitle)}
+                                />
                             ) : (
                                 <>
-                                    <Typography variant="h6" gutterBottom sx={{ color: isDarkMode ? "#F9FAFB" : "inherit" }}>{viewMode === "editing" ? "Edit Report" : "New Report"}</Typography>
+                                    <Typography variant="h6" gutterBottom sx={{ color: isDarkMode ? "#F9FAFB" : "inherit" }}>
+                                        {viewMode === "editing" ? "Edit Report" : selectedForm.title || "New Report"}
+                                    </Typography>
                                     <FormRenderer
                                         form={selectedForm}
                                         values={formValues}
@@ -776,25 +811,19 @@ export default function GenericReportPage({ pageTitle }) {
                             >
                                 {/* Form Content - Grows to push footer down */}
                                 <Box sx={{ flex: 1, position: 'relative' }}>
-                                    {(pageTitle === "Health & Safety concern" || pageTitle === "Sustainability concern" || pageTitle === "Quality concern" || pageTitle === "Positive observation" || pageTitle === "Weekly supervisor health & safety inspection") ? (
-                                        pageTitle === "Weekly supervisor health & safety inspection" ? (
-                                            <WeeklySupervisorInspectionForm
-                                                values={formValues}
-                                                readOnly={true}
-                                                logoUrl={logoUrl}
-                                            />
-                                        ) : (
-                                            <HealthSafetyConcernForm 
-                                                values={formValues}
-                                                readOnly={true}
-                                                logoUrl={logoUrl}
-                                                formType={
-                                                    pageTitle === "Sustainability concern" ? "sustainability" : 
-                                                    (pageTitle === "Quality concern" ? "quality" : 
-                                                    (pageTitle === "Positive observation" ? "positive" : "health_safety"))
-                                                }
-                                            />
-                                        )
+                                    {activeFormKind === "weekly" ? (
+                                        <WeeklySupervisorInspectionForm
+                                            values={formValues}
+                                            readOnly={true}
+                                            logoUrl={logoUrl}
+                                        />
+                                    ) : activeFormKind === "concern" ? (
+                                        <HealthSafetyConcernForm 
+                                            values={formValues}
+                                            readOnly={true}
+                                            logoUrl={logoUrl}
+                                            formType={concernFormTypeFromPageTitle(pageTitle)}
+                                        />
                                     ) : (
                                         <>
                                             <Typography sx={{ position: 'absolute', top: 0, right: 0, fontWeight: 500, color: 'text.secondary', fontSize: '0.9rem' }}>
@@ -804,7 +833,7 @@ export default function GenericReportPage({ pageTitle }) {
                                                 form={selectedForm}
                                                 values={formValues}
                                                 readOnly={true}
-                                                hideTitle={true} // Clean view
+                                                hideTitle={true}
                                             />
                                         </>
                                     )}

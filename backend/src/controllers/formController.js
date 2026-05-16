@@ -5,9 +5,13 @@ const {
   buildOwnFormResponseWhere,
   assertOwnFormResponse,
 } = require("../utils/formResponseAccess");
-const { reqUserDbId } = require("../utils/userAuthorization");
+const {
+  STATIC_CONCERN_FORM_ID,
+  assertAuthenticatedForm,
+  assertCanModifyForm,
+  reqUserDbId,
+} = require("../utils/formOwnership");
 
-const STATIC_CONCERN_FORM_ID = "health-safety-concern-static-id";
 const STATIC_CONCERN_FORM_TITLE = "Concern Form";
 
 
@@ -23,13 +27,18 @@ exports.saveForm = async (req, res, next) => {
       });
     }
 
+    const userId = reqUserDbId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Not authenticated" });
+    }
+
     const newForm = await prisma.form.create({
       data: {
         title: title || "Untitled Form",
         fields,
         titleColor,
         titleAlignment,
-        createdById: req.user?.id,
+        createdById: userId,
       }
     });
 
@@ -62,8 +71,9 @@ exports.updateForm = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Form not found" });
     }
 
-    if (form.createdById !== req.user?.id) {
-       return res.status(403).json({ success: false, message: "Unauthorized" });
+    const access = assertCanModifyForm(req, form);
+    if (!access.ok) {
+      return res.status(access.status).json({ success: false, message: access.message });
     }
 
     const updatedForm = await prisma.form.update({
@@ -90,8 +100,10 @@ exports.updateForm = async (req, res, next) => {
 // ✅ Get all forms
 exports.getAllForms = async (req, res, next) => {
   try {
-    const userId = req.user?.id;
-    // Only return forms created by the current user
+    const userId = reqUserDbId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Not authenticated" });
+    }
     const forms = await prisma.form.findMany({
       where: { createdById: userId },
       orderBy: { createdAt: 'desc' }
@@ -130,12 +142,9 @@ exports.getFormById = async (req, res, next) => {
       });
     }
 
-    const userId = reqUserDbId(req);
-    if (form.createdById && form.createdById !== userId) {
-      return res.status(403).json({
-        success: false,
-        message: "You can only access your own forms",
-      });
+    const access = assertAuthenticatedForm(req, form);
+    if (!access.ok) {
+      return res.status(access.status).json({ success: false, message: access.message });
     }
 
     res.json({
@@ -163,11 +172,9 @@ exports.deleteForm = async (req, res, next) => {
       });
     }
 
-    if (form.createdById !== req.user?.id) {
-      return res.status(403).json({
-        success: false,
-        message: "You can only delete your own forms",
-      });
+    const access = assertCanModifyForm(req, form);
+    if (!access.ok) {
+      return res.status(access.status).json({ success: false, message: access.message });
     }
 
     await prisma.form.delete({ where: { id } });
@@ -193,26 +200,25 @@ exports.saveResponse = async (req, res) => {
       return res.status(gate.status).json({ success: false, message: gate.message });
     }
 
+    const submitterId = reqUserDbId(req);
+    if (!submitterId) {
+      return res.status(401).json({ success: false, message: "Not authenticated" });
+    }
+
     let form = await prisma.form.findUnique({ where: { id: formId } });
     if (!form && formId === STATIC_CONCERN_FORM_ID) {
-      // Auto-create static concern form in fresh databases.
       form = await prisma.form.create({
         data: {
           id: STATIC_CONCERN_FORM_ID,
           title: STATIC_CONCERN_FORM_TITLE,
           fields: [],
-          createdById: req.user?.id || null,
+          createdById: submitterId,
         },
       });
     }
 
     if (!form) {
       return res.status(404).json({ success: false, message: "Form not found" });
-    }
-
-    const submitterId = reqUserDbId(req);
-    if (!submitterId) {
-      return res.status(401).json({ success: false, message: "Not authenticated" });
     }
 
     const response = await prisma.formResponse.create({
@@ -232,6 +238,9 @@ exports.saveResponse = async (req, res) => {
 exports.getAllResponses = async (req, res) => {
   try {
     const userId = reqUserDbId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Not authenticated" });
+    }
     const filter = buildOwnFormResponseWhere(userId);
     if (req.query.category) {
       filter.category = req.query.category;
@@ -288,6 +297,9 @@ exports.getResponseById = async (req, res) => {
         form: { select: { title: true } }
       }
     });
+    if (!response) {
+      return res.status(404).json({ success: false, message: "Response not found" });
+    }
     res.json({ success: true, data: response });
   } catch (err) {
     res.status(500).json({ success: false, message: "Failed to fetch response" });

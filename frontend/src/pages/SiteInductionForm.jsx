@@ -156,10 +156,12 @@ export default function SiteInductionForm() {
     };
 
     const handleSaveClick = () => {
+        if (!canEdit) return;
         setSaveDialogOpen(true);
     };
 
     const executeSave = async (asNew = false, name = "", tags = "") => {
+        if (!canEdit) return;
         setSaving(true);
         try {
             const formData = { 

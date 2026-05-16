@@ -1,5 +1,4 @@
 import React from "react";
-import { useCompanyLogo } from "../hooks/useCompanyLogo";
 import {
   Box,
   Container,
@@ -30,8 +29,9 @@ const itemVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
 };
 
+const LANDING_LOGO_SRC = "/logo.png";
+
 export default function IsoFooter() {
-  const logoUrl = useCompanyLogo();
   return (
     <Box sx={{ bgcolor: "#012a4a", color: "white", pt: 12, pb: 4 }}>
       <Container
@@ -145,9 +145,9 @@ export default function IsoFooter() {
           <motion.div variants={itemVariants}>
             <Box
               component="img"
-              src={logoUrl}
-              alt="Sitemate Logo"
-              sx={{ height: 40, width: "auto", mr: 1 }}
+              src={LANDING_LOGO_SRC}
+              alt="Sitemate"
+              sx={{ height: 56, width: "auto", objectFit: "contain", display: "block" }}
             />
           </motion.div>
 

@@ -41,22 +41,6 @@ const SCORING_STANDARDS = [
     { title: "ST 20 – Behavior & Safety Culture", subtitle: "(attitude, reporting, interventions, teamwork)" }
 ];
 
-const INSPECTION_STANDARDS = [
-    {
-        category: "SHEQ PERFORMANCE STANDARDS",
-        subcategories: [
-            {
-                title: "SITE SAFETY COMPLIANCE",
-                subtitle: "1 Non-compliant 2 Partial 3 Full Compliance",
-                items: SCORING_STANDARDS.map((s, idx) => ({
-                    label: `${s.title}${s.subtitle ? ' ' + s.subtitle : ''}`,
-                    key: `standard_${idx + 1}`
-                }))
-            }
-        ]
-    }
-];
-
 const INSTALLATION_STANDARDS = [
     {
         category: "1. VEHICLE",
@@ -289,11 +273,14 @@ const INSTALLATION_STANDARDS = [
     }
 ];
 
+/** Full site/vehicle inspection checklist (SHEQ Inspection). */
+const INSPECTION_STANDARDS = INSTALLATION_STANDARDS;
+
 const SHEQ_INSPECTION_CATEGORY = "SHEQ Inspection";
 const SHEQ_INSTALLATION_CATEGORY = "SHEQ Installation";
 
 function getFormSectionsForCategory(cat) {
-    if (cat === SHEQ_INSPECTION_CATEGORY) return INSTALLATION_STANDARDS;
+    if (cat === SHEQ_INSPECTION_CATEGORY) return INSPECTION_STANDARDS;
     if (cat === SHEQ_INSTALLATION_CATEGORY) return SHQ_INSTALLATION_STANDARDS;
     return INSTALLATION_STANDARDS;
 }

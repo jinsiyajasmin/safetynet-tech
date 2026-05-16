@@ -121,7 +121,7 @@ const SheqInspectionSelectionPage = () => {
 
     const handleSelectForm = (form) => {
         const formId = form.id || form._id;
-        navigate(`/forms/${formId}/use`);
+        navigate(`/forms/${formId}/use?category=${encodeURIComponent(category)}`);
         setFormDialogOpen(false);
     };
 
