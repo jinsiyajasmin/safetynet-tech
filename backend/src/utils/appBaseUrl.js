@@ -1,11 +1,11 @@
 const LOCAL_DEV_FALLBACK = "http://localhost:8080";
 
 const PRODUCTION_URL_HINT =
-  "Set APP_URL (or BASE_URL, or ALLOWED_ORIGINS) to your public SPA origin, e.g. APP_URL=https://site-mateai.co.uk";
+  "Set APP_URL (or BASE_URL, ALLOWED_ORIGINS, or Coolify SERVICE_URL_*) to your public SPA origin, e.g. APP_URL=https://site-mateai.co.uk";
 
 /**
  * Canonical public URL of the SPA (no trailing slash).
- * Priority: APP_URL → BASE_URL → FRONTEND_URL → first ALLOWED_ORIGINS entry.
+ * Priority: APP_URL → BASE_URL → FRONTEND_URL → ALLOWED_ORIGINS → Coolify-injected URLs.
  */
 function normalizeBaseUrl(raw) {
   if (raw == null || typeof raw !== "string") return null;
@@ -30,13 +30,63 @@ function readFirstAllowedOrigin() {
   return null;
 }
 
+/** Prefer frontend / :80 URLs when Coolify injects SERVICE_URL_* / SERVICE_FQDN_* per service. */
+function scoreCoolifyServiceKey(key) {
+  const lower = key.toLowerCase();
+  if (lower.includes("frontend")) return 10;
+  if (/_80$/.test(lower) || lower.endsWith("_80")) return 5;
+  if (lower.includes("backend")) return -10;
+  return 0;
+}
+
+/**
+ * Coolify docker-compose deploys often expose SERVICE_URL_FRONTEND / SERVICE_FQDN_FRONTEND
+ * without APP_URL being set manually.
+ */
+function readCoolifyInjectedUrl() {
+  const coolifyUrl = normalizeBaseUrl(process.env.COOLIFY_URL);
+  if (coolifyUrl) return { url: coolifyUrl, source: "COOLIFY_URL" };
+
+  const coolifyFqdn = (process.env.COOLIFY_FQDN || "").trim();
+  if (coolifyFqdn) {
+    const fromFqdn = normalizeBaseUrl(coolifyFqdn);
+    if (fromFqdn) return { url: fromFqdn, source: "COOLIFY_FQDN" };
+  }
+
+  const envKeys = Object.keys(process.env);
+
+  const serviceUrlKeys = envKeys
+    .filter((k) => /^SERVICE_URL_/i.test(k) && String(process.env[k] || "").trim())
+    .sort((a, b) => scoreCoolifyServiceKey(b) - scoreCoolifyServiceKey(a));
+
+  for (const key of serviceUrlKeys) {
+    const normalized = normalizeBaseUrl(process.env[key]);
+    if (normalized) return { url: normalized, source: key };
+  }
+
+  const fqdnKeys = envKeys
+    .filter((k) => /^SERVICE_FQDN_/i.test(k) && String(process.env[k] || "").trim())
+    .sort((a, b) => scoreCoolifyServiceKey(b) - scoreCoolifyServiceKey(a));
+
+  for (const key of fqdnKeys) {
+    const host = String(process.env[key]).trim().split(":")[0];
+    if (!host) continue;
+    const normalized = normalizeBaseUrl(`https://${host}`);
+    if (normalized) return { url: normalized, source: key };
+  }
+
+  return null;
+}
+
 function readConfiguredBaseUrl() {
   const keys = ["APP_URL", "BASE_URL", "FRONTEND_URL"];
   for (const key of keys) {
     const normalized = normalizeBaseUrl(process.env[key]);
     if (normalized) return { url: normalized, source: key };
   }
-  return readFirstAllowedOrigin();
+  const allowed = readFirstAllowedOrigin();
+  if (allowed) return allowed;
+  return readCoolifyInjectedUrl();
 }
 
 function isProduction() {
@@ -76,9 +126,13 @@ function validateAppBaseUrlAtStartup() {
     const configured = readConfiguredBaseUrl();
     if (configured) {
       console.log(`[config] Application base URL (${configured.source}): ${configured.url}`);
-      if (configured.source === "ALLOWED_ORIGINS" && isProduction()) {
+      const fallbackSource =
+        configured.source === "ALLOWED_ORIGINS" ||
+        configured.source.startsWith("SERVICE_") ||
+        configured.source.startsWith("COOLIFY_");
+      if (fallbackSource && isProduction()) {
         console.warn(
-          "[config] Prefer APP_URL for password-reset and invite emails (ALLOWED_ORIGINS is a fallback)."
+          "[config] Prefer APP_URL for password-reset and invite emails (using detected public URL fallback)."
         );
       }
       return configured.url;
@@ -104,4 +158,5 @@ module.exports = {
   buildAppUrl,
   validateAppBaseUrlAtStartup,
   normalizeBaseUrl,
+  readConfiguredBaseUrl,
 };

@@ -30,7 +30,7 @@ case "$STATE" in
   client=0*|client=1*) ;;
   *)
     echo "Warning: prisma-baseline returned unexpected output; using safe default."
-    STATE="client=0 lastLogin=0"
+    STATE="client=0 lastLogin=0 siteClientId=0 passwordReset=0 emailVerified=0"
     ;;
 esac
 echo "Database state: $STATE"
@@ -41,15 +41,34 @@ baseline_migration() {
   npx prisma migrate resolve --applied "$migration_name" 2>/dev/null || true
 }
 
-if echo "$STATE" | grep -q 'client=1'; then
-  echo "Existing schema detected (Client table). Baselining init migration..."
-  baseline_migration "20250513180000_init"
-fi
+baseline_from_state() {
+  if echo "$STATE" | grep -q 'client=1'; then
+    echo "Existing schema detected (Client table). Baselining init migration..."
+    baseline_migration "20250513180000_init"
+  fi
 
-if echo "$STATE" | grep -q 'lastLogin=1'; then
-  echo "Existing lastLoginAt column detected. Baselining user_last_activity migration..."
-  baseline_migration "20260513120000_user_last_activity"
-fi
+  if echo "$STATE" | grep -q 'lastLogin=1'; then
+    echo "Existing lastLoginAt column detected. Baselining user_last_activity migration..."
+    baseline_migration "20260513120000_user_last_activity"
+  fi
+
+  if echo "$STATE" | grep -q 'siteClientId=1'; then
+    echo "Existing Site.clientId column detected. Baselining site_client_id migration..."
+    baseline_migration "20260515130000_site_client_id"
+  fi
+
+  if echo "$STATE" | grep -q 'passwordReset=1'; then
+    echo "Existing PasswordResetToken table detected. Baselining password_reset_tokens migration..."
+    baseline_migration "20260515140000_password_reset_tokens"
+  fi
+
+  if echo "$STATE" | grep -q 'emailVerified=1'; then
+    echo "Existing User.emailVerified column detected. Baselining email_verification migration..."
+    baseline_migration "20260519120000_email_verification"
+  fi
+}
+
+baseline_from_state
 
 set +e
 MIGRATION_OUTPUT="$(npx prisma migrate deploy 2>&1)"
@@ -68,10 +87,11 @@ if [ "$MIGRATION_EXIT_CODE" -ne 0 ]; then
   fi
   if echo "$MIGRATION_OUTPUT" | grep -q 'P3005'; then
     echo "Prisma P3005: non-empty database without migration history. Baselining and retrying..."
-    baseline_migration "20250513180000_init"
-    if echo "$STATE" | grep -q 'lastLogin=1'; then
-      baseline_migration "20260513120000_user_last_activity"
-    fi
+    baseline_from_state
+    npx prisma migrate deploy
+  elif echo "$MIGRATION_OUTPUT" | grep -qiE 'already exists|duplicate column'; then
+    echo "Schema drift detected (objects already exist). Baselining known migrations and retrying..."
+    baseline_from_state
     npx prisma migrate deploy
   else
     exit "$MIGRATION_EXIT_CODE"
