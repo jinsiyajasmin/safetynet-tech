@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../services/api';
 import { getBackendOrigin } from '../utils/backendOrigin.js';
 
-const computeLogoUrl = (logo) => {
+export function computeLogoUrl(logo) {
     if (!logo) return null;
     if (/^https?:\/\//i.test(logo)) return logo;
     const host = getBackendOrigin();

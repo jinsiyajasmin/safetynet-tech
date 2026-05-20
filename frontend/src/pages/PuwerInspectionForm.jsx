@@ -46,9 +46,9 @@ export default function PuwerInspectionForm() {
 
     // Initial State Structure mapped from form image
     const [docInfo, setDocInfo] = useState({
-        date: "May 2023",
-        docNo: "CL-F-39 – Rev 0",
-        approvedBy: "R. Lewis"
+        date: "",
+        docNo: "",
+        approvedBy: ""
     ,
         logo: ""
 ,

@@ -54,11 +54,11 @@ router.put(
   usersController.updateUser
 );
 
-// Delete user — superadmin only
+// Delete user — company_admin (own org) and superadmin
 router.delete(
   "/:id",
   requireAuth,
-  requireRole(["superadmin"]),
+  requireRole(["superadmin", "company_admin"]),
   usersController.deleteUser
 );
 

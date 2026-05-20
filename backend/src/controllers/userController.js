@@ -253,17 +253,21 @@ exports.deleteUser = asyncHandler(async (req, res) => {
   }
   const { actor } = gate;
 
-  if (actor.effectiveRole !== "superadmin") {
-    return res.status(403).json({ success: false, message: "Insufficient permissions" });
-  }
-
   const target = await prisma.user.findUnique({
     where: { id: targetId },
-    select: { id: true, clientId: true },
+    select: { id: true, clientId: true, role: true },
   });
 
   if (!target) {
     return res.status(404).json({ success: false, message: "User not found" });
+  }
+
+  if (!canManageTargetUser(actor, target, actor.effectiveRole)) {
+    return res.status(403).json({ success: false, message: "Insufficient permissions" });
+  }
+
+  if (actor.effectiveRole === "company_admin" && target.role === "superadmin") {
+    return res.status(403).json({ success: false, message: "You cannot delete this user" });
   }
 
   if (targetId === actor.id) {

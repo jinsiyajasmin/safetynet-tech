@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { resolveFormLogoSrc } from "../utils/formLogoUrl";
 
 /** Section titles — use "Personnel" (staff), not "Personal". */
 const REPORT_TITLE = "Weekly Health & Safety Supervisor Report";
@@ -7,6 +8,13 @@ const SECTION_PERSONNEL_AND_CONTACTS = "Personnel and Contacts";
 const WeeklySupervisorInspectionForm = ({ values: externalValues, onChange, readOnly = false, logoUrl }) => {
   const [internalValues, setInternalValues] = useState({});
   const values = externalValues ?? internalValues;
+  const displayLogo = resolveFormLogoSrc(values, logoUrl);
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
+  const logoSrc = logoLoadFailed ? logoUrl : displayLogo;
+
+  useEffect(() => {
+    setLogoLoadFailed(false);
+  }, [displayLogo, logoUrl]);
 
   const handleChange = (fieldId, value) => {
     if (onChange) {
@@ -139,19 +147,21 @@ const WeeklySupervisorInspectionForm = ({ values: externalValues, onChange, read
     },
     header: {
       display: "flex",
-      flexDirection: "column",
+      flexDirection: readOnly ? "column" : "row",
       alignItems: readOnly ? "center" : "flex-start",
+      justifyContent: readOnly ? "center" : "space-between",
       textAlign: readOnly ? "center" : "left",
+      gap: readOnly ? 0 : 24,
       marginBottom: "3rem",
       position: "relative",
       minHeight: readOnly ? 80 : "auto",
-      justifyContent: "center",
     },
     logoWrapper: {
       position: readOnly ? "absolute" : "static",
-      top: 0,
-      right: 0,
-      marginTop: readOnly ? 0 : 10,
+      top: readOnly ? 0 : undefined,
+      right: readOnly ? 0 : undefined,
+      marginTop: readOnly ? 0 : 0,
+      flexShrink: 0,
     },
     logoBox: {
       width: 150,
@@ -173,6 +183,7 @@ const WeeklySupervisorInspectionForm = ({ values: externalValues, onChange, read
       letterSpacing: "-0.025em",
       textTransform: "uppercase",
       width: readOnly ? "70%" : "auto",
+      flex: readOnly ? undefined : 1,
     },
     section: { marginBottom: "3rem" },
     sectionLabel: {
@@ -557,15 +568,22 @@ const WeeklySupervisorInspectionForm = ({ values: externalValues, onChange, read
   return (
     <div style={styles.wrap}>
       <div style={styles.header}>
+        {!readOnly && <h1 style={styles.title}>{REPORT_TITLE}</h1>}
         <div style={styles.logoWrapper}>
           <div 
             style={styles.logoBox}
             onClick={() => !readOnly && document.getElementById("logoUpload").click()}
           >
-            {values.logo_preview || values.logoUrl ? (
+            {logoSrc ? (
               <img 
-                src={values.logo_preview || values.logoUrl} 
+                src={logoSrc} 
                 alt="Company Logo" 
+                crossOrigin="anonymous"
+                onError={() => {
+                  if (!logoLoadFailed && logoUrl && logoSrc !== logoUrl) {
+                    setLogoLoadFailed(true);
+                  }
+                }}
                 style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} 
               />
             ) : (
@@ -584,15 +602,15 @@ const WeeklySupervisorInspectionForm = ({ values: externalValues, onChange, read
                   const file = e.target.files[0];
                   if (file) {
                     const url = URL.createObjectURL(file);
+                    handleChange("logo", file);
                     handleChange("logo_preview", url);
-                    handleChange("logoUrl", url); // Backwards compatibility
                   }
                 }}
               />
             )}
           </div>
         </div>
-        <h1 style={styles.title}>{REPORT_TITLE}</h1>
+        {readOnly && <h1 style={styles.title}>{REPORT_TITLE}</h1>}
       </div>
 
       {/* 1. Personnel & Contacts */}
@@ -604,7 +622,7 @@ const WeeklySupervisorInspectionForm = ({ values: externalValues, onChange, read
             {readOnly ? <div style={styles.input}>{values.principal_contractor || "N/A"}</div> : <input style={styles.input} value={values.principal_contractor || ""} onChange={(e) => handleChange("principal_contractor", e.target.value)} />}
           </div>
           <div style={styles.field}>
-            <label style={styles.label}>Audit site identifier</label>
+            <label style={styles.label}>Project number</label>
             {readOnly ? <div style={styles.input}>{values.audit_site_identifier || "N/A"}</div> : <input style={styles.input} value={values.audit_site_identifier || ""} onChange={(e) => handleChange("audit_site_identifier", e.target.value)} />}
           </div>
         </div>

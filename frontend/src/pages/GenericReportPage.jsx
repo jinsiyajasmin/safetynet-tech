@@ -37,17 +37,9 @@ import FormRenderer from "../components/FormRenderer";
 import HealthSafetyConcernForm from "../components/HealthSafetyConcernForm";
 import WeeklySupervisorInspectionForm from "../components/WeeklySupervisorInspectionForm";
 import api from "../services/api";
-import { getBackendOrigin } from "../utils/backendOrigin.js";
+import { useCompanyLogo } from "../hooks/useCompanyLogo";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-
-// helper to build absolute URL for logos
-const computeLogoUrl = (logo) => {
-    if (!logo) return null;
-    if (/^https?:\/\//i.test(logo)) return logo;
-    const host = getBackendOrigin();
-    return `${host.replace(/\/$/, "")}${logo.startsWith("/") ? "" : "/"}${logo}`;
-};
 
 const getSubheading = (title) => {
     switch (title) {
@@ -107,6 +99,16 @@ function concernFormTypeFromPageTitle(pageTitle) {
     return "health_safety";
 }
 
+function concernFormButtonLabel(pageTitle) {
+    if (
+        pageTitle === "Weekly supervisor health & safety inspection" ||
+        pageTitle === "Weekly supervisor reports"
+    ) {
+        return "H&S form";
+    }
+    return "Concern Form";
+}
+
 export default function GenericReportPage({ pageTitle }) {
     const themeContext = useTheme();
     const isDarkMode = themeContext?.isDarkMode;
@@ -129,31 +131,7 @@ export default function GenericReportPage({ pageTitle }) {
     /** @type {"concern"|"weekly"|"builder"|null} */
     const [activeFormKind, setActiveFormKind] = useState(null);
     const [formValues, setFormValues] = useState({});
-    const [logoUrl, setLogoUrl] = useState(null);
-
-    useEffect(() => {
-        try {
-            const userStr = localStorage.getItem("user");
-            if (userStr) {
-                const user = JSON.parse(userStr);
-                let rawLogo = null;
-                // Check if clientId is an object (populated) or just ID
-                if (user.clientId && typeof user.clientId === 'object' && user.clientId.logo) {
-                    rawLogo = user.clientId.logo;
-                } else if (user.companyLogo) {
-                    rawLogo = user.companyLogo;
-                } else if (user.logo) {
-                    rawLogo = user.logo;
-                }
-
-                if (rawLogo) {
-                    setLogoUrl(computeLogoUrl(rawLogo));
-                }
-            }
-        } catch (e) {
-            console.error("Error parsing user from localstorage", e);
-        }
-    }, []);
+    const logoUrl = useCompanyLogo();
 
     // Modes: 
     // - initial: List view
@@ -284,6 +262,9 @@ export default function GenericReportPage({ pageTitle }) {
                 if (value instanceof File) {
                     processedAnswers[key] = await toBase64(value);
                 } else if (!key.endsWith("_preview")) {
+                    if (typeof value === "string" && value.startsWith("blob:")) {
+                        continue;
+                    }
                     processedAnswers[key] = value;
                 }
             }
@@ -489,7 +470,13 @@ export default function GenericReportPage({ pageTitle }) {
             // Capture the header (title + logo) separately if it's not a section
             const header = printRef.current.querySelector("div[style*='header']");
             if (header) {
-                const hCanvas = await html2canvas(header, { useCORS: true, scale: 2 });
+                const hCanvas = await html2canvas(header, {
+                    useCORS: true,
+                    allowTaint: false,
+                    scale: 2,
+                    logging: false,
+                    backgroundColor: "#ffffff",
+                });
                 const hHeight = (hCanvas.height * contentWidth) / hCanvas.width;
                 pdf.addImage(hCanvas.toDataURL("image/jpeg", 1.0), "JPEG", margin, currentY, contentWidth, hHeight);
                 currentY += hHeight + 5;
@@ -663,7 +650,7 @@ export default function GenericReportPage({ pageTitle }) {
                                             }
                                         }}
                                     >
-                                        Concern Form
+                                        {concernFormButtonLabel(pageTitle)}
                                     </Button>
                                 )}
                                 <Button 

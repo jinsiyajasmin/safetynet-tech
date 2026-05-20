@@ -36,6 +36,19 @@ const HAZARD_CATEGORIES = [
     { key: "ppeHealth", label: "PPE / Health e.g. Dust / COSHH", img: "/hazards/ppe.png" },
 ];
 
+function focusEditableCellField(event) {
+    const input = event.currentTarget.querySelector("textarea, input");
+    input?.focus();
+}
+
+const editableCellFieldSx = {
+    flex: 1,
+    "& .MuiInputBase-root": {
+        height: "100%",
+        alignItems: "flex-start",
+    },
+};
+
 export default function DailySafeStartBriefingForm() {
   const logoUrl = useCompanyLogo();
     const { isDarkMode } = useTheme();
@@ -651,8 +664,17 @@ export default function DailySafeStartBriefingForm() {
                                         accessLocked={!canEdit}
                                     />
                                 </Box>
-                                <Box sx={{ width: { xs: '100%', md: '35%' }, borderRight: `1px solid ${borderColor}` }}>
-                                    {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{attendee.name || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: isDarkMode ? "#F9FAFB" : "#111827", px: 1, py: 0.5, height: '100%' } }} value={attendee.name} onChange={handleAttendeeChange(idx, 'name')} />)}
+                                <Box
+                                    sx={{
+                                        width: { xs: '100%', md: '35%' },
+                                        borderRight: `1px solid ${borderColor}`,
+                                        minHeight: 100,
+                                        display: 'flex',
+                                        cursor: contentReadOnly ? 'default' : 'text',
+                                    }}
+                                    onClick={contentReadOnly ? undefined : focusEditableCellField}
+                                >
+                                    {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{attendee.name || ' '}</Typography>) : (<TextField fullWidth multiline minRows={3} variant="standard" sx={editableCellFieldSx} InputProps={{ disableUnderline: true, sx: { color: isDarkMode ? "#F9FAFB" : "#111827", px: 1, py: 0.5, height: '100%' } }} value={attendee.name} onChange={handleAttendeeChange(idx, 'name')} />)}
                                 </Box>
                                 <Box sx={{ width: { xs: '100%', md: '30%' }, borderRight: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center' }}>
                                     {attendee.signature && (attendee.signature.startsWith('data:image/') || attendee.signature.startsWith('http')) ? (
@@ -687,8 +709,16 @@ export default function DailySafeStartBriefingForm() {
                                         )
                                     )}
                                 </Box>
-                                <Box sx={{ width: { xs: '100%', md: '30%' } }}>
-                                    {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{attendee.comments || ' '}</Typography>) : (<TextField fullWidth multiline variant="standard" InputProps={{ disableUnderline: true, sx: { color: isDarkMode ? "#F9FAFB" : "#111827", px: 1, py: 0.5, height: '100%' } }} value={attendee.comments} onChange={handleAttendeeChange(idx, 'comments')} />)}
+                                <Box
+                                    sx={{
+                                        width: { xs: '100%', md: '30%' },
+                                        minHeight: 100,
+                                        display: 'flex',
+                                        cursor: contentReadOnly ? 'default' : 'text',
+                                    }}
+                                    onClick={contentReadOnly ? undefined : focusEditableCellField}
+                                >
+                                    {contentReadOnly ? (<Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', px: 1, py: 1, minHeight: '1.5em', textAlign: 'inherit' }}>{attendee.comments || ' '}</Typography>) : (<TextField fullWidth multiline minRows={3} variant="standard" sx={editableCellFieldSx} InputProps={{ disableUnderline: true, sx: { color: isDarkMode ? "#F9FAFB" : "#111827", px: 1, py: 0.5, height: '100%' } }} value={attendee.comments} onChange={handleAttendeeChange(idx, 'comments')} />)}
                                 </Box>
                             </Box>
                         ))}
