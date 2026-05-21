@@ -85,6 +85,7 @@ import {
     shouldFetchPreviewViaApi,
     createTypedBlob,
     readBlobApiError,
+    parseAxiosErrorMessage,
 } from "../utils/documentFiles";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
@@ -811,11 +812,7 @@ export default function SitepackManagement() {
             await downloadSiteDocument(doc);
         } catch (err) {
             console.error("Document download error:", err);
-            window.alert(
-                err?.response?.data?.message ||
-                    err?.message ||
-                    "Download failed. Please try again."
-            );
+            window.alert(await parseAxiosErrorMessage(err));
         } finally {
             setDownloadInProgress(false);
         }

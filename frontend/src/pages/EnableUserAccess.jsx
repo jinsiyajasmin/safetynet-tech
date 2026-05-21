@@ -1,5 +1,5 @@
 // src/pages/EnableUserAccess.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
     Box,
     Grid,
@@ -17,6 +17,7 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import Layout from "../components/Layout";
 import api from "../services/api";
 import { useTheme } from "../context/ThemeContext";
+import { isSafetynettCompanyName } from "../utils/resolveEffectiveRole";
 
 const PERMISSION_LEVELS = [
     { id: 4, title: "Superadmin (Level 4)", desc: "The highest level of access. The user will be able to view dashboards, send messages, view reports, conduct audit inspections, edit and delete sections of the report and delete the whole report. The user can also manage the entire table of users, details, and activity logs.", color: "rgba(34,197,94,0.06)", role: "superadmin" },
@@ -76,8 +77,41 @@ export default function EnableUserAccessPage() {
         }
     };
 
+    const selectedCompany = useMemo(
+        () => companies.find((c) => c.id === form.companyId),
+        [companies, form.companyId]
+    );
+
+    const permissionLevels = useMemo(() => {
+        if (isSafetynettCompanyName(selectedCompany?.name)) {
+            return PERMISSION_LEVELS.filter((p) => p.role !== "superadmin");
+        }
+        return PERMISSION_LEVELS;
+    }, [selectedCompany?.name]);
+
+    const selectedLevel = useMemo(
+        () =>
+            permissionLevels.find((p) => p.id === Number(form.permission)) ??
+            permissionLevels[0],
+        [permissionLevels, form.permission]
+    );
+
+    // Keep permission in sync when company change hides superadmin (e.g. permission still 4).
+    useEffect(() => {
+        if (permissionLevels.some((p) => p.id === Number(form.permission))) return;
+        const fallbackId = permissionLevels[0]?.id ?? 0;
+        setForm((f) => (f.permission === fallbackId ? f : { ...f, permission: fallbackId }));
+    }, [permissionLevels, form.permission]);
+
     const handleCompanyChange = (event, newValue) => {
-        setForm(f => ({ ...f, companyId: newValue?.id || "" }));
+        const companyId = newValue?.id || "";
+        setForm((f) => {
+            const next = { ...f, companyId };
+            if (isSafetynettCompanyName(newValue?.name) && f.permission === 4) {
+                next.permission = 3;
+            }
+            return next;
+        });
         setUserExists(null);
         setUserCheckMsg("");
     };
@@ -115,6 +149,9 @@ export default function EnableUserAccessPage() {
         if (!form.email || !/^\S+@\S+\.\S+$/.test(form.email)) e.email = "Enter a valid email";
         if (!form.companyId) e.companyId = "Select a company";
         if (!Number.isInteger(Number(form.permission))) e.permission = "Select permission level";
+        else if (!permissionLevels.some((p) => p.id === Number(form.permission))) {
+            e.permission = "Select permission level";
+        }
 
         if (userExists === false) e.email = "User does not exist in the selected company.";
 
@@ -139,18 +176,16 @@ export default function EnableUserAccessPage() {
 
         setSubmitting(true);
         try {
-            // Find role string from ID
-            const level = PERMISSION_LEVELS.find(p => p.id === Number(form.permission));
+            const level = selectedLevel;
+            if (!level?.role) {
+                setSnack({
+                    open: true,
+                    msg: "Select a valid permission level for this company.",
+                    severity: "error",
+                });
+                return;
+            }
 
-            // We need to UPDATE the user. The previous code was /users/invite, assuming creating?
-            // "allow to select the user roles" implies updating an existing user.
-            // Since we validated user exists, checkUser returned user ID? 
-            // We should use that ID to update. But checkUser didn't store ID in state yet.
-
-            // Let's call update. We need the User ID. 
-            // Retrigger check or fetch user.
-
-            // Actually, let's fetch user ID during checkUser and store it.
             const checkRes = await api.post("/users/check-user", { email: form.email, companyId: form.companyId });
             if (!checkRes.data?.exists) {
                 setSnack({ open: true, msg: "User not found.", severity: "error" });
@@ -160,7 +195,6 @@ export default function EnableUserAccessPage() {
 
             const payload = {
                 role: level.role,
-                
             };
 
             const res = await api.put(`/users/${userId}`, payload);
@@ -179,8 +213,6 @@ export default function EnableUserAccessPage() {
             setSubmitting(false);
         }
     };
-
-    const selectedLevel = PERMISSION_LEVELS.find((p) => p.id === Number(form.permission)) ?? PERMISSION_LEVELS[0];
 
     return (
         <Layout>
@@ -333,7 +365,7 @@ export default function EnableUserAccessPage() {
                                         "& .MuiInputBase-input": { py: 1.8, px: 2 }
                                     }}
                                 >
-                                    {PERMISSION_LEVELS.map((p) => (
+                                    {permissionLevels.map((p) => (
                                         <MenuItem
                                             key={p.id}
                                             value={p.id}
@@ -422,7 +454,7 @@ export default function EnableUserAccessPage() {
                     <Grid item xs={12} md={5}>
                         <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: isDarkMode ? "#F9FAFB" : "#111827" }}>Permission levels overview</Typography>
                         <Box sx={{ display: "grid", gap: 2.5 }}>
-                            {PERMISSION_LEVELS.map((p) => (
+                            {permissionLevels.map((p) => (
                                 <Paper
                                     elevation={0}
                                     key={p.id}

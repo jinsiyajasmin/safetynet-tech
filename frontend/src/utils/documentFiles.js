@@ -216,6 +216,30 @@ export async function readBlobApiError(blob) {
   return null;
 }
 
+/** Extract API error message when axios used responseType blob. */
+export async function parseAxiosErrorMessage(err, fallback = "Download failed. Please try again.") {
+  if (!err) return fallback;
+  const data = err?.response?.data;
+  if (data instanceof Blob) {
+    return (await readBlobApiError(data)) || err.message || fallback;
+  }
+  if (data && typeof data === "object" && data.message) return data.message;
+  return err.message || fallback;
+}
+
+function shouldFallbackToDirectUrl(err) {
+  const status = err?.response?.status;
+  if (status === 401 || status === 403 || status === 404 || status === 410) {
+    return false;
+  }
+  return (
+    !status ||
+    status >= 500 ||
+    err?.code === "ECONNABORTED" ||
+    err?.code === "ERR_NETWORK"
+  );
+}
+
 export function canPreviewInline(docType) {
   const type = (docType || "").toUpperCase();
   return (
@@ -273,7 +297,9 @@ export function filenameFromContentDisposition(header, fallback = "document") {
  * Server-stored files use the authenticated API; Cloudinary uses attachment URLs.
  */
 export async function downloadSiteDocument(doc) {
-  if (!doc?.url) return;
+  if (!doc?.url) {
+    throw new Error("This document has no file attached.");
+  }
 
   const filename = buildDownloadFilename(doc);
   const docId = doc.id || doc._id;
@@ -284,15 +310,23 @@ export async function downloadSiteDocument(doc) {
     try {
       const { fetchDocumentDownloadBlob } = await import("../services/api.js");
       const response = await fetchDocumentDownloadBlob(docId);
+      const contentType = response.headers?.["content-type"] || "";
+      if (contentType.includes("application/json")) {
+        const apiError = await readBlobApiError(response.data);
+        throw new Error(apiError || "Download failed.");
+      }
       const apiError = await readBlobApiError(response.data);
       if (apiError) {
         throw new Error(apiError);
+      }
+      if (!response.data?.size) {
+        throw new Error("Downloaded file is empty.");
       }
       const docType = (doc?.type || "FILE").toUpperCase();
       const typedBlob = createTypedBlob(
         response.data,
         docType,
-        response.headers?.["content-type"]
+        contentType
       );
       const fromHeader = filenameFromContentDisposition(
         response.headers?.["content-disposition"],
@@ -301,13 +335,19 @@ export async function downloadSiteDocument(doc) {
       triggerBlobDownload(typedBlob, fromHeader);
       return;
     } catch (err) {
-      // Fallback for environments where redirected blob downloads fail.
+      if (!shouldFallbackToDirectUrl(err)) {
+        throw new Error(await parseAxiosErrorMessage(err));
+      }
       console.warn("API download failed, falling back to direct URL:", err?.message || err);
     }
   }
 
+  if (isLocalStoredDocument(doc.url)) {
+    throw new Error("Could not download this file from the server. Please try again.");
+  }
+
   if (doc.url.includes("res.cloudinary.com")) {
-    window.open(getDocumentDownloadUrl(doc.url, filename), "_blank", "noopener,noreferrer");
+    triggerBrowserDownload(doc.url, filename);
     return;
   }
 

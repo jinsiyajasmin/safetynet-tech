@@ -19,3 +19,16 @@ export function resolveFormLogoSrc(values = {}, companyLogoUrl = null) {
 
   return companyLogoUrl || null;
 }
+
+/** Restore logo_preview from persisted base64/url after save or load from API. */
+export function withLogoPreviewFields(answers = {}) {
+  if (!answers || typeof answers !== "object") return answers;
+  const out = { ...answers };
+  const logo = out.logo;
+  if (typeof logo === "string" && logo && !logo.startsWith("blob:")) {
+    if (!out.logo_preview || out.logo_preview.startsWith("blob:")) {
+      out.logo_preview = logo;
+    }
+  }
+  return out;
+}

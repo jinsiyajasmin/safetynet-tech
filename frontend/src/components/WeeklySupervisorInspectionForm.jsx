@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { readImageFileAsDataUrl } from "./FormLogoUploadSlot";
 import { resolveFormLogoSrc } from "../utils/formLogoUrl";
 
 /** Section titles — use "Personnel" (staff), not "Personal". */
@@ -11,6 +12,7 @@ const WeeklySupervisorInspectionForm = ({ values: externalValues, onChange, read
   const displayLogo = resolveFormLogoSrc(values, logoUrl);
   const [logoLoadFailed, setLogoLoadFailed] = useState(false);
   const logoSrc = logoLoadFailed ? logoUrl : displayLogo;
+  const logoInputRef = useRef(null);
 
   useEffect(() => {
     setLogoLoadFailed(false);
@@ -22,6 +24,17 @@ const WeeklySupervisorInspectionForm = ({ values: externalValues, onChange, read
     } else {
       setInternalValues((prev) => ({ ...prev, [fieldId]: value }));
     }
+  };
+
+  const handleLogoFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      readImageFileAsDataUrl(file, (dataUrl) => {
+        handleChange("logo", dataUrl);
+        handleChange("logo_preview", dataUrl);
+      });
+    }
+    e.target.value = "";
   };
 
   const previewImg = (file, fieldId) => {
@@ -567,46 +580,93 @@ const WeeklySupervisorInspectionForm = ({ values: externalValues, onChange, read
 
   return (
     <div style={styles.wrap}>
-      <div style={styles.header}>
+      <div className="pdf-header" style={styles.header}>
         {!readOnly && <h1 style={styles.title}>{REPORT_TITLE}</h1>}
         <div style={styles.logoWrapper}>
-          <div 
+          {!readOnly && (
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={handleLogoFileChange}
+            />
+          )}
+          <div
             style={styles.logoBox}
-            onClick={() => !readOnly && document.getElementById("logoUpload").click()}
+            onClick={() => !readOnly && !logoSrc && logoInputRef.current?.click()}
           >
             {logoSrc ? (
-              <img 
-                src={logoSrc} 
-                alt="Company Logo" 
-                crossOrigin="anonymous"
-                onError={() => {
-                  if (!logoLoadFailed && logoUrl && logoSrc !== logoUrl) {
-                    setLogoLoadFailed(true);
-                  }
-                }}
-                style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} 
-              />
+              <>
+                <img
+                  src={logoSrc}
+                  alt="Company Logo"
+                  crossOrigin={/^https?:\/\//i.test(logoSrc) ? "anonymous" : undefined}
+                  onError={() => {
+                    if (!logoLoadFailed && logoUrl && logoSrc !== logoUrl) {
+                      setLogoLoadFailed(true);
+                    }
+                  }}
+                  style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+                />
+                {!readOnly && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: 2,
+                      left: 0,
+                      right: 0,
+                      display: "flex",
+                      justifyContent: "center",
+                      gap: 6,
+                      flexWrap: "wrap",
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 700,
+                        color: "#1e3a8a",
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                      }}
+                      onClick={() => logoInputRef.current?.click()}
+                    >
+                      Change
+                    </button>
+                    <button
+                      type="button"
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 700,
+                        color: "#dc2626",
+                        cursor: "pointer",
+                        border: "none",
+                        background: "transparent",
+                        textDecoration: "underline",
+                      }}
+                      onClick={() => {
+                        handleChange("logo", null);
+                        handleChange("logo_preview", null);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
-              <div style={{ textAlign: "center", color: "#9ca3af" }}>
-                <div style={{ fontSize: 20 }}>+</div>
-                <div style={{ fontSize: 10 }}>Upload Logo</div>
-              </div>
-            )}
-            {!readOnly && (
-              <input
-                id="logoUpload"
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  const file = e.target.files[0];
-                  if (file) {
-                    const url = URL.createObjectURL(file);
-                    handleChange("logo", file);
-                    handleChange("logo_preview", url);
-                  }
-                }}
-              />
+              <>
+                <div style={{ textAlign: "center", color: "#9ca3af" }}>
+                  <div style={{ fontSize: 20 }}>+</div>
+                  <div style={{ fontSize: 10 }}>Upload Logo</div>
+                </div>
+              </>
             )}
           </div>
         </div>

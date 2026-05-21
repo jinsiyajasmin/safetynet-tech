@@ -1,4 +1,4 @@
-/** Matches backend `resolveTokenRole` — Safetynett company_admin maps to superadmin only. */
+/** Matches backend `resolveTokenRole` — Safetynett users are never treated as superadmin. */
 
 export function isSafetynettCompanyName(name) {
   return (name || "")
@@ -17,8 +17,8 @@ export function getStoredRole(user) {
 export function resolveEffectiveRole(user) {
   const dbRole = getStoredRole(user);
   const company = user?.companyname || user?.company || user?.employer || "";
-  if (isSafetynettCompanyName(company) && dbRole === "company_admin") {
-    return "superadmin";
+  if (isSafetynettCompanyName(company) && dbRole === "superadmin") {
+    return "company_admin";
   }
   return dbRole;
 }

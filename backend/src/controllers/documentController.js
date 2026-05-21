@@ -119,25 +119,44 @@ function mimeForDocument(doc) {
 /** Stream remote files through the API so previews/downloads get correct headers (no redirect/CORS issues). */
 function pipeRemoteUrl(sourceUrl, res, { disposition, filename, fallbackMime }) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
+
     const follow = (url, redirectsLeft) => {
       let parsed;
       try {
         parsed = new URL(url);
       } catch (err) {
-        reject(err);
+        fail(err);
         return;
       }
 
       const lib = parsed.protocol === 'https:' ? https : http;
-      lib
-        .get(url, (upstream) => {
+      const req = lib.get(
+        url,
+        {
+          headers: {
+            'User-Agent': 'SafetyApp/1.0',
+            Accept: '*/*',
+          },
+        },
+        (upstream) => {
           const code = upstream.statusCode || 0;
           if (code >= 300 && code < 400 && upstream.headers.location && redirectsLeft > 0) {
             upstream.resume();
             try {
               follow(new URL(upstream.headers.location, url).href, redirectsLeft - 1);
             } catch (err) {
-              reject(err);
+              fail(err);
             }
             return;
           }
@@ -146,7 +165,7 @@ function pipeRemoteUrl(sourceUrl, res, { disposition, filename, fallbackMime }) 
             upstream.resume();
             const err = new Error(`Failed to fetch document (${code})`);
             err.status = code === 404 ? 404 : 502;
-            reject(err);
+            fail(err);
             return;
           }
 
@@ -158,11 +177,13 @@ function pipeRemoteUrl(sourceUrl, res, { disposition, filename, fallbackMime }) 
           res.setHeader('Content-Type', contentType);
           res.setHeader('Content-Disposition', contentDisposition(disposition, filename));
           upstream.pipe(res);
-          res.on('finish', resolve);
-          upstream.on('error', reject);
-          res.on('error', reject);
-        })
-        .on('error', reject);
+          upstream.on('error', fail);
+          // Resolve only when the client response has finished — not on upstream 'end'.
+          res.on('finish', done);
+          res.on('error', fail);
+        }
+      );
+      req.on('error', fail);
     };
 
     follow(sourceUrl, 5);
@@ -349,7 +370,8 @@ exports.downloadDocument = asyncHandler(async (req, res) => {
     const downloadName = buildDownloadFilename(doc);
 
     if (doc.url.startsWith('http://') || doc.url.startsWith('https://')) {
-        await pipeRemoteUrl(cloudinaryAttachmentUrl(doc.url, downloadName), res, {
+        const remoteUrl = cloudinaryAttachmentUrl(doc.url, downloadName);
+        await pipeRemoteUrl(remoteUrl, res, {
             disposition: 'attachment',
             filename: downloadName,
             fallbackMime: mimeForDocument(doc),

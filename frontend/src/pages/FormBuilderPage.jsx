@@ -37,6 +37,7 @@ import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import SmartphoneIcon from "@mui/icons-material/Smartphone";
 import LaptopMacIcon from "@mui/icons-material/LaptopMac";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import DrawOutlinedIcon from "@mui/icons-material/DrawOutlined";
 import ViewHeadlineIcon from "@mui/icons-material/ViewHeadline";
@@ -523,6 +524,76 @@ const GridFieldPreview = ({ field, onChange, selectedFieldId, setSelectedFieldId
   );
 };
 
+/** Grid/table display for preview dialog — must not use Draggable/Droppable outside DragDropContext. */
+const GridFieldStaticPreview = ({ field, renderFieldInput }) => {
+  const rows = field.rows || 3;
+  const cols = field.cols || 3;
+  const colWidths = Array.from({ length: cols }).map((_, i) => (field.colWidths || [])[i] || 150);
+  const rowHeights = Array.from({ length: rows }).map((_, i) => (field.rowHeights || [])[i] || 50);
+  const cellLabels = field.cellLabels || {};
+  const gridTemplateColumns = colWidths.map((w) => `${w}px`).join(" ");
+  const gridTemplateRows = rowHeights.map((h) => `minmax(${h}px, auto)`).join(" ");
+
+  return (
+    <Box sx={{ overflowX: "auto", p: 1 }}>
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns,
+          gridTemplateRows,
+          gap: 0,
+          width: "fit-content",
+          borderTop: "1px solid #cbd5e1",
+          borderLeft: "1px solid #cbd5e1",
+        }}
+      >
+        {Array.from({ length: rows }).map((_, r) =>
+          Array.from({ length: cols }).map((_, c) => {
+            const cellKey = `${r}_${c}`;
+            const cellItems = field.cellFields?.[cellKey] || [];
+            const label = cellLabels[cellKey];
+            return (
+              <Box
+                key={cellKey}
+                sx={{
+                  borderRight: "1px solid #cbd5e1",
+                  borderBottom: "1px solid #cbd5e1",
+                  p: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 1,
+                  minHeight: rowHeights[r],
+                }}
+              >
+                {cellItems.length === 0 && label ? (
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: "#64748b" }}>
+                    {label}
+                  </Typography>
+                ) : null}
+                {cellItems.map((sf) => (
+                  <Box key={sf.id}>
+                    {sf.type !== "section_header" && sf.type !== "logo" && sf.label ? (
+                      <Typography sx={{ fontWeight: 600, fontSize: "0.75rem", mb: 0.5 }}>
+                        {sf.label}
+                      </Typography>
+                    ) : null}
+                    {renderFieldInput(sf, true)}
+                  </Box>
+                ))}
+                {cellItems.length === 0 && !label ? (
+                  <Typography variant="caption" color="text.secondary">
+                    —
+                  </Typography>
+                ) : null}
+              </Box>
+            );
+          })
+        )}
+      </Box>
+    </Box>
+  );
+};
+
 
 export default function FormBuilderPage() {
   const theme = useTheme();
@@ -821,7 +892,7 @@ export default function FormBuilderPage() {
 
   const canvasPreview = useMemo(() => fields, [fields]);
 
-  const renderFieldInput = (f, isNested = false) => {
+  const renderFieldInput = (f, isNested = false, forPreview = false) => {
     const inputSx = {
       "& .MuiOutlinedInput-root": {
         borderRadius: "12px",
@@ -967,6 +1038,14 @@ export default function FormBuilderPage() {
     }
 
     if (f.type === "grid") {
+      if (forPreview) {
+        return (
+          <GridFieldStaticPreview
+            field={f}
+            renderFieldInput={(sf, nested) => renderFieldInput(sf, nested, true)}
+          />
+        );
+      }
       return (
         <GridFieldPreview 
           field={f} 
@@ -1083,12 +1162,32 @@ export default function FormBuilderPage() {
             mb: 2,
             display: "flex",
             flexDirection: isMobile ? "column" : "row",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
+            alignItems: isMobile ? "stretch" : "center",
             gap: 2,
           }}
         >
+          <Button
+            type="button"
+            variant="outlined"
+            startIcon={<ArrowBackIcon />}
+            onClick={() => navigate("/forms")}
+            sx={{
+              borderRadius: "12px",
+              textTransform: "none",
+              borderColor: "#cbd5e1",
+              color: "#1e293b",
+              fontWeight: 600,
+              alignSelf: isMobile ? "flex-start" : "center",
+              "&:hover": { borderColor: "#94a3b8", backgroundColor: "#f8fafc" },
+            }}
+          >
+            Back to Forms
+          </Button>
+
           <Box display="flex" gap={2} sx={{ width: isMobile ? '100%' : 'auto', justifyContent: isMobile ? "space-between" : "flex-end" }}>
             <Button
+              type="button"
               variant="outlined"
               startIcon={<IconSvg name="Eye" color="#E89F17" />}
               sx={{
@@ -1623,6 +1722,7 @@ export default function FormBuilderPage() {
           onClose={() => setPreviewOpen(false)}
           fullWidth
           maxWidth="md"
+          scroll="paper"
         >
           <DialogTitle sx={{ pb: 1 }}>
             {/* ROW 1: Preview label + icons */}
@@ -1755,14 +1855,12 @@ export default function FormBuilderPage() {
                         {f.label} {f.required && <span style={{ color: "#ef4444" }}>*</span>}
                       </Typography>
                     )}
-                    {renderFieldInput(f)}
+                    {renderFieldInput(f, false, true)}
                   </Box>
                 ))}
               </Box>
             </Box>
           </DialogContent>
-
-
 
           <DialogActions sx={{ px: 3, py: 2, bgcolor: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
             <Button

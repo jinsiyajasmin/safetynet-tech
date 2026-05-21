@@ -12,7 +12,7 @@ export const GENERAL_FORM_TEMPLATE_READONLY_MESSAGE =
   "View only — only a Super Admin, Company Admin, or Site Manager can edit or save templates from this page. Use a site pack link to fill this form for a site.";
 
 /**
- * @param {string} role — effective role from AuthContext (Safetynett → superadmin already applied).
+ * @param {string} role — effective role from AuthContext.
  * @param {{ siteId?: string | null }} opts — site pack / site context allows operational editing for all roles that can open the route.
  */
 export function canEditGeneralFormTemplate(role, { siteId } = {}) {

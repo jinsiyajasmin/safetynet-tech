@@ -125,8 +125,9 @@ exports.getAllForms = async (req, res, next) => {
 // ✅ Get single form by ID
 exports.getFormById = async (req, res, next) => {
   try {
-    const form = await prisma.form.findUnique({
-      where: { id: req.params.id },
+    const formId = req.params.id;
+    let form = await prisma.form.findUnique({
+      where: { id: formId },
       include: {
         createdBy: {
           include: {
@@ -137,6 +138,18 @@ exports.getFormById = async (req, res, next) => {
         }
       }
     });
+
+    if (!form && formId === STATIC_CONCERN_FORM_ID) {
+      form = {
+        id: STATIC_CONCERN_FORM_ID,
+        title: STATIC_CONCERN_FORM_TITLE,
+        fields: [],
+        titleColor: "#000000",
+        titleAlignment: "left",
+        createdById: null,
+        createdBy: null,
+      };
+    }
 
     if (!form) {
       return res.status(404).json({
@@ -199,7 +212,10 @@ exports.saveResponse = async (req, res) => {
     const formId = req.params.id;
     const sanitizedAnswers = sanitizeVisibilityOnSave(answers, req.body);
 
-    const gate = assertGeneralFormTemplateWrite(req, sanitizedAnswers, req.body);
+    const gate = assertGeneralFormTemplateWrite(req, sanitizedAnswers, req.body, {
+      formId,
+      category,
+    });
     if (!gate.ok) {
       return res.status(gate.status).json({ success: false, message: gate.message });
     }
@@ -285,7 +301,11 @@ exports.deleteResponse = async (req, res) => {
       return res.status(owned.status).json({ success: false, message: owned.message });
     }
     const existing = owned.row;
-    const gate = assertGeneralFormTemplateWrite(req, existing.answers || {}, {});
+    const gate = assertGeneralFormTemplateWrite(req, existing.answers || {}, {}, {
+      formId: existing.formId,
+      category: existing.category,
+      trustCategory: true,
+    });
     if (!gate.ok) {
       return res.status(gate.status).json({ success: false, message: gate.message });
     }
@@ -330,7 +350,11 @@ exports.updateResponse = async (req, res) => {
     }
     const { answers, category } = req.body;
     const sanitizedAnswers = sanitizeVisibilityOnSave(answers || {}, req.body);
-    const gate = assertGeneralFormTemplateWrite(req, sanitizedAnswers, req.body);
+    const gate = assertGeneralFormTemplateWrite(req, sanitizedAnswers, req.body, {
+      formId: owned.row.formId,
+      category: owned.row.category,
+      trustCategory: true,
+    });
     if (!gate.ok) {
       return res.status(gate.status).json({ success: false, message: gate.message });
     }

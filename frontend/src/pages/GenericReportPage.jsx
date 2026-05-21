@@ -38,6 +38,7 @@ import HealthSafetyConcernForm from "../components/HealthSafetyConcernForm";
 import WeeklySupervisorInspectionForm from "../components/WeeklySupervisorInspectionForm";
 import api from "../services/api";
 import { useCompanyLogo } from "../hooks/useCompanyLogo";
+import { withLogoPreviewFields } from "../utils/formLogoUrl";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
@@ -80,13 +81,13 @@ const STATIC_CONCERN_FORM_ID = "health-safety-concern-static-id";
 function inferFormDisplayKind(form, pageTitle) {
     if (!form) return null;
     const formId = form.id || form._id;
+    const isWeeklyPage =
+        pageTitle === "Weekly supervisor health & safety inspection" ||
+        pageTitle === "Weekly supervisor reports";
     if (formId === STATIC_CONCERN_FORM_ID) {
-        return pageTitle === "Weekly supervisor health & safety inspection" ? "weekly" : "concern";
+        return isWeeklyPage ? "weekly" : "concern";
     }
-    if (
-        pageTitle === "Weekly supervisor health & safety inspection" &&
-        (!Array.isArray(form.fields) || form.fields.length === 0)
-    ) {
+    if (isWeeklyPage && (!Array.isArray(form.fields) || form.fields.length === 0)) {
         return "weekly";
     }
     return "builder";
@@ -199,7 +200,10 @@ export default function GenericReportPage({ pageTitle }) {
 
     const handleOpenConcernForm = () => {
         const kind =
-            pageTitle === "Weekly supervisor health & safety inspection" ? "weekly" : "concern";
+            pageTitle === "Weekly supervisor health & safety inspection" ||
+            pageTitle === "Weekly supervisor reports"
+                ? "weekly"
+                : "concern";
         setActiveFormKind(kind);
         setSelectedForm({
             id: STATIC_CONCERN_FORM_ID,
@@ -265,6 +269,10 @@ export default function GenericReportPage({ pageTitle }) {
                     if (typeof value === "string" && value.startsWith("blob:")) {
                         continue;
                     }
+                    if ((key === "logo" || key === "company_logo") && (value == null || value === "")) {
+                        processedAnswers[key] = null;
+                        continue;
+                    }
                     processedAnswers[key] = value;
                 }
             }
@@ -288,20 +296,24 @@ export default function GenericReportPage({ pageTitle }) {
 
             if (res.data?.success) {
                 const newSub = res.data.data;
-                const displaySub = viewMode === "editing" ? { ...newSub, formId: selectedForm } : { ...newSub, formId: selectedForm, answers: workingValues };
+                const savedAnswers = withLogoPreviewFields(newSub.answers || processedAnswers);
 
                 // Transition immediately instead of showing a modal
                 setEditingId(null);
-                setSelectedForm(displaySub.formId);
-                setActiveFormKind(inferFormDisplayKind(displaySub.formId, pageTitle));
-                setFormValues(displaySub.answers);
+                setSelectedForm(selectedForm);
+                setActiveFormKind(inferFormDisplayKind(selectedForm, pageTitle));
+                setFormValues(savedAnswers);
                 setViewMode("viewed");
                 setLastResponse(null);
                 fetchSubmissions();
             }
         } catch (err) {
             console.error("Submission failed", err);
-            alert("Failed to save form. Please try again.");
+            const msg =
+                err?.response?.data?.message ||
+                err?.message ||
+                "Failed to save form. Please try again.";
+            alert(msg);
         } finally {
             setIsSubmitting(false);
         }
@@ -374,18 +386,40 @@ export default function GenericReportPage({ pageTitle }) {
                 return;
             }
 
-            const formRes = await api.get(`/forms/${formId}`);
-            if (formRes.data?.success) {
-                const loadedForm = formRes.data.data;
+            let loadedForm = null;
+            try {
+                const formRes = await api.get(`/forms/${formId}`);
+                if (formRes.data?.success) {
+                    loadedForm = formRes.data.data;
+                }
+            } catch (e) {
+                if (formId !== STATIC_CONCERN_FORM_ID) {
+                    throw e;
+                }
+            }
+            if (!loadedForm && formId === STATIC_CONCERN_FORM_ID) {
+                const isWeekly =
+                    pageTitle === "Weekly supervisor health & safety inspection" ||
+                    pageTitle === "Weekly supervisor reports";
+                loadedForm = {
+                    id: STATIC_CONCERN_FORM_ID,
+                    title: isWeekly ? pageTitle : "Concern Form",
+                    fields: [],
+                };
+            }
+            if (loadedForm) {
                 setSelectedForm(loadedForm);
                 setActiveFormKind(inferFormDisplayKind(loadedForm, pageTitle));
-                setFormValues(sub.answers || {});
+                setFormValues(withLogoPreviewFields(sub.answers || {}));
                 setEditingId(sub.id || sub._id);
-                setLastResponse(sub); // Store submission data including date
+                setLastResponse(sub);
                 setViewMode(mode);
+            } else {
+                alert("Could not load this report. Please try again.");
             }
         } catch (e) {
             console.error("Could not load form definition", e);
+            alert("Could not load this report. Please try again.");
         }
     };
 
@@ -468,11 +502,13 @@ export default function GenericReportPage({ pageTitle }) {
             }
 
             // Capture the header (title + logo) separately if it's not a section
-            const header = printRef.current.querySelector("div[style*='header']");
+            const header =
+                printRef.current.querySelector(".pdf-header") ||
+                printRef.current.querySelector("div[style*='header']");
             if (header) {
                 const hCanvas = await html2canvas(header, {
                     useCORS: true,
-                    allowTaint: false,
+                    allowTaint: true,
                     scale: 2,
                     logging: false,
                     backgroundColor: "#ffffff",

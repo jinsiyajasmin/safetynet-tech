@@ -10,6 +10,7 @@ const {
   loadAdminActor,
   canManageTargetUser,
 } = require("../utils/userAuthorization");
+const { isSafetynettCompanyName, assertRoleAllowedForCompany } = require("../utils/company");
 
 // Role hierarchy — higher index = higher privilege
 const ROLE_HIERARCHY = ["worker", "supervisor", "site_manager", "company_admin", "superadmin"];
@@ -115,7 +116,13 @@ exports.updateUser = asyncHandler(async (req, res) => {
 
   const target = await prisma.user.findUnique({
     where: { id: targetId },
-    select: { id: true, clientId: true, role: true },
+    select: {
+      id: true,
+      clientId: true,
+      role: true,
+      companyname: true,
+      client: { select: { name: true } },
+    },
   });
   if (!target) {
     return res.status(404).json({ success: false, message: "User not found" });
@@ -159,8 +166,28 @@ exports.updateUser = asyncHandler(async (req, res) => {
           return res.status(403).json({ success: false, message: "You cannot assign this role" });
         }
       }
+      const companyForRole =
+        data.companyname ??
+        target.companyname ??
+        target.client?.name ??
+        "";
+      const roleCheck = assertRoleAllowedForCompany(role, companyForRole);
+      if (!roleCheck.ok) {
+        return res.status(400).json({ success: false, message: roleCheck.message });
+      }
       data.role = role;
     }
+  }
+
+  if (
+    data.companyname &&
+    isSafetynettCompanyName(data.companyname) &&
+    (data.role ?? target.role) === "superadmin"
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Safetynett company users cannot have the superadmin role.",
+    });
   }
 
   await prisma.user.update({
@@ -408,6 +435,11 @@ exports.inviteUser = asyncHandler(async (req, res) => {
     resolvedCompany = companyCheck.value;
   } else {
     resolvedCompany = null;
+  }
+
+  const roleCheck = assertRoleAllowedForCompany(assignedRole, resolvedCompany);
+  if (!roleCheck.ok) {
+    return res.status(400).json({ success: false, message: roleCheck.message });
   }
 
   const pwdCheck = validateNewPassword(password);

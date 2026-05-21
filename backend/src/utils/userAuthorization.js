@@ -12,14 +12,13 @@ function reqUserDbId(req) {
 }
 
 /**
- * Role used in JWT / UI for Safetynett org admins only.
- * Workers and supervisors are never elevated.
+ * Role used in JWT / UI. Safetynett users are never elevated to superadmin.
  */
 function resolveTokenRole(user) {
   if (!user) return "worker";
   const dbRole = user.role || "worker";
-  if (isSafetynettCompanyName(user.companyname) && dbRole === "company_admin") {
-    return "superadmin";
+  if (isSafetynettCompanyName(user.companyname) && dbRole === "superadmin") {
+    return "company_admin";
   }
   return dbRole;
 }
@@ -30,8 +29,8 @@ function resolveTokenRole(user) {
 function effectiveAdminRole(actor) {
   if (!actor) return null;
   const dbRole = actor.role || "worker";
-  if (isSafetynettCompanyName(actor.companyname) && dbRole === "company_admin") {
-    return "superadmin";
+  if (isSafetynettCompanyName(actor.companyname) && dbRole === "superadmin") {
+    return "company_admin";
   }
   return dbRole;
 }
