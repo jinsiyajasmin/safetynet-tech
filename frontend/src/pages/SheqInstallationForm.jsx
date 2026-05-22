@@ -1284,7 +1284,14 @@ export default function SheqInstallationForm({
             headerLabels: { ...headerLabels },
             formSections: JSON.parse(JSON.stringify(formSections)),
             visibleSections: { ...visibleSections },
-            formData: { ...formData },
+            formData: {
+                ...formData,
+                nonconformanceFindings: mergeNonconformanceFindingsFromSave(
+                    formSections,
+                    formData.installationMeasures || {},
+                    formData.nonconformanceFindings || {}
+                ),
+            },
             name: displayName,
             tags: tags || formMetadata.tags || "",
             category,
@@ -1345,26 +1352,17 @@ export default function SheqInstallationForm({
                 },
             };
             let nextFindings = prev.nonconformanceFindings || {};
-            if (field === "score") {
-                if (formDataScoreIsNonconforming(value)) {
-                    const existing = prev.installationMeasures[key] || {};
-                    nextFindings = {
-                        ...nextFindings,
-                        [key]: {
-                            ...EMPTY_NONCONFORMANCE_FINDING,
-                            ...(nextFindings[key] || {}),
-                            remedialAction:
-                                nextFindings[key]?.remedialAction || existing.remedial || "",
-                            timing: nextFindings[key]?.timing || existing.timing || "",
-                            personResponsible:
-                                nextFindings[key]?.personResponsible || existing.responsibility || "",
-                        },
-                    };
-                } else if (nextFindings[key]) {
-                    const rest = { ...nextFindings };
-                    delete rest[key];
-                    nextFindings = rest;
-                }
+            if (field === "score" && formDataScoreIsNonconforming(value) && !nextFindings[key]) {
+                const existing = prev.installationMeasures[key] || {};
+                nextFindings = {
+                    ...nextFindings,
+                    [key]: {
+                        ...EMPTY_NONCONFORMANCE_FINDING,
+                        remedialAction: existing.remedial || "",
+                        timing: existing.timing || "",
+                        personResponsible: existing.responsibility || "",
+                    },
+                };
             }
             return {
                 ...prev,
