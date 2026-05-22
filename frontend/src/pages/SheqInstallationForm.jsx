@@ -275,7 +275,7 @@ const INSTALLATION_STANDARDS = [
     }
 ];
 
-/** SHEQ service checklist — vehicle/site audit layout (ITEM | SCORE | REMEDIAL | TIMING | RESPONSIBILITY). */
+/** SHEQ service checklist — ITEM | SCORE | Comments per row (same layout as installation). */
 const SHEQ_SERVICE_STANDARDS = [
     ...INSTALLATION_STANDARDS.slice(0, -1),
     {
@@ -318,12 +318,11 @@ function getDefaultHeaderLabelsForCategory(cat) {
         siteContactLabel: "Site Contact",
         projectSummaryLabel: "Project Summary - Assessment of the project H&S status",
         reportDistributionLabel: "Report Distribution",
-        remedialColLabel: isInspection ? "REMEDIAL ACTION" : "Comments",
-        timingColLabel: "TIMING",
-        responsibilityColLabel: "RESPONSIBILITY",
-        ratingColLabel: "RATING",
+        remedialColLabel: "Comments",
+        sectionCommentsLabel: "SECTION COMMENTS",
         scoreColLabel: "SCORE",
         uploadLabel: "PHOTOS / DOCUMENTS",
+        nonconformanceLabel: "NONCONFORMANCE FINDINGS",
         commentsLabel: "INSPECTOR'S FINAL COMMENTS / SUMMARY",
         headerTitle: isInspection ? "SHEQ service" : "SHEQ Installation",
         formTitle: isInspection ? "SHEQ SERVICE REPORT" : "SHEQ INSTALLATION SERVICE REPORT",
@@ -440,19 +439,82 @@ function countTextLines(text, fallback = 1) {
 
 const ITEM_MAX_SCORE = 3;
 
+const INSTALLATION_SCORE_OPTIONS = ["1", "2", "3", "N/A", "NIU"];
+const SERVICE_SCORE_OPTIONS = INSTALLATION_SCORE_OPTIONS;
+
+const CHECKLIST_COL_ITEM = { xs: "45%", md: "42%" };
+const CHECKLIST_COL_SCORE = { xs: "13%", md: "12%" };
+const CHECKLIST_COL_COMMENTS = { xs: "42%", md: "46%" };
+
+/** Distinct warning styling for the nonconformance findings block */
+const NONCONFORMANCE_HEADER = {
+    light: { bg: "#C2410C", text: "#FFF", border: "#9A3412", columnBg: "#FFEDD5" },
+    dark: { bg: "#EA580C", text: "#FFF", border: "#C2410C", columnBg: "rgba(234, 88, 12, 0.15)" },
+};
+
 /**
- * Totals for rows that have a score selected only.
- * Each scored row has a maximum of 3 points (SCORE dropdown).
- * N/A and NIU: +3 toward section maximum, 0 toward actual score.
- * (item.rating 0/3 in the template is display-only — not used for totals.)
+ * Per-item score accumulation (only rows with a score selected).
+ * - Unscored: no contribution to score or max.
+ * - N/A/NIU: +3 to max and 0 to score when countNaNiInMax is true; otherwise skip.
+ * - Numeric (1–3): +value to score and +3 to max.
  */
-function accumulateInstallationItemScore(totals, scoreVal) {
+const EMPTY_NONCONFORMANCE_FINDING = {
+    remedialAction: "",
+    timing: "",
+    personResponsible: "",
+    dateClosed: "",
+};
+
+function formDataScoreIsNonconforming(score) {
+    return String(score) === "1";
+}
+
+function collectNonconformingItems(formSections, installationMeasures) {
+    const items = [];
+    formSections.forEach((cat) => {
+        if (isOtherCommentsCategory(cat.category) || cat.category === "OTHER CONTRACTORS") return;
+        cat.subcategories.forEach((sub) => {
+            sub.items.forEach((item) => {
+                if (formDataScoreIsNonconforming(installationMeasures[item.key]?.score)) {
+                    const subPrefix = sub.title ? `${sub.title}: ` : "";
+                    items.push({
+                        key: item.key,
+                        itemName: `${subPrefix}${item.label || "Item"}`,
+                    });
+                }
+            });
+        });
+    });
+    return items;
+}
+
+function mergeNonconformanceFindingsFromSave(formSections, installationMeasures, savedFindings = {}) {
+    const merged = {};
+    collectNonconformingItems(formSections, installationMeasures).forEach(({ key }) => {
+        const im = installationMeasures[key] || {};
+        const saved = savedFindings[key] || {};
+        merged[key] = {
+            ...EMPTY_NONCONFORMANCE_FINDING,
+            ...saved,
+            remedialAction: saved.remedialAction || im.remedial || "",
+            timing: saved.timing || im.timing || "",
+            personResponsible: saved.personResponsible || im.responsibility || "",
+            dateClosed: saved.dateClosed || "",
+        };
+    });
+    return merged;
+}
+
+function accumulateInstallationItemScore(totals, scoreVal, { countNaNiInMax = false } = {}) {
     if (!scoreVal) return totals;
     if (scoreVal === "N/A" || scoreVal === "NIU") {
-        return {
-            rating: totals.rating + ITEM_MAX_SCORE,
-            score: totals.score,
-        };
+        if (countNaNiInMax) {
+            return {
+                rating: totals.rating + ITEM_MAX_SCORE,
+                score: totals.score,
+            };
+        }
+        return totals;
     }
     const parsed = parseInt(scoreVal, 10);
     return {
@@ -984,6 +1046,7 @@ export default function SheqInstallationForm({
         },
         measures: Array(20).fill({ compliant: "", comments: "" }),
         installationMeasures: {},
+        nonconformanceFindings: {},
         actions: Array(6).fill({ actionRequired: "", byWho: "", byWhen: "", dateClosed: "" }),
         comments: "",
         images: []
@@ -1138,6 +1201,16 @@ export default function SheqInstallationForm({
                 }
             }
 
+            const sectionsForFindings = ans.formSections?.length
+                ? ans.formSections
+                : getFormSectionsForCategory(savedCategory);
+            const loadedMeasures = fd.installationMeasures || {};
+            const mergedFindings = mergeNonconformanceFindingsFromSave(
+                sectionsForFindings,
+                loadedMeasures,
+                fd.nonconformanceFindings || {}
+            );
+
             setFormData((prev) => ({
                 ...prev,
                 ...fd,
@@ -1156,6 +1229,7 @@ export default function SheqInstallationForm({
                       }
                     : {}),
                 measures,
+                nonconformanceFindings: mergedFindings,
                 actions:
                     Array.isArray(fd.actions) && fd.actions.length > 0 ? fd.actions : prev.actions,
             }));
@@ -1262,15 +1336,55 @@ export default function SheqInstallationForm({
     };
 
     const updateInstallationMeasure = (key, field, value) => {
-        setFormData(prev => ({
-            ...prev,
-            installationMeasures: { 
-                ...prev.installationMeasures, 
-                [key]: { 
-                    ...(prev.installationMeasures[key] || {}), 
-                    [field]: value 
-                } 
+        setFormData((prev) => {
+            const nextMeasures = {
+                ...prev.installationMeasures,
+                [key]: {
+                    ...(prev.installationMeasures[key] || {}),
+                    [field]: value,
+                },
+            };
+            let nextFindings = prev.nonconformanceFindings || {};
+            if (field === "score") {
+                if (formDataScoreIsNonconforming(value)) {
+                    const existing = prev.installationMeasures[key] || {};
+                    nextFindings = {
+                        ...nextFindings,
+                        [key]: {
+                            ...EMPTY_NONCONFORMANCE_FINDING,
+                            ...(nextFindings[key] || {}),
+                            remedialAction:
+                                nextFindings[key]?.remedialAction || existing.remedial || "",
+                            timing: nextFindings[key]?.timing || existing.timing || "",
+                            personResponsible:
+                                nextFindings[key]?.personResponsible || existing.responsibility || "",
+                        },
+                    };
+                } else if (nextFindings[key]) {
+                    const rest = { ...nextFindings };
+                    delete rest[key];
+                    nextFindings = rest;
+                }
             }
+            return {
+                ...prev,
+                installationMeasures: nextMeasures,
+                nonconformanceFindings: nextFindings,
+            };
+        });
+    };
+
+    const updateNonconformanceFinding = (itemKey, field, value) => {
+        setFormData((prev) => ({
+            ...prev,
+            nonconformanceFindings: {
+                ...(prev.nonconformanceFindings || {}),
+                [itemKey]: {
+                    ...EMPTY_NONCONFORMANCE_FINDING,
+                    ...(prev.nonconformanceFindings?.[itemKey] || {}),
+                    [field]: value,
+                },
+            },
         }));
     };
 
@@ -1374,7 +1488,8 @@ export default function SheqInstallationForm({
                     const scoreVal = formData.installationMeasures[item.key]?.score;
                     const itemTotals = accumulateInstallationItemScore(
                         { rating: subRating, score: subScore },
-                        scoreVal
+                        scoreVal,
+                        { countNaNiInMax: true }
                     );
                     subRating = itemTotals.rating;
                     subScore = itemTotals.score;
@@ -1405,6 +1520,13 @@ export default function SheqInstallationForm({
     }, [formSections, formData.installationMeasures]);
 
     const calculateSummaryData = () => summaryData;
+
+    const nonconformingItems = useMemo(
+        () => collectNonconformingItems(formSections, formData.installationMeasures),
+        [formSections, formData.installationMeasures]
+    );
+
+    const showNonconformanceSection = nonconformingItems.length > 0;
 
     const confirmDeleteSection = (sectionKey) => {
         setDeleteDialog({ open: true, type: 'special_section', sectionKey, catIdx: null, subIdx: null, itemIdx: null });
@@ -2149,30 +2271,15 @@ export default function SheqInstallationForm({
                             sx={pdfSectionShellSx(downloading, borderColor, pdfMb)}
                         >
                         <Box sx={{ display: 'flex', background: `linear-gradient(135deg, ${customBlue} 0%, #004a6e 100%)`, color: "#FFF", fontWeight: 'bold', fontSize: '0.75rem', borderBottom: `1px solid ${borderColor}`, letterSpacing: '0.05em', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1)' }}>
-                            <Box sx={{ width: isServiceForm ? { xs: '32%', md: '30%' } : { xs: '40%', md: '35%' }, p: 1.25, borderRight: `1px solid rgba(255,255,255,0.1)`, textAlign: 'center' }}>
+                            <Box sx={{ width: CHECKLIST_COL_ITEM, p: 1.25, borderRight: `1px solid rgba(255,255,255,0.1)`, textAlign: 'center' }}>
                                 ITEM
                             </Box>
-                            {!isServiceForm && (
-                                <Box sx={{ width: { xs: '15%', md: '10%' }, p: 1.25, borderRight: `1px solid rgba(255,255,255,0.1)`, textAlign: 'center' }}>
-                                    {headerLabels.ratingColLabel || "RATING"}
-                                </Box>
-                            )}
-                            <Box sx={{ width: isServiceForm ? { xs: '12%', md: '10%' } : { xs: '15%', md: '10%' }, p: 1.25, borderRight: `1px solid rgba(255,255,255,0.1)`, textAlign: 'center' }}>
+                            <Box sx={{ width: CHECKLIST_COL_SCORE, p: 1.25, borderRight: `1px solid rgba(255,255,255,0.1)`, textAlign: 'center' }}>
                                 {headerLabels.scoreColLabel || "SCORE"}
                             </Box>
-                            <Box sx={{ width: isServiceForm ? { xs: '19%', md: '20%' } : { xs: '30%', md: '45%' }, p: 1.25, borderRight: isServiceForm ? `1px solid rgba(255,255,255,0.1)` : 'none', textAlign: 'center' }}>
+                            <Box sx={{ width: CHECKLIST_COL_COMMENTS, p: 1.25, textAlign: 'center' }}>
                                 {headerLabels.remedialColLabel || "Comments"}
                             </Box>
-                            {isServiceForm && (
-                                <>
-                                    <Box sx={{ width: { xs: '19%', md: '20%' }, p: 1.25, borderRight: `1px solid rgba(255,255,255,0.1)`, textAlign: 'center' }}>
-                                        {headerLabels.timingColLabel || "TIMING"}
-                                    </Box>
-                                    <Box sx={{ width: { xs: '18%', md: '20%' }, p: 1.25, textAlign: 'center' }}>
-                                        {headerLabels.responsibilityColLabel || "RESPONSIBILITY"}
-                                    </Box>
-                                </>
-                            )}
                         </Box>
 
                         {isServiceForm && (
@@ -2193,7 +2300,7 @@ export default function SheqInstallationForm({
                                         letterSpacing: "0.02em",
                                     }}
                                 >
-                                    1 Non-compliant &nbsp;&nbsp; 2 Partial &nbsp;&nbsp; 3 Full Compliance
+                                    1 Non-compliant &nbsp;&nbsp; 2 Partial &nbsp;&nbsp; 3 Full Compliance &nbsp;&nbsp; N/A &nbsp;&nbsp; NIU
                                 </Typography>
                             </Box>
                         )}
@@ -2212,7 +2319,8 @@ export default function SheqInstallationForm({
                                     const scoreVal = formData.installationMeasures[item.key]?.score;
                                     const itemTotals = accumulateInstallationItemScore(
                                         { rating: catRating, score: catScore },
-                                        scoreVal
+                                        scoreVal,
+                                        { countNaNiInMax: true }
                                     );
                                     catRating = itemTotals.rating;
                                     catScore = itemTotals.score;
@@ -2305,15 +2413,16 @@ export default function SheqInstallationForm({
                                         {!(isServiceForm && !String(sub.title || "").trim()) && (
                                         <Box sx={{ 
                                             display: 'flex', 
+                                            position: 'relative',
+                                            pr: downloading ? 0 : 5,
                                             bgcolor: isServiceForm ? customBlue : (isDarkMode ? "rgba(2, 132, 199, 0.15)" : "#E0F2FE"),
                                             color: isServiceForm ? "#FFF" : customBlue, 
                                             fontWeight: 'bold', 
                                             fontSize: '0.8rem', 
                                             borderBottom: `1px solid ${borderColor}`,
-                                            justifyContent: 'space-between',
                                             alignItems: 'center'
                                         }}>
-                                            <Box sx={{ display: 'flex', flex: 1, alignItems: 'center' }}>
+                                            <Box sx={{ width: CHECKLIST_COL_ITEM, display: 'flex', alignItems: 'center', borderRight: `1px solid ${borderColor}` }}>
                                                 {!downloading && (
                                                     <Tooltip title="Delete Sub-section">
                                                         <IconButton size="small" onClick={() => confirmDeleteSubcategory(catIdx, subIdx)} sx={{ color: isServiceForm ? 'rgba(255,255,255,0.8)' : 'error.main', opacity: 0.5, mx: 0.5, '&:hover': { opacity: 1 } }}>
@@ -2321,7 +2430,7 @@ export default function SheqInstallationForm({
                                                         </IconButton>
                                                     </Tooltip>
                                                 )}
-                                                <Box sx={{ flex: 1, p: 1, px: 2, borderRight: isServiceForm ? 'none' : `1px solid ${borderColor}`, display: 'flex', alignItems: 'center' }}>
+                                                <Box sx={{ flex: 1, p: 1, px: 2, display: 'flex', alignItems: 'center', minWidth: 0 }}>
                                                     {downloading ? sub.title : (
                                                         <TextField
                                                             fullWidth
@@ -2333,27 +2442,26 @@ export default function SheqInstallationForm({
                                                         />
                                                     )}
                                                 </Box>
-                                                {!isServiceForm && (
-                                                    <>
-                                                        <Box sx={{ width: '10%', borderRight: `1px solid ${borderColor}` }} />
-                                                        <Box sx={{ width: '10%', borderRight: `1px solid ${borderColor}` }} />
-                                                        <Box sx={{ flex: 1, p: 1, px: 2, textAlign: 'left', fontSize: '0.7rem', display: 'flex', alignItems: 'center', fontWeight: 600, opacity: 0.9 }}>
-                                                            {downloading ? (sub.subtitle || "") : (
-                                                                <TextField
-                                                                    fullWidth
-                                                                    variant="standard"
-                                                                    value={sub.subtitle || ""}
-                                                                    onChange={(e) => updateSubcategoryLabel(catIdx, subIdx, 'subtitle', e.target.value)}
-                                                                    InputProps={{ disableUnderline: true, sx: { fontSize: '0.7rem', fontWeight: 600 } }}
-                                                                    placeholder="Subtitle"
-                                                                />
-                                                            )}
-                                                        </Box>
-                                                    </>
-                                                )}
                                             </Box>
+                                            <Box sx={{ width: CHECKLIST_COL_SCORE, borderRight: `1px solid ${borderColor}`, flexShrink: 0 }} />
+                                            {isServiceForm ? (
+                                                <Box sx={{ width: CHECKLIST_COL_COMMENTS, flexShrink: 0 }} />
+                                            ) : (
+                                                <Box sx={{ width: CHECKLIST_COL_COMMENTS, p: 1, px: 2, textAlign: 'left', fontSize: '0.7rem', display: 'flex', alignItems: 'center', fontWeight: 600, opacity: 0.9, flexShrink: 0 }}>
+                                                    {downloading ? (sub.subtitle || "") : (
+                                                        <TextField
+                                                            fullWidth
+                                                            variant="standard"
+                                                            value={sub.subtitle || ""}
+                                                            onChange={(e) => updateSubcategoryLabel(catIdx, subIdx, 'subtitle', e.target.value)}
+                                                            InputProps={{ disableUnderline: true, sx: { fontSize: '0.7rem', fontWeight: 600 } }}
+                                                            placeholder="Subtitle"
+                                                        />
+                                                    )}
+                                                </Box>
+                                            )}
                                             {!downloading && (
-                                                <Box sx={{ pr: 1 }}>
+                                                <Box sx={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)' }}>
                                                     <Tooltip title="Add Item">
                                                         <IconButton size="small" onClick={() => handleAddItem(catIdx, subIdx)} sx={{ color: isServiceForm ? '#FFF' : customBlue }}>
                                                             <Plus size={16} />
@@ -2372,7 +2480,7 @@ export default function SheqInstallationForm({
                                                 transition: 'background-color 0.2s',
                                                 "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)" }
                                             }}>
-                                        <Box sx={{ width: isServiceForm ? { xs: '32%', md: '30%' } : { xs: '40%', md: '35%' }, p: downloading ? 0.75 : 1.5, borderRight: `1px solid ${borderColor}`, fontSize: '0.8rem', fontWeight: 500, display: 'flex', alignItems: 'center', color: isDarkMode ? "#cbd5e1" : "#334155" }}>
+                                        <Box sx={{ width: CHECKLIST_COL_ITEM, p: downloading ? 0.75 : 1.5, borderRight: `1px solid ${borderColor}`, fontSize: '0.8rem', fontWeight: 500, display: 'flex', alignItems: 'center', color: isDarkMode ? "#cbd5e1" : "#334155" }}>
                                                     {!downloading && (
                                                         <Tooltip title="Delete Item">
                                                             <IconButton 
@@ -2395,17 +2503,10 @@ export default function SheqInstallationForm({
                                                         />
                                                     )}
                                                 </Box>
-                                                {!isServiceForm && (
-                                                    <Box sx={{ width: { xs: '15%', md: '10%' }, borderRight: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: isDarkMode ? "rgba(255,255,255,0.03)" : "#f1f5f9" }}>
-                                                        <Typography sx={{ fontWeight: 'bold', fontSize: '0.9rem', color: isDarkMode ? "#94a3b8" : "#64748b" }}>
-                                                            {item.rating ?? 3}
-                                                        </Typography>
-                                                    </Box>
-                                                )}
-                                                <Box sx={{ width: isServiceForm ? { xs: '12%', md: '10%' } : { xs: '15%', md: '10%' }, borderRight: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: scoreColBg }}>
+                                                <Box sx={{ width: CHECKLIST_COL_SCORE, borderRight: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: scoreColBg }}>
                                                     {downloading ? (
                                                         <Typography sx={{ fontWeight: 'bold', fontSize: '0.95rem', color: isDarkMode ? "#F9FAFB" : "#111827" }}>
-                                                            {formData.installationMeasures[item.key]?.score || "-"}
+                                                            {formData.installationMeasures[item.key]?.score || ""}
                                                         </Typography>
                                                     ) : (
                                                         <TextField 
@@ -2415,6 +2516,7 @@ export default function SheqInstallationForm({
                                                             onChange={(e) => updateInstallationMeasure(item.key, "score", e.target.value)}
                                                             SelectProps={{ 
                                                                 displayEmpty: true,
+                                                                renderValue: (selected) => selected || "",
                                                                 MenuProps: { PaperProps: { sx: { borderRadius: '8px' } } },
                                                                 sx: { 
                                                                     '& .MuiSelect-select': { 
@@ -2431,17 +2533,15 @@ export default function SheqInstallationForm({
                                                             InputProps={{ disableUnderline: true }}
                                                             sx={{ width: '100%' }}
                                                         >
-                                                            <MenuItem value="">-</MenuItem>
-                                                            <MenuItem value="0">0</MenuItem>
-                                                            <MenuItem value="1">1</MenuItem>
-                                                            <MenuItem value="2">2</MenuItem>
-                                                            <MenuItem value="3">3</MenuItem>
-                                                            <MenuItem value="N/A">N/A</MenuItem>
-                                                            <MenuItem value="NIU">NIU</MenuItem>
+                                                            {(isServiceForm ? SERVICE_SCORE_OPTIONS : INSTALLATION_SCORE_OPTIONS).map((opt) => (
+                                                                <MenuItem key={opt} value={opt}>
+                                                                    {opt}
+                                                                </MenuItem>
+                                                            ))}
                                                         </TextField>
                                                     )}
                                                 </Box>
-                                                <Box sx={{ width: isServiceForm ? { xs: '19%', md: '20%' } : { xs: '30%', md: '45%' }, borderRight: isServiceForm ? `1px solid ${borderColor}` : 'none', display: 'flex', alignItems: 'center' }}>
+                                                <Box sx={{ width: CHECKLIST_COL_COMMENTS, display: 'flex', alignItems: 'center' }}>
                                                     {downloading ? (
                                                         <Typography sx={{ px: 1.5, py: 1, fontSize: '0.8rem', color: textColor, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                                                             {formData.installationMeasures[item.key]?.remedial || " "}
@@ -2454,48 +2554,10 @@ export default function SheqInstallationForm({
                                                             value={formData.installationMeasures[item.key]?.remedial || ""} 
                                                             onChange={(e) => updateInstallationMeasure(item.key, "remedial", e.target.value)}
                                                             InputProps={{ disableUnderline: true, sx: { px: 1.5, py: 1, fontSize: '0.8rem', color: textColor } }}
-                                                            placeholder={isServiceForm ? "Remedial action" : "Comments"}
+                                                            placeholder="Comments"
                                                         />
                                                     )}
                                                 </Box>
-                                                {isServiceForm && (
-                                                    <>
-                                                        <Box sx={{ width: { xs: '19%', md: '20%' }, borderRight: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center' }}>
-                                                            {downloading ? (
-                                                                <Typography sx={{ px: 1.5, py: 1, fontSize: '0.8rem', color: textColor, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                                                                    {formData.installationMeasures[item.key]?.timing || " "}
-                                                                </Typography>
-                                                            ) : (
-                                                                <TextField 
-                                                                    fullWidth 
-                                                                    variant="standard" 
-                                                                    multiline
-                                                                    value={formData.installationMeasures[item.key]?.timing || ""} 
-                                                                    onChange={(e) => updateInstallationMeasure(item.key, "timing", e.target.value)}
-                                                                    InputProps={{ disableUnderline: true, sx: { px: 1.5, py: 1, fontSize: '0.8rem', color: textColor } }}
-                                                                    placeholder="Timing"
-                                                                />
-                                                            )}
-                                                        </Box>
-                                                        <Box sx={{ width: { xs: '18%', md: '20%' }, display: 'flex', alignItems: 'center' }}>
-                                                            {downloading ? (
-                                                                <Typography sx={{ px: 1.5, py: 1, fontSize: '0.8rem', color: textColor, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                                                                    {formData.installationMeasures[item.key]?.responsibility || " "}
-                                                                </Typography>
-                                                            ) : (
-                                                                <TextField 
-                                                                    fullWidth 
-                                                                    variant="standard" 
-                                                                    multiline
-                                                                    value={formData.installationMeasures[item.key]?.responsibility || ""} 
-                                                                    onChange={(e) => updateInstallationMeasure(item.key, "responsibility", e.target.value)}
-                                                                    InputProps={{ disableUnderline: true, sx: { px: 1.5, py: 1, fontSize: '0.8rem', color: textColor } }}
-                                                                    placeholder="Responsibility"
-                                                                />
-                                                            )}
-                                                        </Box>
-                                                    </>
-                                                )}
                                             </Box>
                                         ))}
                                     </Box>
@@ -2504,26 +2566,13 @@ export default function SheqInstallationForm({
                                 {/* Category Total Row */}
                                 {!isSpecialSection && (
                                     <Box sx={{ display: 'flex', bgcolor: isDarkMode ? "rgba(0, 186, 211, 0.1)" : "#E0F7FA", borderTop: `2px solid ${customBlue}` }}>
-                                        <Box sx={{ width: isServiceForm ? { xs: '32%', md: '30%' } : { xs: '40%', md: '35%' }, p: 1.5, textAlign: 'right', fontWeight: 900, fontSize: '0.8rem', color: customBlue, borderRight: `1px solid ${borderColor}` }}>
+                                        <Box sx={{ width: CHECKLIST_COL_ITEM, p: 1.5, textAlign: 'right', fontWeight: 900, fontSize: '0.8rem', color: customBlue, borderRight: `1px solid ${borderColor}` }}>
                                             TOTAL SCORE
                                         </Box>
-                                        {!isServiceForm && (
-                                            <Box sx={{ width: { xs: '15%', md: '10%' }, p: 1.5, textAlign: 'center', fontWeight: 900, fontSize: '0.9rem', color: customBlue, borderRight: `1px solid ${borderColor}` }}>
-                                                {catRating}
-                                            </Box>
-                                        )}
-                                        <Box sx={{ width: isServiceForm ? { xs: '12%', md: '10%' } : { xs: '15%', md: '10%' }, p: 1.5, textAlign: 'center', fontWeight: 900, fontSize: '0.9rem', color: customBlue, borderRight: `1px solid ${borderColor}` }}>
-                                            {catScore}
+                                        <Box sx={{ width: CHECKLIST_COL_SCORE, p: 1.5, textAlign: 'center', fontWeight: 900, fontSize: '0.9rem', color: customBlue, borderRight: `1px solid ${borderColor}` }}>
+                                            {`${catScore} / ${catRating}`}
                                         </Box>
-                                        {isServiceForm ? (
-                                            <>
-                                                <Box sx={{ width: { xs: '19%', md: '20%' }, borderRight: `1px solid ${borderColor}`, bgcolor: isDarkMode ? "rgba(0, 186, 211, 0.05)" : "#B2EBF2" }} />
-                                                <Box sx={{ width: { xs: '19%', md: '20%' }, borderRight: `1px solid ${borderColor}`, bgcolor: isDarkMode ? "rgba(0, 186, 211, 0.05)" : "#B2EBF2" }} />
-                                                <Box sx={{ width: { xs: '18%', md: '20%' }, bgcolor: isDarkMode ? "rgba(0, 186, 211, 0.05)" : "#B2EBF2" }} />
-                                            </>
-                                        ) : (
-                                            <Box sx={{ width: { xs: '30%', md: '45%' }, bgcolor: isDarkMode ? "rgba(0, 186, 211, 0.05)" : "#B2EBF2" }} />
-                                        )}
+                                        <Box sx={{ width: CHECKLIST_COL_COMMENTS, bgcolor: isDarkMode ? "rgba(0, 186, 211, 0.05)" : "#B2EBF2" }} />
                                     </Box>
                                 )}
                             </Box>
@@ -2535,26 +2584,13 @@ export default function SheqInstallationForm({
                             sx={pdfSectionShellSx(downloading, borderColor, pdfMb)}
                         >
                         <Box sx={{ display: 'flex', bgcolor: customBlue, color: "#FFF", borderTop: `2px solid ${isDarkMode ? "#000" : "#FFF"}` }}>
-                            <Box sx={{ width: isServiceForm ? { xs: '32%', md: '30%' } : { xs: '40%', md: '35%' }, p: 1.5, textAlign: 'right', fontWeight: 900, fontSize: '0.9rem', borderRight: `1px solid rgba(255,255,255,0.2)` }}>
+                            <Box sx={{ width: CHECKLIST_COL_ITEM, p: 1.5, textAlign: 'right', fontWeight: 900, fontSize: '0.9rem', borderRight: `1px solid rgba(255,255,255,0.2)` }}>
                                 TOTAL SCORE
                             </Box>
-                            {!isServiceForm && (
-                                <Box sx={{ width: { xs: '15%', md: '10%' }, p: 1.5, textAlign: 'center', fontWeight: 900, fontSize: '1rem', borderRight: `1px solid rgba(255,255,255,0.2)` }}>
-                                {calculateSummaryData().overallRating}
-                                </Box>
-                            )}
-                            <Box sx={{ width: isServiceForm ? { xs: '12%', md: '10%' } : { xs: '15%', md: '10%' }, p: 1.5, textAlign: 'center', fontWeight: 900, fontSize: '1rem', borderRight: `1px solid rgba(255,255,255,0.2)` }}>
-                                {calculateSummaryData().overallScore}
+                            <Box sx={{ width: CHECKLIST_COL_SCORE, p: 1.5, textAlign: 'center', fontWeight: 900, fontSize: '1rem', borderRight: `1px solid rgba(255,255,255,0.2)` }}>
+                                {`${calculateSummaryData().overallScore} / ${calculateSummaryData().overallRating}`}
                             </Box>
-                            {isServiceForm ? (
-                                <>
-                                    <Box sx={{ width: { xs: '19%', md: '20%' }, borderRight: `1px solid rgba(255,255,255,0.2)` }} />
-                                    <Box sx={{ width: { xs: '19%', md: '20%' }, borderRight: `1px solid rgba(255,255,255,0.2)` }} />
-                                    <Box sx={{ width: { xs: '18%', md: '20%' } }} />
-                                </>
-                            ) : (
-                                <Box sx={{ width: { xs: '30%', md: '45%' } }} />
-                            )}
+                            <Box sx={{ width: CHECKLIST_COL_COMMENTS }} />
                         </Box>
                         </Box>
                     </Box>
@@ -2747,6 +2783,202 @@ export default function SheqInstallationForm({
                                             )}
                                         </Box>
                                     ))}
+                                </Box>
+                            </Box>
+                        </Box>
+                    )}
+
+                    {showNonconformanceSection && (
+                        <Box
+                            data-pdf-block
+                            sx={{
+                                mb: pdfMb,
+                                border: `2px solid ${isDarkMode ? NONCONFORMANCE_HEADER.dark.border : NONCONFORMANCE_HEADER.light.border}`,
+                                borderRadius: "8px",
+                                overflow: "hidden",
+                                boxShadow: downloading ? "none" : "0 2px 8px rgba(194, 65, 12, 0.2)",
+                            }}
+                        >
+                            <Box
+                                sx={{
+                                    p: 1.5,
+                                    bgcolor: isDarkMode
+                                        ? NONCONFORMANCE_HEADER.dark.bg
+                                        : NONCONFORMANCE_HEADER.light.bg,
+                                    color: isDarkMode
+                                        ? NONCONFORMANCE_HEADER.dark.text
+                                        : NONCONFORMANCE_HEADER.light.text,
+                                    fontWeight: "bold",
+                                    fontSize: "0.9rem",
+                                    letterSpacing: "0.06em",
+                                    textTransform: "uppercase",
+                                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.15)",
+                                }}
+                            >
+                                {headerLabels.nonconformanceLabel || "NONCONFORMANCE FINDINGS"}
+                            </Box>
+                            <Box sx={{ overflowX: "auto" }}>
+                                <Box sx={{ minWidth: 900, borderTop: `1px solid ${borderColor}` }}>
+                                    <Box
+                                        sx={{
+                                            display: "flex",
+                                            bgcolor: isDarkMode
+                                                ? NONCONFORMANCE_HEADER.dark.columnBg
+                                                : NONCONFORMANCE_HEADER.light.columnBg,
+                                            borderBottom: `1px solid ${isDarkMode ? NONCONFORMANCE_HEADER.dark.border : NONCONFORMANCE_HEADER.light.border}`,
+                                        }}
+                                    >
+                                        {[
+                                            { label: "ITEM", width: "24%" },
+                                            { label: "REMEDIAL ACTION", width: "28%" },
+                                            { label: "TIMING TO COMPLETE ACTION", width: "18%" },
+                                            { label: "PERSON RESPONSIBLE", width: "18%" },
+                                            { label: "DATE CLOSED", width: "12%", last: true },
+                                        ].map((col) => (
+                                            <Box
+                                                key={col.label}
+                                                sx={{
+                                                    width: col.width,
+                                                    p: 1.25,
+                                                    borderRight: col.last ? "none" : `1px solid ${borderColor}`,
+                                                    textAlign: "center",
+                                                    fontWeight: 800,
+                                                    fontSize: "0.7rem",
+                                                    letterSpacing: "0.04em",
+                                                    color: isDarkMode ? "#FED7AA" : "#9A3412",
+                                                }}
+                                            >
+                                                {col.label}
+                                            </Box>
+                                        ))}
+                                    </Box>
+                                    {nonconformingItems.map((row, rowIdx) => {
+                                        const finding =
+                                            formData.nonconformanceFindings?.[row.key] ||
+                                            EMPTY_NONCONFORMANCE_FINDING;
+                                        const isLastRow = rowIdx === nonconformingItems.length - 1;
+                                        const cellSx = {
+                                            borderRight: `1px solid ${borderColor}`,
+                                            display: "flex",
+                                            alignItems: "stretch",
+                                            minHeight: downloading ? 36 : 52,
+                                        };
+                                        const fieldSx = {
+                                            width: "100%",
+                                            "& .MuiInput-root": { fontSize: "0.8rem", color: textColor },
+                                        };
+                                        return (
+                                            <Box
+                                                key={row.key}
+                                                sx={{
+                                                    display: "flex",
+                                                    borderBottom: isLastRow ? "none" : `1px solid ${borderColor}`,
+                                                    bgcolor: isDarkMode ? "rgba(255,255,255,0.01)" : "#FFF",
+                                                }}
+                                            >
+                                                <Box
+                                                    sx={{
+                                                        ...cellSx,
+                                                        width: "24%",
+                                                        p: 1.25,
+                                                        fontWeight: 600,
+                                                        fontSize: "0.8rem",
+                                                        color: textColor,
+                                                        alignItems: "center",
+                                                    }}
+                                                >
+                                                    {row.itemName}
+                                                </Box>
+                                                <Box sx={{ ...cellSx, width: "28%", p: downloading ? 1 : 0.75 }}>
+                                                    {downloading ? (
+                                                        <Typography sx={{ px: 0.5, fontSize: "0.8rem", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                                            {finding.remedialAction || " "}
+                                                        </Typography>
+                                                    ) : (
+                                                        <TextField
+                                                            fullWidth
+                                                            multiline
+                                                            minRows={2}
+                                                            variant="standard"
+                                                            placeholder="Remedial action"
+                                                            value={finding.remedialAction}
+                                                            onChange={(e) =>
+                                                                updateNonconformanceFinding(row.key, "remedialAction", e.target.value)
+                                                            }
+                                                            InputProps={{ disableUnderline: true }}
+                                                            sx={fieldSx}
+                                                        />
+                                                    )}
+                                                </Box>
+                                                <Box sx={{ ...cellSx, width: "18%", p: downloading ? 1 : 0.75 }}>
+                                                    {downloading ? (
+                                                        <Typography sx={{ px: 0.5, fontSize: "0.8rem", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                                            {finding.timing || " "}
+                                                        </Typography>
+                                                    ) : (
+                                                        <TextField
+                                                            fullWidth
+                                                            multiline
+                                                            variant="standard"
+                                                            placeholder="Timing to complete action"
+                                                            value={finding.timing}
+                                                            onChange={(e) =>
+                                                                updateNonconformanceFinding(row.key, "timing", e.target.value)
+                                                            }
+                                                            InputProps={{ disableUnderline: true }}
+                                                            sx={fieldSx}
+                                                        />
+                                                    )}
+                                                </Box>
+                                                <Box sx={{ ...cellSx, width: "18%", p: downloading ? 1 : 0.75 }}>
+                                                    {downloading ? (
+                                                        <Typography sx={{ px: 0.5, fontSize: "0.8rem", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                                            {finding.personResponsible || " "}
+                                                        </Typography>
+                                                    ) : (
+                                                        <TextField
+                                                            fullWidth
+                                                            variant="standard"
+                                                            placeholder="Person responsible"
+                                                            value={finding.personResponsible}
+                                                            onChange={(e) =>
+                                                                updateNonconformanceFinding(row.key, "personResponsible", e.target.value)
+                                                            }
+                                                            InputProps={{ disableUnderline: true }}
+                                                            sx={fieldSx}
+                                                        />
+                                                    )}
+                                                </Box>
+                                                <Box
+                                                    sx={{
+                                                        width: "12%",
+                                                        p: downloading ? 1 : 0.75,
+                                                        display: "flex",
+                                                        alignItems: "stretch",
+                                                        minHeight: downloading ? 36 : 52,
+                                                    }}
+                                                >
+                                                    {downloading ? (
+                                                        <Typography sx={{ px: 0.5, fontSize: "0.8rem" }}>
+                                                            {finding.dateClosed || " "}
+                                                        </Typography>
+                                                    ) : (
+                                                        <TextField
+                                                            fullWidth
+                                                            variant="standard"
+                                                            placeholder="Date closed"
+                                                            value={finding.dateClosed}
+                                                            onChange={(e) =>
+                                                                updateNonconformanceFinding(row.key, "dateClosed", e.target.value)
+                                                            }
+                                                            InputProps={{ disableUnderline: true }}
+                                                            sx={fieldSx}
+                                                        />
+                                                    )}
+                                                </Box>
+                                            </Box>
+                                        );
+                                    })}
                                 </Box>
                             </Box>
                         </Box>
