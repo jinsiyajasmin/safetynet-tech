@@ -215,9 +215,15 @@ app.get("/", (req, res) => {
   res.send("Server is running");
 });
 
+/** Public liveness probe — no env, DB, or auth internals (see security review). */
 const healthHandler = (_req, res) => {
-  res.status(200).json({ status: "healthy" });
+  res.status(200).json({
+    success: true,
+    message: "Health check",
+    status: "healthy",
+  });
 };
+// Lowercase is canonical; capital-H alias for probes/load balancers that vary casing.
 app.get("/api/health", healthHandler);
 app.get("/api/Health", healthHandler);
 
