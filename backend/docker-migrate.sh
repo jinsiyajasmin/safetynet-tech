@@ -22,23 +22,29 @@ if [ -z "$DATABASE_URL" ]; then
 fi
 
 # Dynamically append connection timeout and SSL parameters for Neon database cold starts
-if echo "$DATABASE_URL" | grep -q '\.neon\.tech'; then
-  if ! echo "$DATABASE_URL" | grep -q 'connect_timeout'; then
-    if echo "$DATABASE_URL" | grep -q '\?'; then
-      DATABASE_URL="${DATABASE_URL}&connect_timeout=30"
-    else
-      DATABASE_URL="${DATABASE_URL}?connect_timeout=30"
-    fi
-  fi
-  if ! echo "$DATABASE_URL" | grep -q 'sslmode'; then
-    if echo "$DATABASE_URL" | grep -q '\?'; then
-      DATABASE_URL="${DATABASE_URL}&sslmode=require"
-    else
-      DATABASE_URL="${DATABASE_URL}?sslmode=require"
-    fi
-  fi
-  export DATABASE_URL
-fi
+case "$DATABASE_URL" in
+  *.neon.tech*)
+    case "$DATABASE_URL" in
+      *connect_timeout*) ;;
+      *)
+        case "$DATABASE_URL" in
+          *?\?*) DATABASE_URL="${DATABASE_URL}&connect_timeout=30" ;;
+          *) DATABASE_URL="${DATABASE_URL}?connect_timeout=30" ;;
+        esac
+        ;;
+    esac
+    case "$DATABASE_URL" in
+      *sslmode*) ;;
+      *)
+        case "$DATABASE_URL" in
+          *?\?*) DATABASE_URL="${DATABASE_URL}&sslmode=require" ;;
+          *) DATABASE_URL="${DATABASE_URL}?sslmode=require" ;;
+        esac
+        ;;
+    esac
+    export DATABASE_URL
+    ;;
+esac
 
 echo "Running Prisma migrations..."
 
