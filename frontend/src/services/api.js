@@ -18,6 +18,9 @@ export const UPLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 /** SHEQ and other image-heavy form saves (large JSON bodies on slow networks). */
 export const FORM_RESPONSE_SAVE_TIMEOUT_MS = UPLOAD_TIMEOUT_MS;
 
+/** Large saved forms (SHEQ with images) can exceed the default JSON timeout. */
+export const FORM_RESPONSE_LOAD_TIMEOUT_MS = 2 * 60 * 1000;
+
 const api = axios.create({
   timeout: DEFAULT_TIMEOUT_MS,
 });
@@ -44,11 +47,20 @@ function isPublicAuthRequest(url = "") {
   return /\/auth\/(login|signup|forgot-password|reset-password|verify-email|resend-verification)(\/|$|\?)/.test(url);
 }
 
+function formResponsePath(url = "") {
+  return String(url).split("?")[0];
+}
+
 function isFormResponseWriteUrl(url = "") {
+  const path = formResponsePath(url);
   return (
-    /\/forms\/[^/]+\/responses(\/|$|\?)/.test(url) ||
-    /\/forms\/responses\/[^/]+(\/|$|\?)/.test(url)
+    /\/forms\/[^/]+\/responses\/?$/.test(path) ||
+    /\/forms\/responses\/[^/]+\/?$/.test(path)
   );
+}
+
+function isFormResponseLoadUrl(url = "") {
+  return /\/forms\/responses\/[^/]+\/?$/.test(formResponsePath(url));
 }
 
 export function formatFormSaveError(error) {
@@ -66,7 +78,9 @@ api.interceptors.request.use(
     const url = config.url || "";
 
     if (isFormResponseWriteUrl(url)) {
-      config.timeout = Math.max(config.timeout || 0, FORM_RESPONSE_SAVE_TIMEOUT_MS);
+      config.timeout = FORM_RESPONSE_SAVE_TIMEOUT_MS;
+    } else if (isFormResponseLoadUrl(url) && config.method?.toLowerCase() === "get") {
+      config.timeout = Math.max(config.timeout || 0, FORM_RESPONSE_LOAD_TIMEOUT_MS);
     }
 
     if (token && !isPublicAuthRequest(url)) {
@@ -183,8 +197,10 @@ export const deleteSiteSubfolder = async (siteId, subfolderId) => {
   return response.data;
 };
 
-/** Large saved forms (SHEQ with images) can exceed the default JSON timeout. */
-export const FORM_RESPONSE_LOAD_TIMEOUT_MS = 2 * 60 * 1000;
+/** Pass to api.post/put for form response writes (belt-and-suspenders with the request interceptor). */
+export function formResponseSaveConfig(extra = {}) {
+  return { ...extra, timeout: FORM_RESPONSE_SAVE_TIMEOUT_MS };
+}
 
 export const fetchFormResponseById = async (id, { timeout = FORM_RESPONSE_LOAD_TIMEOUT_MS } = {}) => {
   const response = await api.get(`/forms/responses/${id}`, { timeout });

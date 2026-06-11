@@ -10,13 +10,13 @@ import { ArrowLeft, Save, Download, X, Plus, Trash2, AlertTriangle, Camera } fro
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
-    ResponsiveContainer, Cell, LabelList, AreaChart, Area
+    Cell, LabelList
 } from 'recharts';
 import Layout from "../components/Layout";
 import { useTheme } from "../context/ThemeContext";
 import api, {
     fetchFormResponseById,
-    FORM_RESPONSE_SAVE_TIMEOUT_MS,
+    formResponseSaveConfig,
     formatFormSaveError,
 } from "../services/api";
 import { appendSitepackToAnswers } from "../utils/sitepackContext";
@@ -30,6 +30,7 @@ import {
     compressImageFile,
     compressLogoFile,
     prepareImagesForPdfExport,
+    prepareImagesForSave,
     shrinkDataUrlIfNeeded,
 } from "../utils/compressImage";
 
@@ -1214,9 +1215,10 @@ export default function SheqInstallationForm({
     const action = searchParams.get("action");
     const isDownloadSession = action === "download" || autoDownload;
     const isViewMode = searchParams.get("view") === "true";
+    const fromTemplateId = searchParams.get("fromTemplate");
     const containerRef = useRef(null);
 
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(() => Boolean(id || fromTemplateId));
     const [saving, setSaving] = useState(false);
     const [downloading, setDownloading] = useState(false);
     const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -1305,16 +1307,6 @@ export default function SheqInstallationForm({
         images: []
     });
 
-    const fromTemplateId = searchParams.get("fromTemplate");
-
-    useEffect(() => {
-        if (id) {
-            loadSubmission(id);
-        } else if (fromTemplateId) {
-            loadSubmission(fromTemplateId, { asTemplate: true });
-        }
-    }, [id, fromTemplateId]);
-
     const listPath =
         category === SHEQ_INSPECTION_CATEGORY
             ? "/sheq-inspection"
@@ -1324,19 +1316,25 @@ export default function SheqInstallationForm({
 
     const prepareSavePayload = async (name = "", tags = "") => {
         const payload = buildSavePayload(name, tags);
-        const [images, logo, logoRight] = await Promise.all([
-            prepareImagesForPdfExport(normalizeFormImages(payload.formData?.images)),
+        const [images, logo, logoRight, signature] = await Promise.all([
+            prepareImagesForSave(normalizeFormImages(payload.formData?.images)),
             shrinkDataUrlIfNeeded(payload.docInfo?.logo, {
-                maxWidth: 1280,
-                maxHeight: 1280,
+                maxWidth: 640,
+                maxHeight: 320,
                 quality: 0.82,
-                thresholdBytes: 280_000,
+                thresholdBytes: 180_000,
             }),
             shrinkDataUrlIfNeeded(payload.docInfo?.logoRight, {
-                maxWidth: 1280,
-                maxHeight: 1280,
+                maxWidth: 640,
+                maxHeight: 320,
                 quality: 0.82,
-                thresholdBytes: 280_000,
+                thresholdBytes: 180_000,
+            }),
+            shrinkDataUrlIfNeeded(payload.docInfo?.signature, {
+                maxWidth: 800,
+                maxHeight: 280,
+                quality: 0.8,
+                thresholdBytes: 120_000,
             }),
         ]);
         return {
@@ -1345,6 +1343,7 @@ export default function SheqInstallationForm({
                 ...payload.docInfo,
                 ...(logo ? { logo } : {}),
                 ...(logoRight ? { logoRight } : {}),
+                ...(signature ? { signature } : {}),
             },
             formData: {
                 ...payload.formData,
@@ -1357,7 +1356,7 @@ export default function SheqInstallationForm({
         setSaving(true);
         try {
             const payload = await prepareSavePayload(name, tags);
-            const saveRequest = { timeout: FORM_RESPONSE_SAVE_TIMEOUT_MS };
+            const saveRequest = formResponseSaveConfig();
             const templateTitle =
                 category === SHEQ_INSPECTION_CATEGORY
                     ? SHEQ_INSPECTION_CATEGORY
@@ -1620,7 +1619,6 @@ export default function SheqInstallationForm({
             name: asTemplate ? "" : baseName,
             tags: asTemplate ? "" : ans.tags || "",
         });
-        resetDirty();
     };
 
     const loadSubmission = async (submissionId, { asTemplate = false } = {}) => {
@@ -1651,6 +1649,15 @@ export default function SheqInstallationForm({
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        if (id) {
+            loadSubmission(id);
+        } else if (fromTemplateId) {
+            loadSubmission(fromTemplateId, { asTemplate: true });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- load once per route id / template
+    }, [id, fromTemplateId]);
 
     const buildSavePayload = (name = "", tags = "") => {
         const displayName =
@@ -2693,8 +2700,8 @@ export default function SheqInstallationForm({
                     </>
                     )}
 
-                    {/* Summary Section */}
-                    {id && visibleSections.summary && (
+                    {/* Summary Section — defer chart until load completes (avoids Recharts resize loops). */}
+                    {id && !loading && visibleSections.summary && (
                         <>
                             <Box sx={{ mt: downloading ? 1 : 6, position: 'relative', breakInside: 'avoid' }}>
                                 {!downloading && (
@@ -2800,8 +2807,9 @@ export default function SheqInstallationForm({
                                         bgcolor: '#FFF',
                                     }}
                                 >
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart
+                                        <BarChart
+                                                width={Math.max(640, summaryChartItems.length ? 900 : 640)}
+                                                height={Math.max(400, summaryChartItems.length * 35)}
                                                 data={summaryChartItems}
                                                 layout="vertical"
                                                 margin={{ top: 10, right: 50, left: 160, bottom: 10 }}
@@ -2839,7 +2847,6 @@ export default function SheqInstallationForm({
                                                     <LabelList dataKey="rate" position="right" style={{ fontSize: 10, fontWeight: 800, fill: chartLabelColor }} formatter={(v) => `${v}%`} offset={10} />
                                                 </Bar>
                                             </BarChart>
-                                        </ResponsiveContainer>
                                 </Box>
                             </Box>
                             )}

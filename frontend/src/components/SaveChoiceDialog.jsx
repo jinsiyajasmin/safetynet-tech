@@ -16,6 +16,7 @@ import {
     RadioGroup,
     FormControlLabel,
     Radio,
+    CircularProgress,
 } from "@mui/material";
 import { Save, FilePlus, X, Tag, Edit3, Globe, Lock } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
@@ -59,6 +60,7 @@ export default function SaveChoiceDialog({
     }, [open, defaultName, defaultTags, defaultVisibility, templateFlow, existingId]);
 
     const handleAction = (asNew) => {
+        if (saving) return;
         if (!name.trim()) {
             alert("Please provide a name for this record.");
             return;
@@ -111,8 +113,29 @@ export default function SaveChoiceDialog({
                 </IconButton>
             </DialogTitle>
 
-            <DialogContent sx={{ px: 3, pt: 1, pb: 3 }}>
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <DialogContent sx={{ px: 3, pt: 1, pb: 3, position: "relative" }}>
+                {saving ? (
+                    <Box
+                        sx={{
+                            position: "absolute",
+                            inset: 0,
+                            zIndex: 2,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 1.5,
+                            bgcolor: isDarkMode ? "rgba(27, 33, 44, 0.92)" : "rgba(255,255,255,0.92)",
+                            borderRadius: 2,
+                        }}
+                    >
+                        <CircularProgress size={36} sx={{ color: "#E89F17" }} />
+                        <Typography variant="body2" color="text.secondary">
+                            Saving report… large forms with photos can take up to a minute.
+                        </Typography>
+                    </Box>
+                ) : null}
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 3, opacity: saving ? 0.35 : 1 }}>
                     <Box>
                         <Typography variant="body2" sx={{ mb: 1, fontWeight: 500, color: isDarkMode ? "#9CA3AF" : "#6B7280" }}>
                             Identification Details

@@ -22,6 +22,12 @@ const {
 
 const STATIC_CONCERN_FORM_TITLE = "Concern Form";
 
+function resolveFormResponseCategory(category) {
+  return category != null && String(category).trim() !== ""
+    ? String(category).trim()
+    : null;
+}
+
 /** Category filter for list queries (includes legacy SHEQ rows with null category). */
 function buildCategoryWhere(categoryParam) {
   if (!categoryParam) return null;
@@ -295,15 +301,10 @@ exports.saveResponse = async (req, res) => {
       return res.status(404).json({ success: false, message: "Form not found" });
     }
 
-    const resolvedCategory =
-      category != null && String(category).trim() !== ""
-        ? String(category).trim()
-        : null;
-
     const response = await prisma.formResponse.create({
       data: {
         answers: sanitizedAnswers,
-        category: resolvedCategory,
+        category: resolveFormResponseCategory(category),
         formId: form.id,
         submittedById: submitterId,
       }

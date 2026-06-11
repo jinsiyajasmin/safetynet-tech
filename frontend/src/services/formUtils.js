@@ -1,4 +1,4 @@
-import api, { FORM_RESPONSE_SAVE_TIMEOUT_MS } from './api';
+import api, { formResponseSaveConfig } from './api';
 
 /**
  * Ensures a generic parent "Form" definition exists in the database for our specific hardcoded forms.
@@ -15,7 +15,7 @@ export const getOrCreateTemplateForm = async (formTitle) => {
         return templateFormCache[formTitle];
     }
     try {
-        const requestConfig = { timeout: FORM_RESPONSE_SAVE_TIMEOUT_MS };
+        const requestConfig = formResponseSaveConfig();
         // First try a narrow title lookup; this avoids downloading every saved form before saving.
         const res = await api.get('/forms', {
             ...requestConfig,

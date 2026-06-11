@@ -68,7 +68,7 @@ function canViewFormResponse(row, userId, clientId, options = {}) {
     Boolean(clientId && submitterClientId) && clientId === submitterClientId;
 
   // SHEQ Installation / Inspection — operational reports.
-  // Admins / acting superadmin see all non-site-pack SHEQ; others fall through to visibility.
+  // Admins / acting superadmin see all non-site-pack SHEQ (including private); others fall through.
   // Site-pack SHEQ fills (siteId in answers) skip this block — submitter-only like other site fills.
   if (isSheqResponse(row) && !siteContextPresent(row.answers)) {
     if (globalAccess) return true;
