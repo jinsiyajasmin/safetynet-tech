@@ -35,15 +35,55 @@ export function appendSitepackToAnswers(payload, { siteId, subfolderId }) {
   return out;
 }
 
-export function matchesSitepackScope(record, { siteId, subfolderId }) {
+/** Sentinel id for site-pack items saved before subfolders or without a subfolder. */
+export const UNFILED_SUBFOLDER_ID = "__sitepack_unfiled__";
+
+/** Sentinel id for viewing every saved item in a category across all subfolders. */
+export const ALL_SITEPACK_FORMS_ID = "__sitepack_all__";
+
+export function createUnfiledSubfolder() {
+  return { id: UNFILED_SUBFOLDER_ID, name: "Unfiled items", isUnfiled: true };
+}
+
+export function createAllFormsSubfolder(count = 0) {
+  return {
+    id: ALL_SITEPACK_FORMS_ID,
+    name: "All saved forms",
+    isAllForms: true,
+    itemCount: count,
+  };
+}
+
+export function isUnfiledSubfolder(subfolder) {
+  return (
+    subfolder?.isUnfiled === true || subfolder?.id === UNFILED_SUBFOLDER_ID
+  );
+}
+
+export function isAllFormsSubfolder(subfolder) {
+  return (
+    subfolder?.isAllForms === true || subfolder?.id === ALL_SITEPACK_FORMS_ID
+  );
+}
+
+export function matchesSitepackScope(
+  record,
+  { siteId, subfolderId, unfiledOnly = false, allFormsOnly = false } = {}
+) {
   const rSiteId = record.answers?.siteId ?? record.siteId;
   const rSubfolderId = normalizeSitepackId(
     record.answers?.subfolderId ?? record.subfolderId
   );
   const wantSite = normalizeSitepackId(siteId);
   const wantSubfolder = normalizeSitepackId(subfolderId);
+  const viewingAll =
+    allFormsOnly || subfolderId === ALL_SITEPACK_FORMS_ID;
+  const viewingUnfiled =
+    unfiledOnly || subfolderId === UNFILED_SUBFOLDER_ID;
 
   if (wantSite && normalizeSitepackId(rSiteId) !== wantSite) return false;
+  if (viewingAll) return true;
+  if (viewingUnfiled) return !rSubfolderId;
   if (wantSubfolder) return rSubfolderId === wantSubfolder;
   if (wantSite) return true;
   return !rSubfolderId;
@@ -57,10 +97,19 @@ export function sitepackNavState({ siteId, subfolderId, moduleTitle }) {
   return state;
 }
 
-export function sitepackSearchParams({ siteId, subfolderId, category, extra = {} }) {
+export function sitepackSearchParams({
+  siteId,
+  subfolderId,
+  category,
+  extra = {},
+}) {
   const params = { ...extra };
   const sid = normalizeSitepackId(siteId);
-  const sfid = normalizeSitepackId(subfolderId);
+  const sfid =
+    subfolderId === UNFILED_SUBFOLDER_ID ||
+    subfolderId === ALL_SITEPACK_FORMS_ID
+      ? null
+      : normalizeSitepackId(subfolderId);
   if (sid) params.siteId = sid;
   if (sfid) params.subfolderId = sfid;
   if (category) params.category = category;

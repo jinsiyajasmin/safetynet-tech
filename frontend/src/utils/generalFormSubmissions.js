@@ -14,6 +14,7 @@ export const GENERAL_FORM_TEMPLATE_TITLES = [
   "Site Induction Form",
   "LOLER Inspection Form",
   "PUWER Inspection Form",
+  "Alimak Weekly Check",
 ];
 
 const TEMPLATE_TITLE_SET = new Set(GENERAL_FORM_TEMPLATE_TITLES);
@@ -21,6 +22,29 @@ const TEMPLATE_TITLE_SET = new Set(GENERAL_FORM_TEMPLATE_TITLES);
 export function submissionHasSiteContext(sub) {
   const siteId = sub?.answers?.siteId ?? sub?.siteId;
   return siteId != null && String(siteId).trim() !== "";
+}
+
+/**
+ * Site-pack Friday Pack fills, including legacy rows saved before category/subfolder
+ * metadata was always written consistently.
+ */
+export function isFridayPackSiteSubmission(sub) {
+  const category = (sub?.category || "").trim();
+  if (category === FRIDAY_PACK_FORMS_CATEGORY) return true;
+  if (!submissionHasSiteContext(sub)) return false;
+  if (category && category !== GENERAL_FORMS_CATEGORY) return false;
+  return true;
+}
+
+/** Whether a form response belongs in a site-pack category list (e.g. Friday Pack). */
+export function belongsInSitepackCategory(record, categoryTitle) {
+  if (!record) return false;
+  const cat = (record.category || "").trim();
+  if (cat === categoryTitle) return true;
+  if (categoryTitle === FRIDAY_PACK_FORMS_CATEGORY) {
+    return isFridayPackSiteSubmission(record);
+  }
+  return false;
 }
 
 export function userOwnsFormSubmission(sub, userId) {

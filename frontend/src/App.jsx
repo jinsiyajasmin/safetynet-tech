@@ -40,6 +40,7 @@ import AuditActionForm from './pages/AuditActionForm';
 import SiteInductionRecordForm from './pages/SiteInductionRecordForm';
 import LolerInspectionForm from './pages/LolerInspectionForm';
 import PuwerInspectionForm from './pages/PuwerInspectionForm';
+import AlimakWeeklyCheckForm from './pages/AlimakWeeklyCheckForm';
 import CreateForm from './pages/CreateForm';
 import SheqInstallationForm from './pages/SheqInstallationForm';
 import SheqInspectionSelectionPage from './pages/SheqInspectionSelectionPage';
@@ -199,6 +200,8 @@ function App() {
           <Route path="/general-forms/loler-inspection-form/:id" element={<RequireAuth><LolerInspectionForm /></RequireAuth>} />
           <Route path="/general-forms/puwer-inspection-form" element={<RequireAuth><PuwerInspectionForm /></RequireAuth>} />
           <Route path="/general-forms/puwer-inspection-form/:id" element={<RequireAuth><PuwerInspectionForm /></RequireAuth>} />
+          <Route path="/general-forms/alimak-weekly-check" element={<RequireAuth><AlimakWeeklyCheckForm /></RequireAuth>} />
+          <Route path="/general-forms/alimak-weekly-check/:id" element={<RequireAuth><AlimakWeeklyCheckForm /></RequireAuth>} />
           <Route path="/frida-forms" element={<RequireAuth><GenericReportPage pageTitle="Friday pack forms" /></RequireAuth>} />
 
           {/* Dashboards */}

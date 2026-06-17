@@ -82,6 +82,12 @@ const TEMPLATES = [
         description: "Plant equipment formal maintenance certification",
         path: "/general-forms/puwer-inspection-form",
     },
+    {
+        id: "alimak-weekly-check",
+        title: "Alimak Weekly Check",
+        description: "Weekly hoist safety inspection checklist",
+        path: "/general-forms/alimak-weekly-check",
+    },
 ];
 
 export default function GeneralFormsList() {

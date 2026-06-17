@@ -72,7 +72,12 @@ import api, {
   fetchDocumentPreviewBlob,
   formatUploadError,
 } from "../services/api";
-import { matchesSitepackScope, sitepackSearchParams } from "../utils/sitepackContext";
+import { matchesSitepackScope, sitepackSearchParams, normalizeSitepackId, createUnfiledSubfolder, createAllFormsSubfolder, isUnfiledSubfolder, isAllFormsSubfolder, ALL_SITEPACK_FORMS_ID } from "../utils/sitepackContext";
+import {
+    FRIDAY_PACK_FORMS_CATEGORY,
+    belongsInSitepackCategory,
+    isFridayPackSiteSubmission,
+} from "../utils/generalFormSubmissions";
 import {
     SITEPACK_FORM_GROUPS,
     SITEPACK_REPORT_MODULES,
@@ -160,6 +165,12 @@ const TEMPLATES = [
         title: "PUWER Inspection Form",
         description: "Plant equipment formal maintenance certification",
         path: "/general-forms/puwer-inspection-form",
+    },
+    {
+        id: "alimak-weekly-check",
+        title: "Alimak Weekly Check",
+        description: "Weekly hoist safety inspection checklist",
+        path: "/general-forms/alimak-weekly-check",
     }
 ];
 
@@ -300,6 +311,7 @@ function getSitepackStandardFormPath(menuDoc, responseId) {
         "Site Induction Form": `/general-forms/site-induction-form/${responseId}`,
         "LOLER Inspection Form": `/general-forms/loler-inspection-form/${responseId}`,
         "PUWER Inspection Form": `/general-forms/puwer-inspection-form/${responseId}`,
+        "Alimak Weekly Check": `/general-forms/alimak-weekly-check/${responseId}`,
     };
     return routes[t] || null;
 }
@@ -343,6 +355,9 @@ export default function SitepackManagement() {
     const [selectedModule, setSelectedModule] = useState(null);
     const [subfolders, setSubfolders] = useState([]);
     const [subfoldersLoading, setSubfoldersLoading] = useState(false);
+    const [subfolderItemCounts, setSubfolderItemCounts] = useState({});
+    const [showUnfiledSubfolder, setShowUnfiledSubfolder] = useState(false);
+    const [totalCategoryItemCount, setTotalCategoryItemCount] = useState(0);
     const [createSubfolderOpen, setCreateSubfolderOpen] = useState(false);
     const [newSubfolderName, setNewSubfolderName] = useState("");
     const [subfolderError, setSubfolderError] = useState("");
@@ -357,11 +372,14 @@ export default function SitepackManagement() {
     const location = useLocation();
 
     const getSiteId = () => selectedSite?._id || selectedSite?.id;
-    const getSubfolderId = () => selectedSubfolder?.id;
+    const getSubfolderId = () =>
+        isUnfiledSubfolder(selectedSubfolder) || isAllFormsSubfolder(selectedSubfolder)
+            ? null
+            : selectedSubfolder?.id;
     const sitepackParams = (extra = {}) =>
         sitepackSearchParams({
             siteId: getSiteId(),
-            subfolderId: getSubfolderId(),
+            subfolderId: selectedSubfolder?.id,
             category: selectedModule?.title,
             extra,
         });
@@ -438,9 +456,9 @@ export default function SitepackManagement() {
         loadSites();
     }, [search]);
 
-    // Load subfolders when a site is selected
+    // Load subfolders when a site category is selected
     useEffect(() => {
-        if (!selectedSite) {
+        if (!selectedSite || !selectedModule) {
             setSubfolders([]);
             return;
         }
@@ -452,6 +470,13 @@ export default function SitepackManagement() {
                 if (location.state?.subfolderId && !selectedSubfolder?.name) {
                     const match = (list || []).find((sf) => sf.id === location.state.subfolderId);
                     if (match) setSelectedSubfolder(match);
+                } else if (
+                    selectedSubfolder?.id &&
+                    !isUnfiledSubfolder(selectedSubfolder) &&
+                    !isAllFormsSubfolder(selectedSubfolder)
+                ) {
+                    const match = (list || []).find((sf) => sf.id === selectedSubfolder.id);
+                    if (match) setSelectedSubfolder(match);
                 }
             } catch (error) {
                 console.error("Error loading subfolders:", error);
@@ -460,27 +485,81 @@ export default function SitepackManagement() {
             }
         };
         loadSubfolders();
-    }, [selectedSite]);
+    }, [selectedSite, selectedModule]);
 
-    // Load module counts when inside a subfolder
+    // Per-subfolder item counts when picking a subfolder inside a category
     useEffect(() => {
-        if (selectedSite && selectedSubfolder) {
+        if (!selectedSite || !selectedModule || selectedSubfolder) {
+            setSubfolderItemCounts({});
+            setShowUnfiledSubfolder(false);
+            setTotalCategoryItemCount(0);
+            return;
+        }
+
+        let cancelled = false;
+        const loadSubfolderCounts = async () => {
+            const siteId = getSiteId();
+            const moduleTitle = selectedModule.title;
+            const useBroadFormFetch = moduleTitle === FRIDAY_PACK_FORMS_CATEGORY;
+            try {
+                const [formsRes, docsRes] = await Promise.all([
+                    fetchFormResponsesList(
+                        useBroadFormFetch ? { siteId } : { category: moduleTitle, siteId }
+                    ),
+                    fetchDocuments(siteId, moduleTitle),
+                ]);
+                if (cancelled) return;
+
+                const counts = {};
+                let unfiled = 0;
+                let total = 0;
+                const bump = (subfolderId) => {
+                    const sfid = normalizeSitepackId(subfolderId);
+                    if (sfid) counts[sfid] = (counts[sfid] || 0) + 1;
+                    else unfiled += 1;
+                    total += 1;
+                };
+
+                (formsRes?.data || []).forEach((row) => {
+                    if (!matchesSitepackScope(row, { siteId })) return;
+                    if (!belongsInSitepackCategory(row, moduleTitle)) return;
+                    bump(row.answers?.subfolderId ?? row.subfolderId);
+                });
+                (docsRes?.documents || []).forEach((doc) => bump(doc.subfolderId));
+
+                setSubfolderItemCounts(counts);
+                setShowUnfiledSubfolder(unfiled > 0);
+                setTotalCategoryItemCount(total);
+            } catch (error) {
+                console.error("Error loading subfolder counts:", error);
+            }
+        };
+        loadSubfolderCounts();
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedSite, selectedModule, selectedSubfolder, location.key]);
+
+    // Load module counts when viewing categories for a site
+    useEffect(() => {
+        if (selectedSite && !selectedModule) {
             const loadCounts = async () => {
                 try {
                     const siteId = getSiteId();
-                    const subfolderId = getSubfolderId();
-                    const { counts } = await fetchDocumentCounts(siteId, subfolderId);
+                    const { counts } = await fetchDocumentCounts(siteId);
 
                     let formCountsByCategory = {};
                     try {
-                        const res = await fetchFormResponsesList({ siteId, subfolderId });
+                        const res = await fetchFormResponsesList({ siteId });
                         if (res?.success) {
                             const siteResponses = (res.data || []).filter((r) =>
-                                matchesSitepackScope(r, { siteId, subfolderId })
+                                matchesSitepackScope(r, { siteId })
                             );
 
                             siteResponses.forEach(r => {
-                                const cat = r.category || "General";
+                                const cat = isFridayPackSiteSubmission(r)
+                                    ? FRIDAY_PACK_FORMS_CATEGORY
+                                    : (r.category || "General");
                                 formCountsByCategory[cat] = (formCountsByCategory[cat] || 0) + 1;
                             });
                         }
@@ -511,13 +590,15 @@ export default function SitepackManagement() {
             };
             loadCounts();
         }
-    }, [selectedSite, selectedSubfolder, location.key]);
+    }, [selectedSite, selectedModule, location.key]);
 
-    // Load documents when module selected (location.key refreshes after saving a form).
+    // Load documents when module + subfolder selected (location.key refreshes after saving a form).
     useEffect(() => {
-        if (selectedSite && selectedSubfolder && selectedModule) {
-            reloadModuleDocuments();
+        if (!selectedSite || !selectedSubfolder || !selectedModule) {
+            setDocs([]);
+            return;
         }
+        reloadModuleDocuments();
     }, [selectedSite, selectedSubfolder, selectedModule, location.key]);
 
     const generalFormTitleToPath = useMemo(
@@ -562,9 +643,10 @@ export default function SitepackManagement() {
     };
 
     const handleBackToSites = () => {
-        if (selectedModule) {
+        if (selectedModule && selectedSubfolder) {
+            setSelectedSubfolder(null);
+        } else if (selectedModule) {
             setSelectedModule(null);
-        } else if (selectedSubfolder) {
             setSelectedSubfolder(null);
         } else {
             setSelectedSite(null);
@@ -573,7 +655,6 @@ export default function SitepackManagement() {
 
     const handleSubfolderClick = (subfolder) => {
         setSelectedSubfolder(subfolder);
-        setSelectedModule(null);
     };
 
     const handleOpenCreateSubfolder = () => {
@@ -603,7 +684,6 @@ export default function SitepackManagement() {
             setCreateSubfolderOpen(false);
             setNewSubfolderName("");
             setSelectedSubfolder(subfolder);
-            setSelectedModule(null);
         } catch (error) {
             console.error("Failed to create subfolder", error);
             setSubfolderError(error.response?.data?.message || "Failed to create subfolder");
@@ -614,6 +694,7 @@ export default function SitepackManagement() {
 
     const handleModuleClick = (module) => {
         setSelectedModule(module);
+        setSelectedSubfolder(null);
     };
 
     const handleReportModuleClick = (reportModule) => {
@@ -629,20 +710,48 @@ export default function SitepackManagement() {
         if (!selectedSite || !selectedSubfolder || !selectedModule) return;
         const siteId = getSiteId();
         const subfolderId = getSubfolderId();
+        const moduleTitle = selectedModule.title;
+        const allFormsView = isAllFormsSubfolder(selectedSubfolder);
+        const unfiledView = isUnfiledSubfolder(selectedSubfolder);
+        const useBroadFormFetch = moduleTitle === FRIDAY_PACK_FORMS_CATEGORY;
         let allItems = [];
-        const { documents } = await fetchDocuments(siteId, selectedModule.title, subfolderId);
-        if (documents) allItems = [...allItems, ...documents];
 
         try {
-            const res = await fetchFormResponsesList({
-                category: selectedModule.title,
+            const { documents } = await fetchDocuments(
                 siteId,
-                subfolderId,
+                moduleTitle,
+                allFormsView || unfiledView ? undefined : subfolderId
+            );
+            const scopedDocs = (documents || []).filter((doc) => {
+                const docSubfolderId = normalizeSitepackId(doc.subfolderId);
+                if (allFormsView) return true;
+                if (unfiledView) return !docSubfolderId;
+                return docSubfolderId === subfolderId;
             });
+            allItems = [...allItems, ...scopedDocs];
+        } catch (error) {
+            console.error("Failed to fetch documents for module", error);
+        }
+
+        try {
+            const res = await fetchFormResponsesList(
+                useBroadFormFetch ? { siteId } : { category: moduleTitle, siteId }
+            );
             if (res?.success) {
-                const siteResponses = (res.data || []).filter((r) =>
-                    matchesSitepackScope(r, { siteId, subfolderId })
-                );
+                const scopeSubfolderId = allFormsView
+                    ? ALL_SITEPACK_FORMS_ID
+                    : unfiledView
+                      ? selectedSubfolder.id
+                      : subfolderId;
+                const siteResponses = (res.data || []).filter((r) => {
+                    if (!belongsInSitepackCategory(r, moduleTitle)) return false;
+                    return matchesSitepackScope(r, {
+                        siteId,
+                        subfolderId: scopeSubfolderId,
+                        unfiledOnly: unfiledView,
+                        allFormsOnly: allFormsView,
+                    });
+                });
                 const mappedForms = siteResponses.map((r) => {
                     const customName = r.name || r.answers?.name || r.answers?.formMetadata?.name || r.answers?.report_heading;
                     const templateTitle = r.form?.title || r.title || r.category || "Form Response";
@@ -970,7 +1079,7 @@ export default function SitepackManagement() {
             handleMenuClose();
             const resId = menuDoc.id || menuDoc._id;
             const templateTitle = getSitepackFormTemplateTitle(menuDoc);
-            const standardForms = ['Tool Box Talk Register', 'RAMS Briefing Form', 'Site Induction Register', 'Management Site Inspection Report', 'Daily Safe Start Briefing Sheet', 'Audit Action Form', 'Site Induction Form', 'LOLER Inspection Form', 'PUWER Inspection Form'];
+            const standardForms = ['Tool Box Talk Register', 'RAMS Briefing Form', 'Site Induction Register', 'Management Site Inspection Report', 'Daily Safe Start Briefing Sheet', 'Audit Action Form', 'Site Induction Form', 'LOLER Inspection Form', 'PUWER Inspection Form', 'Alimak Weekly Check'];
             
             // Only supported for custom form builder forms
             if (!standardForms.includes(templateTitle)) {
@@ -1044,22 +1153,27 @@ export default function SitepackManagement() {
                                 Select a site to manage its document packs
                             </Typography>
                         )}
-                        {selectedSite && !selectedSubfolder && !selectedModule && (
+                        {selectedSite && !selectedModule && (
                             <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5 }}>
-                                Create or open a subfolder to manage documents
+                                Select a category to manage documents
                             </Typography>
                         )}
-                        {selectedSubfolder && !selectedModule && (
+                        {selectedSite && selectedModule && !selectedSubfolder && (
                             <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5 }}>
-                                {selectedSite.name} &bull; Select a module to manage documents
+                                {selectedSite.name} &bull; Create or open a subfolder
                             </Typography>
                         )}
-                        {selectedModule && (
+                        {selectedModule && selectedSubfolder && (
                             <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5 }}>
-                                {selectedSite.name}{selectedSubfolder ? ` / ${selectedSubfolder.name}` : ""}
+                                {selectedSite.name} / {selectedModule.title} / {selectedSubfolder.name}
+                                {isUnfiledSubfolder(selectedSubfolder)
+                                    ? " (saved before subfolders were used)"
+                                    : isAllFormsSubfolder(selectedSubfolder)
+                                      ? " (all subfolders)"
+                                      : ""}
                             </Typography>
                         )}
-                        {selectedModule && (
+                        {selectedModule && selectedSubfolder && (
                             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                                 {filteredDocs.length} documents
                             </Typography>
@@ -1068,7 +1182,7 @@ export default function SitepackManagement() {
                     </Box>
                 </Box>
 
-                {selectedSite && !selectedSubfolder && !selectedModule ? (
+                {selectedSite && selectedModule && !selectedSubfolder ? (
                     <Button
                         variant="contained"
                         startIcon={<AddIcon />}
@@ -1083,7 +1197,7 @@ export default function SitepackManagement() {
                     >
                         Create Subfolder
                     </Button>
-                ) : selectedModule && isSitepackReportModule(selectedModule.title) ? (
+                ) : selectedModule && selectedSubfolder && !isUnfiledSubfolder(selectedSubfolder) && !isAllFormsSubfolder(selectedSubfolder) && isSitepackReportModule(selectedModule.title) ? (
                     <Button
                         variant="contained"
                         startIcon={<DriveFileRenameOutlineIcon />}
@@ -1098,7 +1212,7 @@ export default function SitepackManagement() {
                     >
                         New Report
                     </Button>
-                ) : selectedModule && selectedModule.title === "Friday Pack Forms" ? (
+                ) : selectedModule && selectedSubfolder && !isUnfiledSubfolder(selectedSubfolder) && !isAllFormsSubfolder(selectedSubfolder) && selectedModule.title === "Friday Pack Forms" ? (
                     <Button
                         variant="contained"
                         startIcon={<DriveFileRenameOutlineIcon />}
@@ -1113,7 +1227,7 @@ export default function SitepackManagement() {
                     >
                         Create Form
                     </Button>
-                ) : selectedModule ? (
+                ) : selectedModule && selectedSubfolder && !isUnfiledSubfolder(selectedSubfolder) && !isAllFormsSubfolder(selectedSubfolder) ? (
                     <Box sx={{ display: 'flex', gap: 2 }}>
                         <Button
                             variant="contained"
@@ -1130,7 +1244,7 @@ export default function SitepackManagement() {
                             Upload Document
                         </Button>
                     </Box>
-                ) : selectedSubfolder && !selectedModule ? (
+                ) : selectedSite && !selectedModule ? (
                     <Button
                         variant="contained"
                         startIcon={<BarChartIcon />}
@@ -1151,11 +1265,15 @@ export default function SitepackManagement() {
             {/* Main Content Grid (Site List or Documents) */}
             {
                 selectedSite ? (
-                    selectedSubfolder ? (
                     selectedModule ? (
+                    selectedSubfolder ? (
                         // DOCUMENT VIEW
                         <>
-
+                            {filteredDocs.length === 0 ? (
+                                <Typography color="text.secondary" align="center" sx={{ py: 5 }}>
+                                    No documents or saved forms in this folder yet.
+                                </Typography>
+                            ) : null}
                             <Grid container spacing={3}>
                                 {filteredDocs.map((doc) => {
                                     let icon = <DescriptionOutlinedIcon sx={{ fontSize: 32 }} />;
@@ -1298,6 +1416,188 @@ export default function SitepackManagement() {
                             </Grid>
                         </>
                     ) : (
+                        // SUBFOLDER LIST VIEW
+                        subfoldersLoading ? (
+                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
+                                <CircularProgress />
+                            </Box>
+                        ) : (
+                            <Grid container spacing={3}>
+                                {totalCategoryItemCount > 0 ? (
+                                    <Grid item xs={12} sm={6} md={4}>
+                                        <Card
+                                            variant="outlined"
+                                            onClick={() =>
+                                                handleSubfolderClick(
+                                                    createAllFormsSubfolder(totalCategoryItemCount)
+                                                )
+                                            }
+                                            sx={{
+                                                borderRadius: 4,
+                                                width: 350,
+                                                height: 120,
+                                                display: "flex",
+                                                flexDirection: "column",
+                                                bgcolor: isDarkMode ? "#111827" : "#FFFFFF",
+                                                border: isDarkMode ? "1px solid #3B82F6" : "1px solid #93C5FD",
+                                                transition: "all 0.2s ease-in-out",
+                                                cursor: "pointer",
+                                                "&:hover": {
+                                                    borderColor: "#3B82F6",
+                                                    boxShadow: isDarkMode
+                                                        ? "0 4px 20px rgba(0,0,0,0.4)"
+                                                        : "0 4px 6px -1px rgba(59, 130, 246, 0.15)",
+                                                },
+                                            }}
+                                        >
+                                            <CardActionArea sx={{ height: "100%", p: 3, display: "flex", justifyContent: "flex-start", alignItems: "center" }}>
+                                                <Box sx={{ display: "flex", alignItems: "center", gap: 3, width: "100%" }}>
+                                                    <Box
+                                                        sx={{
+                                                            bgcolor: isDarkMode ? "rgba(59, 130, 246, 0.12)" : "#EFF6FF",
+                                                            p: 1.5,
+                                                            borderRadius: 3,
+                                                            color: "#3B82F6",
+                                                            display: "flex",
+                                                            alignItems: "center",
+                                                            justifyContent: "center",
+                                                            minWidth: 56,
+                                                            height: 56,
+                                                        }}
+                                                    >
+                                                        <ClipboardList size={28} />
+                                                    </Box>
+                                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                        <Typography variant="h6" fontWeight={700} noWrap sx={{ fontSize: "1.05rem", color: isDarkMode ? "#F9FAFB" : "#111827" }}>
+                                                            All saved forms
+                                                        </Typography>
+                                                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                                            {totalCategoryItemCount} item{totalCategoryItemCount === 1 ? "" : "s"} across all subfolders
+                                                        </Typography>
+                                                    </Box>
+                                                </Box>
+                                            </CardActionArea>
+                                        </Card>
+                                    </Grid>
+                                ) : null}
+                                {showUnfiledSubfolder ? (
+                                    <Grid item xs={12} sm={6} md={4}>
+                                        <Card
+                                            variant="outlined"
+                                            onClick={() => handleSubfolderClick(createUnfiledSubfolder())}
+                                            sx={{
+                                                borderRadius: 4,
+                                                width: 350,
+                                                height: 120,
+                                                display: "flex",
+                                                flexDirection: "column",
+                                                bgcolor: isDarkMode ? "#111827" : "#FFFFFF",
+                                                border: isDarkMode ? "1px dashed #6B7280" : "1px dashed #D1D5DB",
+                                                transition: "all 0.2s ease-in-out",
+                                                cursor: "pointer",
+                                                "&:hover": {
+                                                    borderColor: "#F59E0B",
+                                                    boxShadow: isDarkMode
+                                                        ? "0 4px 20px rgba(0,0,0,0.4)"
+                                                        : "0 4px 6px -1px rgba(245, 158, 11, 0.15)",
+                                                },
+                                            }}
+                                        >
+                                            <CardActionArea sx={{ height: "100%", p: 3, display: "flex", justifyContent: "flex-start", alignItems: "center" }}>
+                                                <Box sx={{ display: "flex", alignItems: "center", gap: 3, width: "100%" }}>
+                                                    <Box
+                                                        sx={{
+                                                            bgcolor: isDarkMode ? "rgba(245, 158, 11, 0.12)" : "#FFFBEB",
+                                                            p: 1.5,
+                                                            borderRadius: 3,
+                                                            color: "#F59E0B",
+                                                            display: "flex",
+                                                            alignItems: "center",
+                                                            justifyContent: "center",
+                                                            minWidth: 56,
+                                                            height: 56,
+                                                        }}
+                                                    >
+                                                        <Folder size={28} />
+                                                    </Box>
+                                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                        <Typography variant="h6" fontWeight={700} noWrap sx={{ fontSize: "1.05rem", color: isDarkMode ? "#F9FAFB" : "#111827" }}>
+                                                            Unfiled items
+                                                        </Typography>
+                                                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                                            Forms saved without a subfolder
+                                                        </Typography>
+                                                    </Box>
+                                                </Box>
+                                            </CardActionArea>
+                                        </Card>
+                                    </Grid>
+                                ) : null}
+                                {subfolders.length === 0 && !showUnfiledSubfolder ? (
+                                    <Grid item xs={12}>
+                                        <Typography color="text.secondary" align="center">
+                                            No subfolders yet. Click &quot;Create Subfolder&quot; to add one.
+                                        </Typography>
+                                    </Grid>
+                                ) : (
+                                    subfolders.map((subfolder) => (
+                                        <Grid item xs={12} sm={6} md={4} key={subfolder.id}>
+                                            <Card
+                                                variant="outlined"
+                                                onClick={() => handleSubfolderClick(subfolder)}
+                                                sx={{
+                                                    borderRadius: 4,
+                                                    width: 350,
+                                                    height: 120,
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    bgcolor: isDarkMode ? "#111827" : "#FFFFFF",
+                                                    border: isDarkMode ? "1px solid #374151" : '1px solid #E5E7EB',
+                                                    transition: 'all 0.2s ease-in-out',
+                                                    cursor: 'pointer',
+                                                    "&:hover": {
+                                                        borderColor: "#3B82F6",
+                                                        boxShadow: isDarkMode ? "0 4px 20px rgba(0,0,0,0.4)" : "0 4px 6px -1px rgba(59, 130, 246, 0.1), 0 2px 4px -1px rgba(59, 130, 246, 0.06)"
+                                                    }
+                                                }}
+                                            >
+                                                <CardActionArea sx={{ height: '100%', p: 3, display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, width: '100%' }}>
+                                                        <Box
+                                                            sx={{
+                                                                bgcolor: isDarkMode ? "rgba(59, 130, 246, 0.1)" : '#EFF6FF',
+                                                                p: 1.5,
+                                                                borderRadius: 3,
+                                                                color: '#3B82F6',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                minWidth: 56,
+                                                                height: 56
+                                                            }}
+                                                        >
+                                                            <Folder size={28} />
+                                                        </Box>
+                                                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                            <Typography variant="h6" fontWeight={700} noWrap sx={{ fontSize: '1.05rem', color: isDarkMode ? "#F9FAFB" : "#111827" }}>
+                                                                {subfolder.name}
+                                                            </Typography>
+                                                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                                                {subfolderItemCounts[subfolder.id]
+                                                                    ? `${subfolderItemCounts[subfolder.id]} item${subfolderItemCounts[subfolder.id] === 1 ? "" : "s"}`
+                                                                    : "Open to view documents"}
+                                                            </Typography>
+                                                        </Box>
+                                                    </Box>
+                                                </CardActionArea>
+                                            </Card>
+                                        </Grid>
+                                    ))
+                                )}
+                            </Grid>
+                        )
+                    )
+                    ) : (
                         // MODULE SELECTION VIEW
                         <>
                         <Grid container spacing={2}>
@@ -1371,76 +1671,6 @@ export default function SitepackManagement() {
                         </Grid>
 
                         </>
-                    )
-                    ) : (
-                        // SUBFOLDER LIST VIEW
-                        subfoldersLoading ? (
-                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
-                                <CircularProgress />
-                            </Box>
-                        ) : (
-                            <Grid container spacing={3}>
-                                {subfolders.length === 0 ? (
-                                    <Grid item xs={12}>
-                                        <Typography color="text.secondary" align="center">
-                                            No subfolders yet. Click &quot;Create Subfolder&quot; to add one.
-                                        </Typography>
-                                    </Grid>
-                                ) : (
-                                    subfolders.map((subfolder) => (
-                                        <Grid item xs={12} sm={6} md={4} key={subfolder.id}>
-                                            <Card
-                                                variant="outlined"
-                                                onClick={() => handleSubfolderClick(subfolder)}
-                                                sx={{
-                                                    borderRadius: 4,
-                                                    width: 350,
-                                                    height: 120,
-                                                    display: 'flex',
-                                                    flexDirection: 'column',
-                                                    bgcolor: isDarkMode ? "#111827" : "#FFFFFF",
-                                                    border: isDarkMode ? "1px solid #374151" : '1px solid #E5E7EB',
-                                                    transition: 'all 0.2s ease-in-out',
-                                                    cursor: 'pointer',
-                                                    "&:hover": {
-                                                        borderColor: "#3B82F6",
-                                                        boxShadow: isDarkMode ? "0 4px 20px rgba(0,0,0,0.4)" : "0 4px 6px -1px rgba(59, 130, 246, 0.1), 0 2px 4px -1px rgba(59, 130, 246, 0.06)"
-                                                    }
-                                                }}
-                                            >
-                                                <CardActionArea sx={{ height: '100%', p: 3, display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, width: '100%' }}>
-                                                        <Box
-                                                            sx={{
-                                                                bgcolor: isDarkMode ? "rgba(59, 130, 246, 0.1)" : '#EFF6FF',
-                                                                p: 1.5,
-                                                                borderRadius: 3,
-                                                                color: '#3B82F6',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'center',
-                                                                minWidth: 56,
-                                                                height: 56
-                                                            }}
-                                                        >
-                                                            <Folder size={28} />
-                                                        </Box>
-                                                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                                                            <Typography variant="h6" fontWeight={700} noWrap sx={{ fontSize: '1.05rem', color: isDarkMode ? "#F9FAFB" : "#111827" }}>
-                                                                {subfolder.name}
-                                                            </Typography>
-                                                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                                                                Open to manage document modules
-                                                            </Typography>
-                                                        </Box>
-                                                    </Box>
-                                                </CardActionArea>
-                                            </Card>
-                                        </Grid>
-                                    ))
-                                )}
-                            </Grid>
-                        )
                     )
                 ) : (
                     // SITE LIST VIEW
@@ -1757,7 +1987,7 @@ export default function SitepackManagement() {
                         <ListItemText primary="Download as PDF" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
                     </MenuItem>
                 )}
-                {selectedModule?.title !== "Induction" && menuDoc?.isFormBase && !['Tool Box Talk Register', 'RAMS Briefing Form', 'Site Induction Register', 'Management Site Inspection Report', 'Daily Safe Start Briefing Sheet', 'Audit Action Form', 'Site Induction Form', 'LOLER Inspection Form', 'PUWER Inspection Form'].includes(getSitepackFormTemplateTitle(menuDoc)) && (
+                {selectedModule?.title !== "Induction" && menuDoc?.isFormBase && !['Tool Box Talk Register', 'RAMS Briefing Form', 'Site Induction Register', 'Management Site Inspection Report', 'Daily Safe Start Briefing Sheet', 'Audit Action Form', 'Site Induction Form', 'LOLER Inspection Form', 'PUWER Inspection Form', 'Alimak Weekly Check'].includes(getSitepackFormTemplateTitle(menuDoc)) && (
                     <MenuItem onClick={handleDownloadWord} sx={{ gap: 1.5, py: 1.5 }}>
                         <FileText size={18} color="#6B7280" />
                         <ListItemText primary="Download as Word" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
@@ -1788,7 +2018,7 @@ export default function SitepackManagement() {
                 </DialogTitle>
                 <DialogContent>
                     <Typography variant="body2" sx={{ mb: 2, color: isDarkMode ? "#9CA3AF" : "text.secondary" }}>
-                        Name your subfolder. Inside it you can manage all document modules for this site.
+                        Name your subfolder. Documents for {selectedModule?.title || "this category"} are organised inside subfolders.
                     </Typography>
                     <TextField
                         autoFocus
