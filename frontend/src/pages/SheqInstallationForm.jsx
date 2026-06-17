@@ -6,7 +6,7 @@ import {
     Dialog, DialogTitle, DialogContent, DialogActions, Tooltip,
     Table, TableBody, TableCell, TableHead, TableRow,
 } from "@mui/material";
-import { ArrowLeft, Save, Download, X, Plus, Trash2, AlertTriangle, Camera } from "lucide-react";
+import { ArrowLeft, Save, Download, X, Plus, Trash2, AlertTriangle, Camera, Upload } from "lucide-react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
@@ -348,6 +348,22 @@ function getDefaultHeaderLabelsForCategory(cat) {
 function normalizeFormImages(images) {
     if (!Array.isArray(images)) return [];
     return images.filter((img) => typeof img === "string" && img.trim().length > 0);
+}
+
+function normalizeSectionPhotosMap(sectionPhotos) {
+    if (!sectionPhotos || typeof sectionPhotos !== "object" || Array.isArray(sectionPhotos)) {
+        return {};
+    }
+    const out = {};
+    Object.entries(sectionPhotos).forEach(([key, images]) => {
+        const list = normalizeFormImages(images);
+        if (list.length) out[String(key)] = list;
+    });
+    return out;
+}
+
+function sectionPhotoKey(catIdx) {
+    return String(catIdx);
 }
 
 function getPdfFileName(category, id, client) {
@@ -1269,6 +1285,7 @@ export default function SheqInstallationForm({
     const [persistedResponseId, setPersistedResponseId] = useState(id || null);
     const [autoSaveStatus, setAutoSaveStatus] = useState(null);
     const [imageUploading, setImageUploading] = useState(false);
+    const [sectionPhotoUploadingKey, setSectionPhotoUploadingKey] = useState(null);
     const [preparingPdf, setPreparingPdf] = useState(false);
     const [pdfAssets, setPdfAssets] = useState(null);
     const hasDownloaded = useRef(false);
@@ -1347,7 +1364,8 @@ export default function SheqInstallationForm({
         nonconformanceFindings: {},
         actions: Array(6).fill({ actionRequired: "", byWho: "", byWhen: "", dateClosed: "" }),
         comments: "",
-        images: []
+        images: [],
+        sectionPhotos: {},
     });
 
     const listPath =
@@ -1384,6 +1402,18 @@ export default function SheqInstallationForm({
                 ? shrinkDataUrlIfNeeded(payload.docInfo.signature, signatureOpts)
                 : null,
         ]);
+        const rawSectionPhotos = payload.formData?.sectionPhotos || {};
+        const sectionPhotosEntries = await Promise.all(
+            Object.entries(rawSectionPhotos).map(async ([key, imgs]) => {
+                const normalized = normalizeFormImages(imgs);
+                if (!normalized.length) return [key, []];
+                const saved = await prepareImagesForSave(normalized);
+                return [key, saved];
+            })
+        );
+        const sectionPhotos = Object.fromEntries(
+            sectionPhotosEntries.filter(([, imgs]) => imgs.length > 0)
+        );
         return {
             ...payload,
             docInfo: {
@@ -1395,6 +1425,7 @@ export default function SheqInstallationForm({
             formData: {
                 ...payload.formData,
                 images,
+                sectionPhotos,
             },
         };
     };
@@ -1518,8 +1549,16 @@ export default function SheqInstallationForm({
                 thresholdBytes: 120_000,
             }),
         ]);
-        return { images, logo, logoRight };
-    }, [formData.images, docInfo.logo, docInfo.logoRight]);
+        const sectionPhotos = {};
+        const rawSectionPhotos = formData.sectionPhotos || {};
+        await Promise.all(
+            Object.entries(rawSectionPhotos).map(async ([key, imgs]) => {
+                const prepared = await prepareImagesForPdfExport(normalizeFormImages(imgs));
+                if (prepared.length) sectionPhotos[key] = prepared;
+            })
+        );
+        return { images, logo, logoRight, sectionPhotos };
+    }, [formData.images, formData.sectionPhotos, docInfo.logo, docInfo.logoRight]);
 
     const triggerPdfDownload = useCallback(
         async (responseId, { closeAfter = false } = {}) => {
@@ -1630,6 +1669,9 @@ export default function SheqInstallationForm({
             );
 
             const normalizedImages = asTemplate ? [] : normalizeFormImages(fd.images);
+            const normalizedSectionPhotos = asTemplate
+                ? {}
+                : normalizeSectionPhotosMap(fd.sectionPhotos);
 
             setFormData((prev) => ({
                 ...prev,
@@ -1646,8 +1688,12 @@ export default function SheqInstallationForm({
                           siteContact: "",
                           comments: "",
                           images: [],
+                          sectionPhotos: {},
                       }
-                    : { images: normalizedImages }),
+                    : {
+                          images: normalizedImages,
+                          sectionPhotos: normalizedSectionPhotos,
+                      }),
                 measures,
                 nonconformanceFindings: mergedFindings,
                 actions:
@@ -1829,6 +1875,47 @@ export default function SheqInstallationForm({
     const handleImageUpload = (e) => {
         appendImagesFromFiles(e.target.files);
         e.target.value = "";
+    };
+
+    const appendSectionImagesFromFiles = async (catIdx, fileList) => {
+        const key = sectionPhotoKey(catIdx);
+        const files = Array.from(fileList || []).filter((file) =>
+            file?.type?.startsWith("image/")
+        );
+        if (!files.length) return;
+        setSectionPhotoUploadingKey(key);
+        try {
+            const compressed = await Promise.all(files.map((file) => compressImageFile(file)));
+            setFormData((prev) => ({
+                ...prev,
+                sectionPhotos: {
+                    ...(prev.sectionPhotos || {}),
+                    [key]: [...(prev.sectionPhotos?.[key] || []), ...compressed],
+                },
+            }));
+        } catch (err) {
+            console.error("Section image upload failed:", err);
+            alert("Could not process the image. Try a smaller photo or a different format.");
+        } finally {
+            setSectionPhotoUploadingKey(null);
+        }
+    };
+
+    const handleSectionImageUpload = (catIdx, e) => {
+        appendSectionImagesFromFiles(catIdx, e.target.files);
+        e.target.value = "";
+    };
+
+    const removeSectionImage = (catIdx, index) => {
+        const key = sectionPhotoKey(catIdx);
+        setFormData((prev) => {
+            const current = prev.sectionPhotos?.[key] || [];
+            const next = current.filter((_, i) => i !== index);
+            const sectionPhotos = { ...(prev.sectionPhotos || {}) };
+            if (next.length) sectionPhotos[key] = next;
+            else delete sectionPhotos[key];
+            return { ...prev, sectionPhotos };
+        });
     };
 
     const applyLogoFromFile = async (file, field) => {
@@ -2957,6 +3044,13 @@ export default function SheqInstallationForm({
                             const isSpecialSection =
                                 isOtherCommentsCategory(cat.category) ||
                                 cat.category === "OTHER CONTRACTORS";
+                            const sectionPhotoKeyStr = sectionPhotoKey(catIdx);
+                            const sectionPhotosForDisplay = normalizeFormImages(
+                                pdfAssets?.sectionPhotos?.[sectionPhotoKeyStr] ??
+                                    formData.sectionPhotos?.[sectionPhotoKeyStr]
+                            );
+                            const sectionPhotosUploading =
+                                sectionPhotoUploadingKey === sectionPhotoKeyStr;
                             
                             // Calculate category totals
                             let catRating = 0;
@@ -3246,6 +3340,7 @@ export default function SheqInstallationForm({
 
                                 {/* Category Total Row */}
                                 {!isSpecialSection && (
+                                    <>
                                     <Box sx={{ display: 'flex', bgcolor: isDarkMode ? "rgba(0, 186, 211, 0.1)" : "#E0F7FA", borderTop: `2px solid ${customBlue}` }}>
                                         <Box sx={{ width: CHECKLIST_COL_ITEM, p: 1.5, textAlign: 'right', fontWeight: 900, fontSize: '0.8rem', color: customBlue, borderRight: `1px solid ${borderColor}` }}>
                                             TOTAL SCORE
@@ -3255,6 +3350,219 @@ export default function SheqInstallationForm({
                                         </Box>
                                         <Box sx={{ width: CHECKLIST_COL_COMMENTS, bgcolor: isDarkMode ? "rgba(0, 186, 211, 0.05)" : "#B2EBF2" }} />
                                     </Box>
+
+                                    {downloading ? (
+                                        sectionPhotosForDisplay.length > 0 && (
+                                            <Box
+                                                data-pdf-block
+                                                sx={{
+                                                    borderTop: `1px solid ${borderColor}`,
+                                                    p: 1.5,
+                                                    bgcolor: "#FFF",
+                                                }}
+                                            >
+                                                <Typography
+                                                    sx={{
+                                                        fontWeight: 800,
+                                                        fontSize: "0.75rem",
+                                                        color: customBlue,
+                                                        letterSpacing: "0.06em",
+                                                        textTransform: "uppercase",
+                                                    }}
+                                                >
+                                                    Section Photos
+                                                </Typography>
+                                                <Box
+                                                    className="sheq-section-photos-row"
+                                                    sx={{
+                                                        display: "flex",
+                                                        flexWrap: "wrap",
+                                                        gap: 1.5,
+                                                        mt: 1.5,
+                                                    }}
+                                                >
+                                                    {sectionPhotosForDisplay.map((img, idx) => (
+                                                        <Box
+                                                            key={`${sectionPhotoKeyStr}-${idx}`}
+                                                            className="sheq-section-photo-thumb"
+                                                            sx={{
+                                                                width: 140,
+                                                                height: 120,
+                                                                borderRadius: "10px",
+                                                                overflow: "hidden",
+                                                                border: `1px solid ${borderColor}`,
+                                                                flexShrink: 0,
+                                                            }}
+                                                        >
+                                                            <Box
+                                                                component="img"
+                                                                src={img}
+                                                                alt={`Section ${catIdx + 1} photo ${idx + 1}`}
+                                                                loading="eager"
+                                                                decoding="sync"
+                                                                sx={{
+                                                                    display: "block",
+                                                                    width: "100%",
+                                                                    height: "100%",
+                                                                    objectFit: "cover",
+                                                                }}
+                                                            />
+                                                        </Box>
+                                                    ))}
+                                                </Box>
+                                            </Box>
+                                        )
+                                    ) : (
+                                        <Box
+                                            sx={{
+                                                borderTop: `1px solid ${borderColor}`,
+                                                p: 2,
+                                                bgcolor: isDarkMode ? "rgba(0,0,0,0.02)" : "#FFF",
+                                            }}
+                                        >
+                                            <Typography
+                                                sx={{
+                                                    fontWeight: 800,
+                                                    fontSize: "0.75rem",
+                                                    color: customBlue,
+                                                    letterSpacing: "0.06em",
+                                                    mb: 1.5,
+                                                    textTransform: "uppercase",
+                                                }}
+                                            >
+                                                Section Photos
+                                            </Typography>
+                                            <Box
+                                                sx={{
+                                                    display: "flex",
+                                                    flexWrap: "wrap",
+                                                    gap: 1.5,
+                                                    mb: sectionPhotosForDisplay.length ? 2 : 0,
+                                                }}
+                                            >
+                                                <Button
+                                                    variant="outlined"
+                                                    component="label"
+                                                    disabled={sectionPhotosUploading}
+                                                    startIcon={
+                                                        sectionPhotosUploading ? (
+                                                            <CircularProgress size={18} />
+                                                        ) : (
+                                                            <Upload size={18} />
+                                                        )
+                                                    }
+                                                    sx={{
+                                                        borderRadius: "10px",
+                                                        textTransform: "none",
+                                                        fontWeight: 600,
+                                                        borderColor: isDarkMode ? borderColor : "#111827",
+                                                        color: isDarkMode ? textColor : "#111827",
+                                                        bgcolor: "#FFF",
+                                                        "&:hover": {
+                                                            borderColor: customBlue,
+                                                            bgcolor: "rgba(0, 48, 73, 0.05)",
+                                                        },
+                                                    }}
+                                                >
+                                                    {sectionPhotosUploading ? "Processing..." : "Upload Image"}
+                                                    <input
+                                                        type="file"
+                                                        hidden
+                                                        multiple
+                                                        accept="image/*"
+                                                        onChange={(e) => handleSectionImageUpload(catIdx, e)}
+                                                    />
+                                                </Button>
+                                                <Button
+                                                    variant="outlined"
+                                                    component="label"
+                                                    disabled={sectionPhotosUploading}
+                                                    startIcon={
+                                                        sectionPhotosUploading ? (
+                                                            <CircularProgress size={18} />
+                                                        ) : (
+                                                            <Camera size={18} />
+                                                        )
+                                                    }
+                                                    sx={{
+                                                        borderRadius: "10px",
+                                                        textTransform: "none",
+                                                        fontWeight: 600,
+                                                        borderColor: isDarkMode ? borderColor : "#111827",
+                                                        color: isDarkMode ? textColor : "#111827",
+                                                        bgcolor: "#FFF",
+                                                        "&:hover": {
+                                                            borderColor: customBlue,
+                                                            bgcolor: "rgba(0, 48, 73, 0.05)",
+                                                        },
+                                                    }}
+                                                >
+                                                    Take Photo
+                                                    <input
+                                                        type="file"
+                                                        hidden
+                                                        accept="image/*"
+                                                        capture="environment"
+                                                        onChange={(e) => handleSectionImageUpload(catIdx, e)}
+                                                    />
+                                                </Button>
+                                            </Box>
+                                            {sectionPhotosForDisplay.length > 0 && (
+                                                <Box
+                                                    sx={{
+                                                        display: "grid",
+                                                        gridTemplateColumns:
+                                                            "repeat(auto-fill, minmax(140px, 1fr))",
+                                                        gap: 1.5,
+                                                    }}
+                                                >
+                                                    {sectionPhotosForDisplay.map((img, idx) => (
+                                                        <Box
+                                                            key={idx}
+                                                            sx={{
+                                                                position: "relative",
+                                                                border: `1px solid ${borderColor}`,
+                                                                borderRadius: "10px",
+                                                                overflow: "hidden",
+                                                                boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                                                            }}
+                                                        >
+                                                            <Box
+                                                                component="img"
+                                                                src={img}
+                                                                alt={`Section photo ${idx + 1}`}
+                                                                sx={{
+                                                                    width: "100%",
+                                                                    height: "120px",
+                                                                    objectFit: "cover",
+                                                                }}
+                                                            />
+                                                            <IconButton
+                                                                size="small"
+                                                                className="pdf-hide-on-export"
+                                                                onClick={() =>
+                                                                    removeSectionImage(catIdx, idx)
+                                                                }
+                                                                sx={{
+                                                                    position: "absolute",
+                                                                    top: 6,
+                                                                    right: 6,
+                                                                    bgcolor: "rgba(239, 68, 68, 0.9)",
+                                                                    color: "#FFF",
+                                                                    "&:hover": {
+                                                                        bgcolor: "rgba(220, 38, 38, 1)",
+                                                                    },
+                                                                }}
+                                                            >
+                                                                <X size={14} />
+                                                            </IconButton>
+                                                        </Box>
+                                                    ))}
+                                                </Box>
+                                            )}
+                                        </Box>
+                                    )}
+                                    </>
                                 )}
                             </Box>
                         )})}

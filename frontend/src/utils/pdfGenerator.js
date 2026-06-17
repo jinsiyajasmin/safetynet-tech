@@ -184,6 +184,27 @@ function html2canvasOnClone(_document, clonedElement) {
             flex-wrap: nowrap !important;
             align-items: stretch !important;
         }
+        .pdf-export-root.sheq-pdf-export .sheq-section-photos-row {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: wrap !important;
+            gap: 12px !important;
+            align-items: flex-start !important;
+        }
+        .pdf-export-root.sheq-pdf-export .sheq-section-photo-thumb {
+            width: 140px !important;
+            height: 120px !important;
+            flex: 0 0 140px !important;
+            border-radius: 10px !important;
+            overflow: hidden !important;
+            border: 1px solid #e5e7eb !important;
+        }
+        .pdf-export-root.sheq-pdf-export .sheq-section-photo-thumb img {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            display: block !important;
+        }
         .pdf-export-root.sheq-pdf-export .sheq-pdf-page-one,
         .pdf-export-root.sheq-pdf-export .sheq-pdf-chart-page {
             background: #ffffff !important;
