@@ -29,6 +29,8 @@ import {
   TablePagination,
   Divider,
   InputAdornment,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import {
   ToggleOff as ToggleOffIcon,
@@ -56,6 +58,8 @@ import {
   Clock,
   X,
   FileText,
+  Download,
+  User,
 } from "lucide-react";
 import { useParams, useLocation, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
@@ -67,8 +71,13 @@ import { newPasswordError } from "../utils/passwordPolicy";
 import { useAuth, ASSIGNABLE_ROLES } from "../context/AuthContext";
 import UserPageAccessFields from "../components/UserPageAccessFields";
 import { APP_PAGES } from "../constants/pageAccess";
+import { isViewOnlyUser } from "../utils/pageAccess";
 import { formatLastSignIn, isUserOnline, ONLINE_WINDOW_MS } from "../utils/userPresence";
 import { getBackendOrigin } from "../utils/backendOrigin.js";
+import {
+  buildSubmissionActionUrl,
+  isCustomBuilderSubmission,
+} from "../utils/submissionNavigation";
 
 /* Helper to compute avatar/url */
 const computeAvatarUrl = (avatar) => {
@@ -197,6 +206,7 @@ export default function UsersPage() {
 
   // Derived filtered list
   const filteredUsers = users.filter((u) =>
+    !isViewOnlyUser(u) &&
     userMatchesSearchFilters(u, { searchName, searchCompany, searchStatus, searchRole })
   );
 
@@ -209,8 +219,15 @@ export default function UsersPage() {
     setPage(newPage);
   };
 
-  // Get unique companies for dropdown
-  const uniqueCompanies = Array.from(new Set(users.map(u => u.companyname || u.company).filter(Boolean))).sort();
+  // Get unique companies for dropdown (standard-access users only)
+  const uniqueCompanies = Array.from(
+    new Set(
+      users
+        .filter((u) => !isViewOnlyUser(u))
+        .map((u) => u.companyname || u.company)
+        .filter(Boolean)
+    )
+  ).sort();
 
   // Modify render to use filteredUsers instead of users
 
@@ -219,6 +236,11 @@ export default function UsersPage() {
   const [detailUser, setDetailUser] = useState(null);
   const [detailSubmissions, setDetailSubmissions] = useState([]);
   const [detailSubmissionsLoading, setDetailSubmissionsLoading] = useState(false);
+  const [detailTab, setDetailTab] = useState("details");
+  const [submissionPreviewOpen, setSubmissionPreviewOpen] = useState(false);
+  const [submissionPreviewUrl, setSubmissionPreviewUrl] = useState("");
+  const [submissionPreviewTitle, setSubmissionPreviewTitle] = useState("");
+  const [submissionPreviewRow, setSubmissionPreviewRow] = useState(null);
 
   // Edit User State
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -348,6 +370,7 @@ export default function UsersPage() {
     const id = user._id ?? user.id;
     setDetailSubmissions([]);
     setDetailSubmissionsLoading(true);
+    setDetailTab("details");
     setDetailOpen(true);
     closeMenu();
 
@@ -375,9 +398,40 @@ export default function UsersPage() {
 
   const closeDetails = () => {
     setDetailOpen(false);
+    setDetailTab("details");
+    closeSubmissionPreview();
     setDetailUser(null);
     setDetailSubmissions([]);
     setDetailSubmissionsLoading(false);
+  };
+
+  const openSubmissionPreview = (row) => {
+    const url = buildSubmissionActionUrl(row, "view");
+    if (!url) {
+      setSnack({ open: true, msg: "This form cannot be previewed.", severity: "warning" });
+      return;
+    }
+    setSubmissionPreviewTitle(row.title || "Form");
+    setSubmissionPreviewUrl(url);
+    setSubmissionPreviewRow(row);
+    setSubmissionPreviewOpen(true);
+  };
+
+  const downloadSubmission = (row, format) => {
+    const mode = format === "word" ? "download_word" : "download_pdf";
+    const url = buildSubmissionActionUrl(row, mode);
+    if (!url) {
+      setSnack({ open: true, msg: "Download is not available for this form.", severity: "warning" });
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const closeSubmissionPreview = () => {
+    setSubmissionPreviewOpen(false);
+    setSubmissionPreviewUrl("");
+    setSubmissionPreviewTitle("");
+    setSubmissionPreviewRow(null);
   };
 
   const detailUserOnline = detailUser ? isUserOnline(detailUser.lastSeenAt, detailUser.lastLoginAt) : false;
@@ -1189,7 +1243,7 @@ export default function UsersPage() {
       <Dialog
         open={detailOpen}
         onClose={closeDetails}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
         slotProps={{ backdrop: { sx: { backdropFilter: "blur(6px)" } } }}
         PaperProps={{
@@ -1341,211 +1395,346 @@ export default function UsersPage() {
               </Box>
             </Box>
 
+            <Box
+              sx={{
+                px: 3,
+                bgcolor: isDarkMode ? "#111827" : "#FAFAF9",
+                borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.08)",
+              }}
+            >
+              <Tabs
+                value={detailTab}
+                onChange={(_, value) => setDetailTab(value)}
+                sx={{
+                  minHeight: 44,
+                  "& .MuiTab-root": {
+                    textTransform: "none",
+                    fontWeight: 600,
+                    fontSize: "0.9rem",
+                    minHeight: 44,
+                    py: 1.25,
+                    color: isDarkMode ? "#9CA3AF" : "#64748B",
+                    gap: 1,
+                  },
+                  "& .Mui-selected": {
+                    color: isDarkMode ? "#F9FAFB" : "#0f172a",
+                  },
+                  "& .MuiTabs-indicator": {
+                    height: 3,
+                    borderRadius: "3px 3px 0 0",
+                    bgcolor: isDarkMode ? "#E89F17" : "#0B4DA6",
+                  },
+                }}
+              >
+                <Tab
+                  value="details"
+                  label={
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <User size={16} strokeWidth={2} />
+                      User details
+                    </Box>
+                  }
+                />
+                <Tab
+                  value="forms"
+                  label={
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <FileText size={16} strokeWidth={2} />
+                      Submitted forms
+                      {!detailSubmissionsLoading && (
+                        <Chip
+                          size="small"
+                          label={detailSubmissions.length}
+                          sx={{
+                            height: 20,
+                            minWidth: 24,
+                            fontSize: "0.7rem",
+                            fontWeight: 700,
+                            bgcolor:
+                              detailTab === "forms"
+                                ? isDarkMode
+                                  ? "rgba(232,159,23,0.2)"
+                                  : "rgba(11,77,166,0.12)"
+                                : isDarkMode
+                                  ? "rgba(255,255,255,0.08)"
+                                  : "rgba(15,23,42,0.06)",
+                            color:
+                              detailTab === "forms"
+                                ? isDarkMode
+                                  ? "#F5C15C"
+                                  : "#0B4DA6"
+                                : isDarkMode
+                                  ? "#9CA3AF"
+                                  : "#64748B",
+                          }}
+                        />
+                      )}
+                    </Box>
+                  }
+                />
+              </Tabs>
+            </Box>
+
             <DialogContent
               sx={{
                 px: 3,
-                pt: 0,
-                pb: 2,
-                mt: -3,
-                position: "relative",
-                zIndex: 1,
+                pt: 2.5,
+                pb: 2.5,
+                bgcolor: isDarkMode ? "#111827" : "#FAFAF9",
+                minHeight: 280,
               }}
             >
-              <Box
-                sx={{
-                  borderRadius: 2.5,
-                  bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
-                  border: isDarkMode ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(15,23,42,0.08)",
-                  boxShadow: isDarkMode ? "0 12px 32px rgba(0,0,0,0.25)" : "0 4px 24px rgba(15,23,42,0.06)",
-                  overflow: "hidden",
-                }}
-              >
-                <Box
-                  sx={{
-                    px: 2.25,
-                    py: 1.75,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
-                    borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.06)",
-                    bgcolor: isDarkMode ? "rgba(0,0,0,0.15)" : "rgba(248,250,252,0.9)",
-                  }}
-                >
-                  <Mail size={18} color={isDarkMode ? "#E89F17" : "#0B4DA6"} strokeWidth={2} />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: isDarkMode ? "#E5E7EB" : "#334155" }}>
-                    Contact
-                  </Typography>
-                </Box>
-                <Box sx={{ px: 2.25, py: 0.5 }}>
-                  {[
-                    { icon: <Mail size={17} />, label: "Email", value: detailUser.email },
-                    { icon: <Phone size={17} />, label: "Phone", value: detailUser.mobile },
-                    { icon: <Building2 size={17} />, label: "Site / company", value: detailUser.companyname },
-                  ].map((row, i, arr) => (
+              {detailTab === "details" ? (
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={6}>
                     <Box
-                      key={row.label}
                       sx={{
-                        display: "flex",
-                        gap: 1.5,
-                        py: 1.35,
-                        borderBottom: i < arr.length - 1 ? (isDarkMode ? "1px dashed rgba(255,255,255,0.06)" : "1px dashed rgba(15,23,42,0.08)") : "none",
+                        borderRadius: 2.5,
+                        height: "100%",
+                        bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                        border: isDarkMode ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(15,23,42,0.08)",
+                        boxShadow: isDarkMode ? "0 8px 24px rgba(0,0,0,0.2)" : "0 4px 20px rgba(15,23,42,0.05)",
+                        overflow: "hidden",
                       }}
                     >
-                      <Box sx={{ color: isDarkMode ? "#64748B" : "#94A3B8", pt: 0.35, flexShrink: 0 }}>{row.icon}</Box>
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="caption" sx={{ display: "block", color: isDarkMode ? "#64748B" : "#64748B", fontWeight: 600, letterSpacing: "0.02em" }}>
-                          {row.label}
-                        </Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600, color: isDarkMode ? "#F1F5F9" : "#0f172a", wordBreak: "break-word" }}>
-                          {row.value || "—"}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  ))}
-                </Box>
-
-                <Divider sx={{ borderColor: isDarkMode ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.06)" }} />
-
-                <Box
-                  sx={{
-                    px: 2.25,
-                    py: 1.75,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
-                    borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.06)",
-                    bgcolor: isDarkMode ? "rgba(0,0,0,0.15)" : "rgba(248,250,252,0.9)",
-                  }}
-                >
-                  <Clock size={18} color={isDarkMode ? "#E89F17" : "#0B4DA6"} strokeWidth={2} />
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: isDarkMode ? "#E5E7EB" : "#334155" }}>
-                    Sign-in & activity
-                  </Typography>
-                </Box>
-                <Box sx={{ px: 2.25, py: 2 }}>
-                  <Box sx={{ display: "flex", gap: 1.5, alignItems: "flex-start" }}>
-                    <Box sx={{ color: isDarkMode ? "#64748B" : "#94A3B8", pt: 0.35 }}>
-                      <Clock size={17} />
-                    </Box>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography variant="caption" sx={{ display: "block", color: isDarkMode ? "#64748B" : "#64748B", fontWeight: 600 }}>
-                        Last sign-in
-                      </Typography>
-                      <Typography variant="body1" sx={{ fontWeight: 700, color: isDarkMode ? "#F1F5F9" : "#0f172a", mt: 0.25 }}>
-                        {formatLastSignIn(detailUser.lastLoginAt, detailUser.lastSeenAt)}
-                      </Typography>
-                    </Box>
-                  </Box>
-                  <Box
-                    sx={{
-                      mt: 2,
-                      p: 1.5,
-                      borderRadius: 2,
-                      bgcolor: isDarkMode ? "rgba(232,159,23,0.08)" : "rgba(232,159,23,0.1)",
-                      border: isDarkMode ? "1px solid rgba(232,159,23,0.2)" : "1px solid rgba(232,159,23,0.25)",
-                    }}
-                  >
-                    <Typography variant="caption" sx={{ color: isDarkMode ? "#CBD5E1" : "#475569", lineHeight: 1.6, display: "block" }}>
-                      <strong style={{ color: isDarkMode ? "#E89F17" : "#B45309" }}>Online</strong> means we recorded activity within the last{" "}
-                      {Math.round(ONLINE_WINDOW_MS / 60000)} minutes (e.g. while using the app).
-                    </Typography>
-                  </Box>
-                </Box>
-
-                <Divider sx={{ borderColor: isDarkMode ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.06)" }} />
-
-                <Box
-                  sx={{
-                    px: 2.25,
-                    py: 1.75,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 1,
-                    borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.06)",
-                    bgcolor: isDarkMode ? "rgba(0,0,0,0.15)" : "rgba(248,250,252,0.9)",
-                  }}
-                >
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <FileText size={18} color={isDarkMode ? "#E89F17" : "#0B4DA6"} strokeWidth={2} />
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: isDarkMode ? "#E5E7EB" : "#334155" }}>
-                      Form submissions
-                    </Typography>
-                  </Box>
-                  {!detailSubmissionsLoading && (
-                    <Chip
-                      size="small"
-                      label={`${detailSubmissions.length} total`}
-                      sx={{
-                        height: 22,
-                        fontSize: "0.7rem",
-                        fontWeight: 700,
-                        bgcolor: isDarkMode ? "rgba(11,77,166,0.25)" : "rgba(11,77,166,0.1)",
-                        color: isDarkMode ? "#93C5FD" : "#0B4DA6",
-                      }}
-                    />
-                  )}
-                </Box>
-                <Box sx={{ px: 2.25, py: 1.5, maxHeight: 280, overflowY: "auto" }}>
-                  {detailSubmissionsLoading ? (
-                    <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
-                      <CircularProgress size={28} />
-                    </Box>
-                  ) : detailSubmissions.length === 0 ? (
-                    <Typography variant="body2" sx={{ color: isDarkMode ? "#94A3B8" : "#64748B", py: 1 }}>
-                      No forms submitted yet.
-                    </Typography>
-                  ) : (
-                    detailSubmissions.map((row, index) => (
                       <Box
-                        key={row.id}
                         sx={{
+                          px: 2.25,
+                          py: 1.75,
                           display: "flex",
-                          gap: 1.5,
-                          py: 1.25,
-                          borderBottom:
-                            index < detailSubmissions.length - 1
-                              ? isDarkMode
-                                ? "1px dashed rgba(255,255,255,0.06)"
-                                : "1px dashed rgba(15,23,42,0.08)"
-                              : "none",
+                          alignItems: "center",
+                          gap: 1,
+                          borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.06)",
+                          bgcolor: isDarkMode ? "rgba(0,0,0,0.15)" : "rgba(248,250,252,0.9)",
                         }}
                       >
-                        <Box sx={{ color: isDarkMode ? "#64748B" : "#94A3B8", pt: 0.35, flexShrink: 0 }}>
-                          <FileText size={16} />
-                        </Box>
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              fontWeight: 600,
-                              color: isDarkMode ? "#F1F5F9" : "#0f172a",
-                              wordBreak: "break-word",
-                            }}
-                          >
-                            {row.title}
-                          </Typography>
-                          <Typography variant="caption" sx={{ color: isDarkMode ? "#64748B" : "#64748B", display: "block", mt: 0.25 }}>
-                            {row.category}
-                          </Typography>
-                        </Box>
-                        <Typography
-                          variant="caption"
-                          sx={{
-                            color: isDarkMode ? "#94A3B8" : "#64748B",
-                            fontWeight: 600,
-                            whiteSpace: "nowrap",
-                            flexShrink: 0,
-                            pt: 0.25,
-                          }}
-                        >
-                          {formatSubmissionDate(row.createdAt)}
+                        <Mail size={18} color={isDarkMode ? "#E89F17" : "#0B4DA6"} strokeWidth={2} />
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: isDarkMode ? "#E5E7EB" : "#334155" }}>
+                          Contact
                         </Typography>
                       </Box>
-                    ))
+                      <Box sx={{ px: 2.25, py: 0.5 }}>
+                        {[
+                          { icon: <Mail size={17} />, label: "Email", value: detailUser.email },
+                          { icon: <Phone size={17} />, label: "Phone", value: detailUser.mobile },
+                          { icon: <Building2 size={17} />, label: "Site / company", value: detailUser.companyname },
+                        ].map((row, i, arr) => (
+                          <Box
+                            key={row.label}
+                            sx={{
+                              display: "flex",
+                              gap: 1.5,
+                              py: 1.35,
+                              borderBottom:
+                                i < arr.length - 1
+                                  ? isDarkMode
+                                    ? "1px dashed rgba(255,255,255,0.06)"
+                                    : "1px dashed rgba(15,23,42,0.08)"
+                                  : "none",
+                            }}
+                          >
+                            <Box sx={{ color: isDarkMode ? "#64748B" : "#94A3B8", pt: 0.35, flexShrink: 0 }}>
+                              {row.icon}
+                            </Box>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography variant="caption" sx={{ display: "block", color: isDarkMode ? "#64748B" : "#64748B", fontWeight: 600, letterSpacing: "0.02em" }}>
+                                {row.label}
+                              </Typography>
+                              <Typography variant="body2" sx={{ fontWeight: 600, color: isDarkMode ? "#F1F5F9" : "#0f172a", wordBreak: "break-word" }}>
+                                {row.value || "—"}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        ))}
+                      </Box>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <Box
+                      sx={{
+                        borderRadius: 2.5,
+                        height: "100%",
+                        bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                        border: isDarkMode ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(15,23,42,0.08)",
+                        boxShadow: isDarkMode ? "0 8px 24px rgba(0,0,0,0.2)" : "0 4px 20px rgba(15,23,42,0.05)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          px: 2.25,
+                          py: 1.75,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                          borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.06)",
+                          bgcolor: isDarkMode ? "rgba(0,0,0,0.15)" : "rgba(248,250,252,0.9)",
+                        }}
+                      >
+                        <Clock size={18} color={isDarkMode ? "#E89F17" : "#0B4DA6"} strokeWidth={2} />
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: isDarkMode ? "#E5E7EB" : "#334155" }}>
+                          Sign-in & activity
+                        </Typography>
+                      </Box>
+                      <Box sx={{ px: 2.25, py: 2 }}>
+                        <Typography variant="caption" sx={{ display: "block", color: isDarkMode ? "#64748B" : "#64748B", fontWeight: 600 }}>
+                          Last sign-in
+                        </Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 700, color: isDarkMode ? "#F1F5F9" : "#0f172a", mt: 0.25 }}>
+                          {formatLastSignIn(detailUser.lastLoginAt, detailUser.lastSeenAt)}
+                        </Typography>
+                        <Box
+                          sx={{
+                            mt: 2,
+                            p: 1.5,
+                            borderRadius: 2,
+                            bgcolor: isDarkMode ? "rgba(232,159,23,0.08)" : "rgba(232,159,23,0.1)",
+                            border: isDarkMode ? "1px solid rgba(232,159,23,0.2)" : "1px solid rgba(232,159,23,0.25)",
+                          }}
+                        >
+                          <Typography variant="caption" sx={{ color: isDarkMode ? "#CBD5E1" : "#475569", lineHeight: 1.6, display: "block" }}>
+                            <strong style={{ color: isDarkMode ? "#E89F17" : "#B45309" }}>Online</strong> means we recorded activity within the last{" "}
+                            {Math.round(ONLINE_WINDOW_MS / 60000)} minutes (e.g. while using the app).
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Box>
+                  </Grid>
+                </Grid>
+              ) : (
+                <Box
+                  sx={{
+                    borderRadius: 2.5,
+                    bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                    border: isDarkMode ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(15,23,42,0.08)",
+                    boxShadow: isDarkMode ? "0 8px 24px rgba(0,0,0,0.2)" : "0 4px 20px rgba(15,23,42,0.05)",
+                    overflow: "hidden",
+                  }}
+                >
+                  {detailSubmissionsLoading ? (
+                    <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", py: 6, gap: 1.5 }}>
+                      <CircularProgress size={32} sx={{ color: isDarkMode ? "#E89F17" : "#0B4DA6" }} />
+                      <Typography variant="body2" sx={{ color: isDarkMode ? "#94A3B8" : "#64748B" }}>
+                        Loading submitted forms…
+                      </Typography>
+                    </Box>
+                  ) : detailSubmissions.length === 0 ? (
+                    <Box sx={{ px: 3, py: 6, textAlign: "center" }}>
+                      <Box
+                        sx={{
+                          width: 56,
+                          height: 56,
+                          borderRadius: "50%",
+                          display: "grid",
+                          placeItems: "center",
+                          mx: "auto",
+                          mb: 1.5,
+                          bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(15,23,42,0.04)",
+                        }}
+                      >
+                        <FileText size={28} color={isDarkMode ? "#4B5563" : "#CBD5E1"} />
+                      </Box>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 700, color: isDarkMode ? "#E5E7EB" : "#334155", mb: 0.5 }}>
+                        No forms yet
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: isDarkMode ? "#94A3B8" : "#64748B", maxWidth: 320, mx: "auto" }}>
+                        Forms this user submits will appear here with view and download actions.
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <TableContainer sx={{ maxHeight: 400 }}>
+                      <Table size="small" stickyHeader>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 700, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.05em", bgcolor: isDarkMode ? "#111827" : "#F8FAFC", color: isDarkMode ? "#9CA3AF" : "#64748B", borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.08)" }}>
+                              Form
+                            </TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.05em", width: 120, bgcolor: isDarkMode ? "#111827" : "#F8FAFC", color: isDarkMode ? "#9CA3AF" : "#64748B", borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.08)" }}>
+                              Category
+                            </TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.05em", width: 110, bgcolor: isDarkMode ? "#111827" : "#F8FAFC", color: isDarkMode ? "#9CA3AF" : "#64748B", borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.08)" }}>
+                              Submitted
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700, fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.05em", width: 220, bgcolor: isDarkMode ? "#111827" : "#F8FAFC", color: isDarkMode ? "#9CA3AF" : "#64748B", borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.08)" }}>
+                              Actions
+                            </TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {detailSubmissions.map((row) => (
+                            <TableRow
+                              key={row.id}
+                              hover
+                              sx={{
+                                "&:last-child td": { borderBottom: 0 },
+                                "& td": {
+                                  borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.05)" : "1px solid rgba(15,23,42,0.06)",
+                                  py: 1.25,
+                                },
+                              }}
+                            >
+                              <TableCell>
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: isDarkMode ? "#F1F5F9" : "#0f172a", lineHeight: 1.35 }}>
+                                  {row.title}
+                                </Typography>
+                                {row.formTitle && row.formTitle !== row.title ? (
+                                  <Typography variant="caption" sx={{ color: isDarkMode ? "#64748B" : "#94A3B8" }}>
+                                    {row.formTitle}
+                                  </Typography>
+                                ) : null}
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="caption" sx={{ color: isDarkMode ? "#94A3B8" : "#64748B", fontWeight: 500 }}>
+                                  {row.category}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="caption" sx={{ color: isDarkMode ? "#94A3B8" : "#64748B", fontWeight: 600, whiteSpace: "nowrap" }}>
+                                  {formatSubmissionDate(row.createdAt)}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right">
+                                <Box sx={{ display: "flex", gap: 0.75, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<Eye size={14} />}
+                                    onClick={() => openSubmissionPreview(row)}
+                                    sx={{ textTransform: "none", fontWeight: 600, fontSize: "0.75rem", borderRadius: 1.5, minWidth: 0, px: 1.25, borderColor: isDarkMode ? "#374151" : "#E2E8F0", color: isDarkMode ? "#E5E7EB" : "#334155" }}
+                                  >
+                                    View
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<Download size={14} />}
+                                    onClick={() => downloadSubmission(row, "pdf")}
+                                    sx={{ textTransform: "none", fontWeight: 600, fontSize: "0.75rem", borderRadius: 1.5, minWidth: 0, px: 1.25, borderColor: isDarkMode ? "#374151" : "#E2E8F0", color: isDarkMode ? "#E5E7EB" : "#334155" }}
+                                  >
+                                    PDF
+                                  </Button>
+                                  {isCustomBuilderSubmission(row) ? (
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      startIcon={<FileText size={14} />}
+                                      onClick={() => downloadSubmission(row, "word")}
+                                      sx={{ textTransform: "none", fontWeight: 600, fontSize: "0.75rem", borderRadius: 1.5, minWidth: 0, px: 1.25, borderColor: isDarkMode ? "#374151" : "#E2E8F0", color: isDarkMode ? "#E5E7EB" : "#334155" }}
+                                    >
+                                      Word
+                                    </Button>
+                                  ) : null}
+                                </Box>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
                   )}
                 </Box>
-              </Box>
+              )}
             </DialogContent>
 
             <DialogActions
@@ -1576,6 +1765,108 @@ export default function UsersPage() {
             </DialogActions>
           </>
         )}
+      </Dialog>
+
+      {/* Submission preview — view form in modal */}
+      <Dialog
+        open={submissionPreviewOpen}
+        onClose={closeSubmissionPreview}
+        fullWidth
+        maxWidth="lg"
+        slotProps={{ backdrop: { sx: { backdropFilter: "blur(4px)" } } }}
+        PaperProps={{
+          sx: {
+            height: "min(90vh, 900px)",
+            borderRadius: 3,
+            display: "flex",
+            flexDirection: "column",
+            bgcolor: isDarkMode ? "#111827" : "#FFFFFF",
+            overflow: "hidden",
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 2,
+            pr: 1,
+            borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.08)",
+            color: isDarkMode ? "#F9FAFB" : "#0f172a",
+          }}
+        >
+          <Box sx={{ minWidth: 0 }}>
+            <Typography component="span" sx={{ fontWeight: 700, fontSize: "1.1rem" }}>
+              {submissionPreviewTitle}
+            </Typography>
+            <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#64748B", mt: 0.25 }}>
+              Read-only preview
+            </Typography>
+          </Box>
+          {submissionPreviewRow ? (
+            <Box sx={{ display: "flex", gap: 1, flexShrink: 0 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<Download size={16} />}
+                onClick={() => downloadSubmission(submissionPreviewRow, "pdf")}
+                sx={{ textTransform: "none", fontWeight: 600, borderColor: isDarkMode ? "#374151" : "#E2E8F0", color: isDarkMode ? "#E5E7EB" : "#334155" }}
+              >
+                PDF
+              </Button>
+              {isCustomBuilderSubmission(submissionPreviewRow) ? (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<FileText size={16} />}
+                  onClick={() => downloadSubmission(submissionPreviewRow, "word")}
+                  sx={{ textTransform: "none", fontWeight: 600, borderColor: isDarkMode ? "#374151" : "#E2E8F0", color: isDarkMode ? "#E5E7EB" : "#334155" }}
+                >
+                  Word
+                </Button>
+              ) : null}
+            </Box>
+          ) : null}
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, flex: 1, overflow: "hidden", bgcolor: isDarkMode ? "#0B1220" : "#F8FAFC" }}>
+          {submissionPreviewUrl ? (
+            <iframe
+              src={submissionPreviewUrl}
+              title={submissionPreviewTitle || "Form preview"}
+              style={{ border: "none", width: "100%", height: "100%" }}
+            />
+          ) : null}
+        </DialogContent>
+        <DialogActions
+          sx={{
+            px: 3,
+            py: 2,
+            borderTop: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.08)",
+            bgcolor: isDarkMode ? "#111827" : "#FAFAF9",
+          }}
+        >
+          <Button onClick={closeSubmissionPreview} sx={{ textTransform: "none", fontWeight: 600, color: isDarkMode ? "#9CA3AF" : "#64748B" }}>
+            Close
+          </Button>
+          {submissionPreviewRow ? (
+            <Button
+              variant="contained"
+              startIcon={<Download size={16} />}
+              onClick={() => downloadSubmission(submissionPreviewRow, "pdf")}
+              sx={{
+                textTransform: "none",
+                fontWeight: 700,
+                boxShadow: "none",
+                bgcolor: isDarkMode ? "#E89F17" : "#0B4DA6",
+                "&:hover": { boxShadow: "none", bgcolor: isDarkMode ? "#D97706" : "#083D86" },
+              }}
+            >
+              Download PDF
+            </Button>
+          ) : null}
+        </DialogActions>
       </Dialog>
 
       {/* Access Dialog */}
@@ -1960,10 +2251,20 @@ export default function UsersPage() {
                 const res = await api.post('/users/invite', payload, { timeout: LIST_FETCH_TIMEOUT_MS });
                 if (res?.data?.success) {
                   const baseMsg = res.data.message || `${inviteForm.firstName} has been invited successfully`;
+                  const detail =
+                    res.data.emailSent === false && res.data.emailError
+                      ? ` ${res.data.emailError}`
+                      : "";
+                  const severity =
+                    res.data.emailSent === false
+                      ? "error"
+                      : res.data.emailCapturedInMailpit
+                        ? "info"
+                        : "success";
                   setSnack({
                     open: true,
-                    msg: baseMsg,
-                    severity: res.data.emailSent === false ? 'warning' : 'success',
+                    msg: baseMsg + detail,
+                    severity,
                   });
                   setInviteDialogOpen(false);
                   const created = res.data.user;

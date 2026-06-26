@@ -37,6 +37,7 @@ export default function FormLogoUploadSlot({
       <>
         <Box
           component="img"
+          className={exportMode ? "pdf-header-logo" : undefined}
           src={displaySrc}
           alt={alt}
           sx={{

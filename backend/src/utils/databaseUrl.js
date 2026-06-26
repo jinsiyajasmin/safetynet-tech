@@ -72,6 +72,27 @@ function isBuildPlaceholderUrl(url) {
   return typeof url === "string" && BUILD_PLACEHOLDER_RE.test(stripEnvQuotes(url));
 }
 
+/** Default when using ./scripts/docker-up.sh (Postgres on localhost:5435). */
+const DEFAULT_LOCAL_DATABASE_URL =
+  "postgresql://safetyuser:safetypassword@localhost:5435/safetyapp_db?schema=public";
+
+function ensureDatabaseUrlEnv({ allowLocalDefault = false } = {}) {
+  applyDatabaseUrlEnv();
+
+  if (!process.env.DATABASE_URL && allowLocalDefault) {
+    process.env.DATABASE_URL = DEFAULT_LOCAL_DATABASE_URL;
+    applyDatabaseUrlEnv();
+  }
+
+  if (!process.env.DATABASE_URL) return false;
+
+  if (!process.env.DIRECT_URL) {
+    applyDatabaseUrlEnv();
+  }
+
+  return Boolean(process.env.DATABASE_URL && process.env.DIRECT_URL);
+}
+
 function applyDatabaseUrlEnv() {
   for (const key of ["DATABASE_URL", "DIRECT_URL"]) {
     if (typeof process.env[key] === "string" && !process.env[key].trim()) {
@@ -202,9 +223,11 @@ async function ensureDatabaseConnection(
 }
 
 module.exports = {
+  DEFAULT_LOCAL_DATABASE_URL,
   normalizeDatabaseUrl,
   deriveDirectDatabaseUrl,
   applyDatabaseUrlEnv,
+  ensureDatabaseUrlEnv,
   getDirectDatabaseUrl,
   getConnectionUrlCandidates,
   isAuthDatabaseError,

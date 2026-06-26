@@ -10,6 +10,7 @@ const {
 } = require("../utils/dashboardAccess");
 const { isGlobalSiteAccess } = require("../utils/siteAccess");
 const { countGroupedCategories } = require("../utils/dashboardCategories");
+const { getMonitoringSection } = require("../constants/monitoringSections");
 const {
   pickSheqDashboardAnswers,
   pickInspectionDashboardAnswers,
@@ -161,6 +162,196 @@ function buildReportsTimeline(monthlyRows) {
   return { monthlySubmissions, availableYears, latestMonth, areaChartData };
 }
 
+function buildSectionResponseWhere(sectionKey, baseWhere) {
+  const section = getMonitoringSection(sectionKey);
+  if (!section) return { id: { in: [] } };
+
+  const categoryClauses = [
+    { category: section.category },
+    { answers: { path: ["monitoringSection"], equals: sectionKey } },
+  ];
+
+  for (const cat of section.concernCategories || []) {
+    categoryClauses.push({ category: cat });
+  }
+  for (const cat of section.sheqCategories || []) {
+    categoryClauses.push({ category: cat });
+  }
+
+  return {
+    AND: [baseWhere, { OR: categoryClauses }],
+  };
+}
+
+function startOfCurrentMonth() {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+exports.getSectionDashboardStats = asyncHandler(async (req, res) => {
+  const actor = req.user;
+  if (!actor?.id) {
+    return res.status(401).json({ success: false, message: "Not authenticated" });
+  }
+
+  const sectionKey = String(req.params.section || "").trim();
+  const section = getMonitoringSection(sectionKey);
+  if (!section) {
+    return res.status(400).json({ success: false, message: "Invalid monitoring section" });
+  }
+
+  const actingClient = req.actingClient || null;
+  const actingClientId = actingClient?.id || null;
+  const scope = getDashboardScopeMeta(actor, actingClient);
+  const siteWhere = buildSiteListWhere(actor, actingClientId);
+  const baseResponseWhere = await buildDashboardResponseWhere(prisma, actor, actingClientId);
+  const sectionResponseWhere = buildSectionResponseWhere(sectionKey, baseResponseWhere);
+
+  const monthStart = startOfCurrentMonth();
+  const clientId =
+    actingClientId ||
+    (actor.role === "company_admin" ? actor.clientId : null) ||
+    (isGlobalSiteAccess(actor) ? null : actor.clientId);
+
+  const nonconWhere = clientId ? { clientId } : {};
+
+  try {
+    const [
+      totalSites,
+      totalFormsCompleted,
+      formsThisMonth,
+      sheqForms,
+      concernReports,
+      categoryGroups,
+      monthlyCounts,
+      recentRows,
+      totalNonconformances,
+      pendingNonconformances,
+      sentNonconformances,
+      myOpenActions,
+    ] = await Promise.all([
+      prisma.site.count({ where: siteWhere }),
+      prisma.formResponse.count({ where: sectionResponseWhere }),
+      prisma.formResponse.count({
+        where: { AND: [sectionResponseWhere, { createdAt: { gte: monthStart } }] },
+      }),
+      section.sheqCategories?.length
+        ? prisma.formResponse.count({
+            where: {
+              AND: [
+                baseResponseWhere,
+                { category: { in: section.sheqCategories } },
+              ],
+            },
+          })
+        : Promise.resolve(0),
+      section.concernCategories?.length
+        ? prisma.formResponse.count({
+            where: {
+              AND: [
+                baseResponseWhere,
+                { category: { in: section.concernCategories } },
+              ],
+            },
+          })
+        : Promise.resolve(0),
+      prisma.formResponse.groupBy({
+        by: ["category"],
+        where: sectionResponseWhere,
+        _count: { _all: true },
+      }),
+      fetchMonthlySubmissionCounts(prisma, sectionResponseWhere),
+      prisma.formResponse.findMany({
+        where: sectionResponseWhere,
+        select: {
+          id: true,
+          category: true,
+          createdAt: true,
+          answers: true,
+          form: { select: { title: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 6,
+      }),
+      prisma.nonconformanceAction.count({ where: nonconWhere }),
+      prisma.nonconformanceAction.count({
+        where: { ...nonconWhere, status: { in: ["pending", "draft"] } },
+      }),
+      prisma.nonconformanceAction.count({
+        where: { ...nonconWhere, status: "sent" },
+      }),
+      prisma.nonconformanceAction.count({
+        where: {
+          ...nonconWhere,
+          assigneeId: actor.id,
+          status: { in: ["pending", "draft"] },
+        },
+      }),
+    ]);
+
+    const categories = {};
+    for (const row of categoryGroups) {
+      categories[row.category || "Other"] = row._count._all;
+    }
+
+    const reportsTimeline = buildReportsTimeline(monthlyCounts);
+
+    const barChartData = Object.keys(categories)
+      .map((cat) => ({
+        name: cat.length > 22 ? `${cat.substring(0, 22)}…` : cat,
+        fullName: cat,
+        value: categories[cat],
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8);
+
+    const recentSubmissions = recentRows.map((resp) => {
+      const answers =
+        resp.answers && typeof resp.answers === "object" ? resp.answers : {};
+      const heading =
+        (answers.report_heading && String(answers.report_heading).trim()) ||
+        resp.form?.title ||
+        resp.category ||
+        "Form submission";
+      return {
+        id: resp.id,
+        title: heading,
+        category: resp.category || "General",
+        date: new Date(resp.createdAt).toLocaleDateString("en-GB"),
+        createdAt: resp.createdAt,
+      };
+    });
+
+    res.json({
+      success: true,
+      section: sectionKey,
+      sectionTitle: section.title,
+      scope,
+      stats: {
+        totalSites,
+        totalFormsCompleted,
+        formsThisMonth,
+        sheqForms,
+        concernReports,
+        totalNonconformances,
+        pendingNonconformances,
+        sentNonconformances,
+        myOpenActions,
+      },
+      charts: {
+        areaChartData: reportsTimeline.areaChartData,
+        barChartData,
+        monthlySubmissions: reportsTimeline.monthlySubmissions,
+        availableYears: reportsTimeline.availableYears,
+      },
+      recentSubmissions,
+    });
+  } catch (err) {
+    console.error("Section dashboard stats error:", err);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
 exports.getDashboardStats = asyncHandler(async (req, res) => {
   const actor = req.user;
   if (!actor?.id) {
@@ -202,6 +393,8 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
       recentRows,
       sheqResponses,
       formsByCompany,
+      totalNonconformances,
+      pendingNonconformances,
     ] = await Promise.all([
       prisma.site.count({ where: siteWhere }),
       userCountWhere != null
@@ -252,6 +445,34 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
       isGlobalSiteAccess(actor, actingClientId)
         ? buildFormsByCompany(prisma)
         : Promise.resolve([]),
+      (async () => {
+        const clientId =
+          actingClientId ||
+          (actor.role === "company_admin" ? actor.clientId : null);
+        if (!clientId && !isGlobalSiteAccess(actor)) {
+          if (actor.clientId) {
+            return prisma.nonconformanceAction.count({ where: { clientId: actor.clientId } });
+          }
+          return 0;
+        }
+        if (clientId) {
+          return prisma.nonconformanceAction.count({ where: { clientId } });
+        }
+        return prisma.nonconformanceAction.count();
+      })(),
+      (async () => {
+        const clientId =
+          actingClientId ||
+          (actor.role === "company_admin" ? actor.clientId : null);
+        const where = clientId
+          ? { clientId, status: { in: ["pending", "draft"] } }
+          : isGlobalSiteAccess(actor)
+            ? { status: { in: ["pending", "draft"] } }
+            : actor.clientId
+              ? { clientId: actor.clientId, status: { in: ["pending", "draft"] } }
+              : { id: { in: [] } };
+        return prisma.nonconformanceAction.count({ where });
+      })(),
     ]);
 
     const sheq = buildSheqDashboardData(
@@ -326,6 +547,8 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
         inspectionForms,
         sheqForms,
         complianceRate: `${avgCompliance}%`,
+        totalNonconformances,
+        pendingNonconformances,
       },
       charts: {
         areaChartData: reportsTimeline.areaChartData,

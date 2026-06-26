@@ -6,6 +6,7 @@ export const APP_PAGES = [
   { key: "user-view-access", label: "View access" },
   { key: "create-sites", label: "Create sites" },
   { key: "sitepack-management", label: "Sitepack management" },
+  { key: "action-tracker", label: "Action tracker" },
   { key: "general-forms", label: "Templates" },
   { key: "saved-signatures", label: "Saved signatures" },
   { key: "forms", label: "Form builder" },
@@ -23,13 +24,14 @@ export const APP_PAGES = [
 ];
 
 export const PAGE_PATH_PREFIXES = [
-  { key: "dashboard", paths: ["/dashboard", "/concern-reports", "/audit-reports"] },
+  { key: "dashboard", paths: ["/dashboard", "/concern-reports", "/audit-reports", "/dashboard/occupational-health-safety-kpis", "/dashboard/environmental-management-kpis", "/dashboard/quality-management-kpis", "/dashboard/food-safety-management", "/monitoring/ohs", "/monitoring/environmental", "/monitoring/quality", "/monitoring/food-safety"] },
   { key: "clients", paths: ["/clients"] },
   { key: "users", paths: ["/users"] },
   { key: "user-view-access", paths: ["/user-view-access"] },
   { key: "view-invite", paths: ["/view-invite"], alwaysOn: true },
   { key: "create-sites", paths: ["/create-sites"] },
   { key: "sitepack-management", paths: ["/sitepack-management"] },
+  { key: "action-tracker", paths: ["/action-tracker"] },
   { key: "general-forms", paths: ["/general-forms"] },
   { key: "saved-signatures", paths: ["/saved-signatures"] },
   { key: "forms", paths: ["/forms", "/form-build", "/create-form"] },

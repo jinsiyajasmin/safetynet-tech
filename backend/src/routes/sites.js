@@ -39,6 +39,11 @@ router.delete(
   requireRole(["superadmin", "company_admin", "site_manager"]),
   siteController.deleteSiteSubfolder
 );
+router.patch(
+  "/:siteId/subfolders/:subfolderId",
+  requireRole(["superadmin", "company_admin", "site_manager"]),
+  siteController.updateSiteSubfolder
+);
 
 // Update site — company_admin and above
 router.put(

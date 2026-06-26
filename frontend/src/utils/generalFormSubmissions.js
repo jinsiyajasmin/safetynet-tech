@@ -32,8 +32,30 @@ export function isFridayPackSiteSubmission(sub) {
   const category = (sub?.category || "").trim();
   if (category === FRIDAY_PACK_FORMS_CATEGORY) return true;
   if (!submissionHasSiteContext(sub)) return false;
-  if (category && category !== GENERAL_FORMS_CATEGORY) return false;
+  if (category && category !== GENERAL_FORMS_CATEGORY) {
+    const title = sub?.form?.title;
+    if (title && TEMPLATE_TITLE_SET.has(title)) return true;
+    return false;
+  }
   return true;
+}
+
+/** API list params for Friday Pack forms at a site (category + legacy null/empty rows). */
+export function fridayPackFormListFetchParams(siteId) {
+  const params = {
+    category: `${FRIDAY_PACK_FORMS_CATEGORY},${GENERAL_FORMS_CATEGORY},`,
+  };
+  if (siteId != null && String(siteId).trim() !== "") {
+    params.siteId = String(siteId).trim();
+  }
+  return params;
+}
+
+/** Friday Pack list views are personal — each user sees only their own site-pack form fills. */
+export function isFridayPackFormForUser(sub, userId) {
+  if (!isFridayPackSiteSubmission(sub)) return false;
+  if (!userId) return true;
+  return userOwnsFormSubmission(sub, userId);
 }
 
 /** Whether a form response belongs in a site-pack category list (e.g. Friday Pack). */
@@ -59,12 +81,17 @@ export function userOwnsFormSubmission(sub, userId) {
  * (template edits saved from /general-forms, not Friday Pack site submissions).
  */
 export function isGeneralFormsPageSubmission(sub) {
-  const title = sub?.form?.title;
-  if (!title || !TEMPLATE_TITLE_SET.has(title)) return false;
+  if (submissionHasSiteContext(sub)) return false;
 
   const category = (sub.category || "").trim();
   if (category === FRIDAY_PACK_FORMS_CATEGORY) return false;
-  if (submissionHasSiteContext(sub)) return false;
+
+  if (sub?.answers?.savedFromTemplatesPage === true) {
+    return category === GENERAL_FORMS_CATEGORY || category === "";
+  }
+
+  const title = sub?.form?.title;
+  if (!title || !TEMPLATE_TITLE_SET.has(title)) return false;
 
   if (category === GENERAL_FORMS_CATEGORY || category === "") return true;
 

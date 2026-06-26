@@ -1,7 +1,19 @@
+import { getBackendOrigin } from "./backendOrigin.js";
+
 const DEFAULT_PHOTO = { maxWidth: 1280, maxHeight: 1280, quality: 0.82 };
 const DEFAULT_LOGO = { maxWidth: 480, maxHeight: 240, quality: 0.88 };
 const DEFAULT_PDF = { maxWidth: 1024, maxHeight: 1024, quality: 0.78 };
 const SHRINK_THRESHOLD_BYTES = 380_000;
+
+/** Resolve relative upload paths and backend-hosted logos to a fetchable absolute URL. */
+export function absolutizeImageSrc(src) {
+    if (!src || typeof src !== "string") return null;
+    if (src.startsWith("data:") || src.startsWith("blob:")) return src;
+    if (/^https?:\/\//i.test(src)) return src;
+    const host = getBackendOrigin().replace(/\/$/, "");
+    if (src.startsWith("/")) return `${host}${src}`;
+    return `${host}/${src}`;
+}
 
 function fitWithin(width, height, maxWidth, maxHeight) {
     const ratio = Math.min(maxWidth / width, maxHeight / height, 1);
@@ -62,7 +74,8 @@ export async function fetchImageAsDataUrl(src, shrinkOpts = DEFAULT_PDF) {
         }
     }
 
-    const absolute = src.startsWith("/") ? `${window.location.origin}${src}` : src;
+    const absolute = absolutizeImageSrc(src);
+    if (!absolute) return null;
 
     try {
         const res = await fetch(absolute, { credentials: "include", mode: "cors" });
@@ -190,6 +203,32 @@ export async function prepareImagesForPdfExport(images = []) {
     );
     if (!valid.length) return [];
     return Promise.all(valid.map((img) => shrinkDataUrlIfNeeded(img)));
+}
+
+/**
+ * Inline every <img> in the export subtree as a data URL so html2canvas captures logos and uploads.
+ */
+export async function inlineImagesForPdfCapture(root, shrinkOpts = DEFAULT_PDF) {
+    if (!root?.querySelectorAll) return;
+
+    const imgs = Array.from(root.querySelectorAll("img[src]"));
+    await Promise.all(
+        imgs.map(async (img) => {
+            const raw = img.getAttribute("src") || "";
+            if (!raw || raw.startsWith("data:image")) return;
+
+            const inlined = await fetchImageAsDataUrl(raw, shrinkOpts);
+            if (!inlined || inlined === raw) return;
+
+            await new Promise((resolve) => {
+                const done = () => resolve();
+                img.addEventListener("load", done, { once: true });
+                img.addEventListener("error", done, { once: true });
+                img.setAttribute("src", inlined);
+                if (img.complete && img.naturalWidth > 0) resolve();
+            });
+        })
+    );
 }
 
 /** Smaller payloads for JSON save/upload (faster on mobile and slow networks). */

@@ -182,18 +182,28 @@ export const fetchDocumentCounts = async (siteId, subfolderId) => {
   return response.data;
 };
 
-export const fetchSiteSubfolders = async (siteId) => {
-  const response = await api.get(`/sites/${siteId}/subfolders`);
+export const fetchSiteSubfolders = async (siteId, { monitoringSection, scope } = {}) => {
+  const params = {};
+  if (scope) params.scope = scope;
+  if (monitoringSection) params.monitoringSection = monitoringSection;
+  const response = await api.get(`/sites/${siteId}/subfolders`, { params });
   return response.data;
 };
 
-export const createSiteSubfolder = async (siteId, name) => {
-  const response = await api.post(`/sites/${siteId}/subfolders`, { name });
+export const createSiteSubfolder = async (siteId, name, { monitoringSection } = {}) => {
+  const body = { name };
+  if (monitoringSection) body.monitoringSection = monitoringSection;
+  const response = await api.post(`/sites/${siteId}/subfolders`, body);
   return response.data;
 };
 
 export const deleteSiteSubfolder = async (siteId, subfolderId) => {
   const response = await api.delete(`/sites/${siteId}/subfolders/${subfolderId}`);
+  return response.data;
+};
+
+export const updateSiteSubfolder = async (siteId, subfolderId, name) => {
+  const response = await api.patch(`/sites/${siteId}/subfolders/${subfolderId}`, { name });
   return response.data;
 };
 
@@ -226,6 +236,11 @@ export const fetchDashboardStats = async ({ timeout = 90_000 } = {}) => {
   return response.data;
 };
 
+export const fetchSectionDashboardStats = async (section, { timeout = 60_000 } = {}) => {
+  const response = await api.get(`/dashboard/section-stats/${section}`, { timeout });
+  return response.data;
+};
+
 /** User/client lists on hosted tenants with large datasets. */
 export const LIST_FETCH_TIMEOUT_MS = 60_000;
 
@@ -255,6 +270,54 @@ export const fetchDocumentPreviewBlob = async (id) => {
 };
 
 /** Fetch document bytes for download with correct filename from Content-Disposition. */
+/** Resolve a user in the current company by email (form responsible-person fields). */
+export const resolveUserByEmail = async (email) => {
+  const response = await api.get("/users/resolve-by-email", {
+    params: { email: String(email || "").trim() },
+  });
+  return response.data;
+};
+
+export const fetchActionTrackerItems = async () => {
+  const response = await api.get("/action-tracker/actions");
+  return response.data;
+};
+
+export const fetchActionTrackerItem = async (id) => {
+  const response = await api.get(`/action-tracker/actions/${id}`);
+  return response.data;
+};
+
+export const updateActionTrackerItem = async (id, payload) => {
+  const response = await api.put(`/action-tracker/actions/${id}`, payload);
+  return response.data;
+};
+
+export const sendActionTrackerItem = async (id, payload = {}) => {
+  const response = await api.post(`/action-tracker/actions/${id}/send`, payload);
+  return response.data;
+};
+
+export const fetchNotifications = async (limit = 20) => {
+  const response = await api.get("/notifications", { params: { limit } });
+  return response.data;
+};
+
+export const fetchUnreadNotificationCount = async () => {
+  const response = await api.get("/notifications/unread-count");
+  return response.data;
+};
+
+export const markNotificationRead = async (id) => {
+  const response = await api.patch(`/notifications/${id}/read`);
+  return response.data;
+};
+
+export const markAllNotificationsRead = async () => {
+  const response = await api.patch("/notifications/read-all");
+  return response.data;
+};
+
 export const fetchDocumentDownloadBlob = async (id) => {
   const response = await api.get(`/documents/${id}/download`, {
     responseType: "blob",

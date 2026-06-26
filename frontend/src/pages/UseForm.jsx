@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import { flushSync } from "react-dom";
 import {
   Box,
   Typography,
@@ -24,7 +25,7 @@ import { useAutoFormDirty } from "../hooks/useAutoFormDirty";
 import { useUnsavedFormGuard } from "../hooks/useUnsavedFormGuard.jsx";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
 import { downloadWordFromForm } from "../utils/wordGenerator";
-import { useRef } from "react";
+import { prepareCustomFormPdfAssets } from "../utils/prepareFormPdfAssets";
 import FormRenderer from "../components/FormRenderer";
 import { getBackendOrigin } from "../utils/backendOrigin.js";
 import { resolveFormCategoryFromSearchParams } from "../utils/sitepackContext";
@@ -49,6 +50,8 @@ export default function UseForm() {
   const containerRef = useRef(null);
   
   const [downloading, setDownloading] = useState(false);
+  const [preparingPdf, setPreparingPdf] = useState(false);
+  const [pdfExportValues, setPdfExportValues] = useState(null);
   const [logoUrl, setLogoUrl] = useState(null);
 
   const [form, setForm] = useState(null);
@@ -179,21 +182,68 @@ export default function UseForm() {
 
   useEffect(() => {
     if (!loading && action === "download" && form) {
-        setDownloading(true);
-        setTimeout(() => {
-            downloadPdfFromRef(containerRef, `CustomForm_${form.title.replace(/\s+/g, '_')}`, () => {
-                setDownloading(false);
-                window.close();
+      let cancelled = false;
+      (async () => {
+        setPreparingPdf(true);
+        try {
+          const exportValues = await prepareCustomFormPdfAssets(form, values, logoUrl);
+          if (cancelled) return;
+          flushSync(() => {
+            setPdfExportValues(exportValues);
+            setDownloading(true);
+          });
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          await new Promise((resolve) => {
+            downloadPdfFromRef(containerRef, `CustomForm_${form.title.replace(/\s+/g, "_")}`, (err) => {
+              setDownloading(false);
+              setPreparingPdf(false);
+              setPdfExportValues(null);
+              if (!err) window.close();
+              resolve();
             });
-        }, 300);
-    } else if (!loading && action === "download_word" && form) {
-        setDownloading(true);
-        downloadWordFromForm(form, values, `CustomForm_${form.title.replace(/\s+/g, '_')}`, () => {
+          });
+        } catch (err) {
+          console.error("PDF preparation failed:", err);
+          if (!cancelled) {
+            setPreparingPdf(false);
             setDownloading(false);
-            window.close();
-        });
+            setPdfExportValues(null);
+            alert("Could not prepare PDF. Please try again.");
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    } else if (!loading && action === "download_word" && form) {
+      let cancelled = false;
+      (async () => {
+        setPreparingPdf(true);
+        try {
+          const exportValues = await prepareCustomFormPdfAssets(form, values, logoUrl);
+          if (cancelled) return;
+          await downloadWordFromForm(
+            form,
+            exportValues,
+            `CustomForm_${form.title.replace(/\s+/g, "_")}`,
+            () => {
+              setPreparingPdf(false);
+              window.close();
+            }
+          );
+        } catch (err) {
+          console.error("Word preparation failed:", err);
+          if (!cancelled) {
+            setPreparingPdf(false);
+            alert("Could not prepare Word document. Please try again.");
+          }
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
     }
-  }, [loading, action, form, values]);
+  }, [loading, action, form, values, logoUrl]);
 
   const handleChange = (fieldId, value) => {
     setValues((prev) => ({ ...prev, [fieldId]: value }));
@@ -229,10 +279,15 @@ export default function UseForm() {
   };
 
 
-  if (loading) {
+  if (loading || preparingPdf) {
     return (
       <Box sx={{ display: "grid", placeItems: "center", py: 8 }}>
         <CircularProgress />
+        {preparingPdf && (
+          <Typography variant="body2" sx={{ mt: 2, color: "text.secondary" }}>
+            Preparing download…
+          </Typography>
+        )}
       </Box>
     );
   }
@@ -240,6 +295,10 @@ export default function UseForm() {
   if (!form) {
     return <Typography sx={{ p: 4 }}>Form not found</Typography>;
   }
+
+  const displayValues = pdfExportValues ?? values;
+  const displayLogoUrl = pdfExportValues?.__companyLogoUrl ?? logoUrl;
+  const exportMode = downloading || readOnly;
 
   return (
     <Layout>
@@ -253,7 +312,11 @@ export default function UseForm() {
         )}
 
 
-        <Paper ref={containerRef} sx={{ p: 3, maxWidth: 900, position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 'auto', boxSizing: 'border-box' }}>
+        <Paper
+          ref={containerRef}
+          className={downloading ? "pdf-export-root" : undefined}
+          sx={{ p: 3, maxWidth: 900, position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 'auto', boxSizing: 'border-box' }}
+        >
           {action === "download" && (
             <Typography sx={{ position: 'absolute', top: 24, right: 24, fontWeight: 500, color: 'text.secondary', fontSize: '0.9rem' }}>
                 Date: {new Date().toLocaleDateString('en-GB')}
@@ -263,13 +326,14 @@ export default function UseForm() {
             <Box sx={{ flex: 1 }}>
               <FormRenderer 
                 form={form}
-                values={values}
+                values={displayValues}
                 onChange={handleChange}
                 onSubmit={handleSubmit}
                 isSubmitting={saving}
-                logoUrl={logoUrl}
+                logoUrl={displayLogoUrl}
                 submitLabel="Save"
                 readOnly={readOnly}
+                exportMode={exportMode}
               />
             </Box>
         </Paper>

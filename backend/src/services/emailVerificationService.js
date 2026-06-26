@@ -32,42 +32,69 @@ async function createVerificationToken(userId) {
 
 function buildVerificationEmailHtml(user, { companyName, temporaryPassword, isSignup }) {
   const verifyUrl = buildAppUrl(`/verify-email/${user._rawToken}`);
-  const firstName = escapeHtml((user.firstName || "").trim() || "there");
+  const firstName = (user.firstName || "").trim() || "there";
+  const lastName = (user.lastName || "").trim();
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || firstName;
+  const safeFirstName = escapeHtml(firstName);
+  const safeFullName = escapeHtml(fullName);
   const safeCompany = escapeHtml(companyName || "your organisation");
   const safeEmail = escapeHtml(user.email);
   const safePassword = escapeHtml(temporaryPassword || "");
   const safeVerifyUrl = escapeHtml(verifyUrl);
   const loginUrl = escapeHtml(buildAppUrl("/login"));
 
-  const intro = isSignup
-    ? `<p>Thanks for signing up for <strong>${safeCompany}</strong> on Sitemate. Confirm that you own <strong>${safeEmail}</strong> before you can sign in.</p>`
-    : temporaryPassword
-    ? `<p>You have been invited to join <strong>${safeCompany}</strong> on Sitemate. Confirm that you own <strong>${safeEmail}</strong> before signing in.</p>`
-    : `<p>Please confirm that you own <strong>${safeEmail}</strong> for your <strong>${safeCompany}</strong> Sitemate account before signing in.</p>`;
+  if (!isSignup && temporaryPassword) {
+    return `
+    <div style="font-family: sans-serif; color: #1B212C; max-width: 600px; margin: auto; border: 1px solid #eee; padding: 24px; border-radius: 10px;">
+      <h2 style="color: #0B4DA6; border-bottom: 2px solid #0B4DA6; padding-bottom: 10px;">Welcome to Sitemate</h2>
+      <p>Hello <strong>${safeFullName}</strong>,</p>
+      <p>You have been invited to join <strong>${safeCompany}</strong> on Sitemate. Your account has been created — follow the steps below to get started.</p>
 
-  const credentialsBlock =
-    temporaryPassword && !isSignup
-      ? `<div style="background-color: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 5px solid #0B4DA6;">
-        <p style="margin: 0 0 8px 0;"><strong>After verifying</strong>, sign in at <a href="${loginUrl}" style="color: #0B4DA6;">${loginUrl}</a> with:</p>
+      <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 5px solid #0B4DA6;">
+        <p style="margin: 0 0 10px 0; font-weight: 700; color: #0B4DA6;">Step 1 — Verify your email</p>
+        <p style="margin: 0 0 12px 0;">You <strong>must verify your email</strong> before you can sign in. Click the button below:</p>
+        <p style="margin: 0;">
+          <a href="${safeVerifyUrl}" style="display: inline-block; background: #0B4DA6; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Verify email address</a>
+        </p>
+      </div>
+
+      <div style="background-color: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 5px solid #E89F17;">
+        <p style="margin: 0 0 10px 0; font-weight: 700; color: #92400e;">Step 2 — Sign in after verifying</p>
+        <p style="margin: 0 0 8px 0;">Once verified, sign in at <a href="${loginUrl}" style="color: #0B4DA6;">${loginUrl}</a> using:</p>
+        <p style="margin: 0 0 6px 0;"><strong>Name:</strong> ${safeFullName}</p>
         <p style="margin: 0 0 6px 0;"><strong>Email:</strong> <code style="background: #fff; padding: 2px 5px; border-radius: 3px;">${safeEmail}</code></p>
         <p style="margin: 0;"><strong>Temporary password:</strong> <code style="background: #fff; padding: 2px 5px; border-radius: 3px;">${safePassword}</code></p>
-      </div>`
-      : `<p style="font-size: 0.95em; color: #444;">After verifying, sign in at <a href="${loginUrl}" style="color: #0B4DA6;">${loginUrl}</a> using your account email and password.</p>`;
+      </div>
+
+      <p style="font-size: 0.9em; color: #666;">Or copy the verification link into your browser:<br/><a href="${safeVerifyUrl}" style="color: #0B4DA6; word-break: break-all;">${safeVerifyUrl}</a></p>
+      <p style="font-size: 0.9em; color: #b45309; font-weight: 600;">You cannot sign in until your email is verified.</p>
+      <p style="font-size: 0.9em; color: #666;">This link expires in 7 days. Change your password after your first login.</p>
+      <p style="margin-top: 24px; font-size: 0.9em; color: #666;">— The Sitemate Team</p>
+    </div>
+  `;
+  }
+
+  const intro = isSignup
+    ? `<p>Thanks for signing up for <strong>${safeCompany}</strong> on Sitemate. Confirm that you own <strong>${safeEmail}</strong> before you can sign in.</p>`
+    : `<p>Please confirm that you own <strong>${safeEmail}</strong> for your <strong>${safeCompany}</strong> Sitemate account before signing in.</p>`;
+
+  const credentialsBlock = `<p style="font-size: 0.95em; color: #444;">After verifying, sign in at <a href="${loginUrl}" style="color: #0B4DA6;">${loginUrl}</a> using your account email and password.</p>`;
 
   const footerNote = isSignup
     ? "This link expires in 7 days. If you did not create this account, you can ignore this email."
-    : "This link expires in 7 days. Change your password after your first login.";
+    : "This link expires in 7 days.";
 
   return `
     <div style="font-family: sans-serif; color: #1B212C; max-width: 600px; margin: auto; border: 1px solid #eee; padding: 24px; border-radius: 10px;">
       <h2 style="color: #0B4DA6; border-bottom: 2px solid #0B4DA6; padding-bottom: 10px;">Verify your Sitemate account</h2>
-      <p>Hello <strong>${firstName}</strong>,</p>
+      <p>Hello <strong>${safeFirstName}</strong>,</p>
       ${intro}
       <p style="margin: 24px 0;">
         <a href="${safeVerifyUrl}" style="display: inline-block; background: #0B4DA6; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Verify email address</a>
       </p>
       <p style="font-size: 0.9em; color: #666;">Or copy this link into your browser:<br/><a href="${safeVerifyUrl}" style="color: #0B4DA6; word-break: break-all;">${safeVerifyUrl}</a></p>
       ${credentialsBlock}
+      <p style="font-size: 0.9em; color: #b45309; font-weight: 600;">You cannot sign in until your email is verified.</p>
       <p style="font-size: 0.9em; color: #666;">${footerNote}</p>
       <p style="margin-top: 24px; font-size: 0.9em; color: #666;">— The Sitemate Team</p>
     </div>
@@ -86,7 +113,11 @@ async function sendAccountVerificationEmail(user, { companyName, temporaryPasswo
 
   return sendEmail({
     to: user.email,
-    subject: "Verify your Sitemate account",
+    subject: isSignup
+      ? "Verify your Sitemate account"
+      : temporaryPassword
+        ? "Welcome to Sitemate — verify your email to sign in"
+        : "Verify your Sitemate account",
     html,
   });
 }
@@ -101,7 +132,7 @@ async function sendSignupVerificationEmail(user, { companyName }) {
   return sendAccountVerificationEmail(user, { companyName, isSignup: true });
 }
 
-const INVITE_EMAIL_TIMEOUT_MS = 12_000;
+const INVITE_EMAIL_TIMEOUT_MS = 25_000;
 
 /**
  * Await invite email delivery with a cap so the API does not hang on slow SMTP.

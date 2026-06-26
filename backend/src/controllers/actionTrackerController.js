@@ -1,0 +1,267 @@
+const asyncHandler = require("express-async-handler");
+const prisma = require("../prismaClient");
+const { reqUserDbId } = require("../utils/userAuthorization");
+const {
+  formatUserName,
+  notifyReporterOfSentAction,
+  buildNonconformanceGroupKey,
+} = require("../services/nonconformanceActionService");
+
+const userSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+};
+
+function serializeAction(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    formResponseId: row.formResponseId,
+    groupKey: row.groupKey,
+    status: row.status,
+    title: row.title,
+    correctionAction: row.correctionAction,
+    responsibleEmail: row.responsibleEmail,
+    responsibleName: row.responsibleName,
+    dateCompleted: row.dateCompleted,
+    details: row.details || {},
+    responseNotes: row.responseNotes,
+    draftData: row.draftData,
+    sentAt: row.sentAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    reporter: row.reporter
+      ? {
+          id: row.reporter.id,
+          name: formatUserName(row.reporter),
+          email: row.reporter.email,
+        }
+      : null,
+    assignee: row.assignee
+      ? {
+          id: row.assignee.id,
+          name: formatUserName(row.assignee),
+          email: row.assignee.email,
+        }
+      : null,
+  };
+}
+
+function resolveGroupKey(row) {
+  if (row.groupKey) return row.groupKey;
+  const d = row.details || {};
+  return buildNonconformanceGroupKey(row.reporterId, d);
+}
+
+async function fetchRelatedActions(row, userId) {
+  const groupKey = resolveGroupKey(row);
+  if (!groupKey) return [row];
+
+  const rows = await prisma.nonconformanceAction.findMany({
+    where: {
+      groupKey,
+      OR: [{ assigneeId: userId }, { reporterId: userId }],
+    },
+    orderBy: { createdAt: "desc" },
+    include: {
+      reporter: { select: userSelect },
+      assignee: { select: userSelect },
+    },
+  });
+
+  if (rows.length > 0) return rows;
+
+  // Legacy rows without groupKey persisted — match by computed key
+  const mine = await prisma.nonconformanceAction.findMany({
+    where: { OR: [{ assigneeId: userId }, { reporterId: userId }] },
+    orderBy: { createdAt: "desc" },
+    include: {
+      reporter: { select: userSelect },
+      assignee: { select: userSelect },
+    },
+  });
+
+  return mine.filter((a) => resolveGroupKey(a) === groupKey);
+}
+
+exports.listMyActions = asyncHandler(async (req, res) => {
+  const userId = reqUserDbId(req);
+  if (!userId) {
+    return res.status(401).json({ success: false, message: "Not authenticated" });
+  }
+
+  const rows = await prisma.nonconformanceAction.findMany({
+    where: { assigneeId: userId },
+    orderBy: { createdAt: "desc" },
+    include: {
+      reporter: { select: userSelect },
+      assignee: { select: userSelect },
+    },
+  });
+
+  res.json({ success: true, data: rows.map(serializeAction) });
+});
+
+exports.getAction = asyncHandler(async (req, res) => {
+  const userId = reqUserDbId(req);
+  if (!userId) {
+    return res.status(401).json({ success: false, message: "Not authenticated" });
+  }
+
+  const row = await prisma.nonconformanceAction.findFirst({
+    where: {
+      id: req.params.id,
+      OR: [{ assigneeId: userId }, { reporterId: userId }],
+    },
+    include: {
+      reporter: { select: userSelect },
+      assignee: { select: userSelect },
+    },
+  });
+
+  if (!row) {
+    return res.status(404).json({ success: false, message: "Action not found" });
+  }
+
+  const relatedRows = await fetchRelatedActions(row, userId);
+  const relatedActions = relatedRows.map(serializeAction);
+  const latestAction = relatedActions[0] || serializeAction(row);
+
+  res.json({
+    success: true,
+    data: serializeAction(row),
+    relatedActions,
+    latestAction,
+  });
+});
+
+exports.updateAction = asyncHandler(async (req, res) => {
+  const userId = reqUserDbId(req);
+  if (!userId) {
+    return res.status(401).json({ success: false, message: "Not authenticated" });
+  }
+
+  const existing = await prisma.nonconformanceAction.findFirst({
+    where: { id: req.params.id, assigneeId: userId },
+  });
+  if (!existing) {
+    return res.status(404).json({ success: false, message: "Action not found" });
+  }
+  if (existing.status === "sent") {
+    return res.status(400).json({ success: false, message: "This response has already been sent." });
+  }
+
+  const asDraft = req.body?.asDraft === true;
+  const responseNotes =
+    req.body?.responseNotes != null ? String(req.body.responseNotes) : existing.responseNotes;
+
+  const data = {
+    responseNotes,
+  };
+
+  if (asDraft) {
+    data.status = "draft";
+  }
+
+  if (req.body?.correctionAction != null) {
+    data.correctionAction = String(req.body.correctionAction);
+  }
+  if (req.body?.dateCompleted != null) {
+    data.dateCompleted = String(req.body.dateCompleted);
+  }
+  if (req.body?.details && typeof req.body.details === "object") {
+    const merged = {
+      ...(existing.details && typeof existing.details === "object" ? existing.details : {}),
+      ...req.body.details,
+    };
+    if (data.correctionAction != null) {
+      merged.noncon_action = data.correctionAction;
+    }
+    if (data.dateCompleted != null) {
+      merged.noncon_date = data.dateCompleted;
+    }
+    data.details = merged;
+  }
+
+  const updated = await prisma.nonconformanceAction.update({
+    where: { id: existing.id },
+    data,
+    include: {
+      reporter: { select: userSelect },
+      assignee: { select: userSelect },
+    },
+  });
+
+  res.json({
+    success: true,
+    message: asDraft ? "Draft saved." : "Updated.",
+    data: serializeAction(updated),
+  });
+});
+
+exports.sendActionToReporter = asyncHandler(async (req, res) => {
+  const userId = reqUserDbId(req);
+  if (!userId) {
+    return res.status(401).json({ success: false, message: "Not authenticated" });
+  }
+
+  const existing = await prisma.nonconformanceAction.findFirst({
+    where: { id: req.params.id, assigneeId: userId },
+    include: {
+      reporter: { select: userSelect },
+      assignee: { select: userSelect },
+    },
+  });
+  if (!existing) {
+    return res.status(404).json({ success: false, message: "Action not found" });
+  }
+
+  const responseNotes =
+    req.body?.responseNotes != null
+      ? String(req.body.responseNotes)
+      : existing.responseNotes || "";
+
+  const updateData = {
+    responseNotes,
+    status: "sent",
+    sentAt: new Date(),
+    draftData: null,
+  };
+
+  if (req.body?.correctionAction != null) {
+    updateData.correctionAction = String(req.body.correctionAction);
+  }
+  if (req.body?.dateCompleted != null) {
+    updateData.dateCompleted = String(req.body.dateCompleted);
+  }
+  if (req.body?.details && typeof req.body.details === "object") {
+    updateData.details = {
+      ...(existing.details && typeof existing.details === "object" ? existing.details : {}),
+      ...req.body.details,
+    };
+  }
+
+  const updated = await prisma.nonconformanceAction.update({
+    where: { id: existing.id },
+    data: updateData,
+    include: {
+      reporter: { select: userSelect },
+      assignee: { select: userSelect },
+    },
+  });
+
+  await notifyReporterOfSentAction(
+    updated,
+    updated.assignee,
+    updated.reporter,
+    responseNotes
+  );
+
+  res.json({
+    success: true,
+    message: "Response sent to the reporter.",
+    data: serializeAction(updated),
+  });
+});

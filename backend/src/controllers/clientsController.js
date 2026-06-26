@@ -209,12 +209,14 @@ exports.getUsersByClient = asyncHandler(async (req, res) => {
   if (normalizeClientNameKey(client.name) === "safetynett") {
     console.log("Client is safetynett — returning all users");
     const users = await prisma.user.findMany({
+      where: { accessMode: { not: "view_only" } },
       orderBy: { createdAt: "desc" },
       select: {
         id: true, username: true, firstName: true, lastName: true, email: true,
         jobTitle: true, companyname: true, mobile: true, role: true, active: true,
         clientId: true, createdAt: true, updatedAt: true,
         lastLoginAt: true, lastSeenAt: true,
+        accessMode: true,
         // Exclude password
       }
     });
@@ -223,13 +225,14 @@ exports.getUsersByClient = asyncHandler(async (req, res) => {
 
   // otherwise return only users with this clientId
   const users = await prisma.user.findMany({
-    where: { clientId: id },
+    where: { clientId: id, accessMode: { not: "view_only" } },
     orderBy: { createdAt: "desc" },
     select: {
       id: true, username: true, firstName: true, lastName: true, email: true,
       jobTitle: true, companyname: true, mobile: true, role: true, active: true,
       clientId: true, createdAt: true, updatedAt: true,
       lastLoginAt: true, lastSeenAt: true,
+      accessMode: true,
       // Exclude password
     }
   });

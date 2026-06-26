@@ -1,6 +1,10 @@
 import React, { useState } from "react";
 import SignatureCapture from "./SignatureCapture";
 import { resolveFormLogoSrc } from "../utils/formLogoUrl";
+import { resolveUserByEmail } from "../services/api";
+import { formatUserDisplayName } from "../utils/plainName";
+
+const EMAIL_RE = /^\S+@\S+\.\S+$/;
 
 // --- STABLE HELPER COMPONENTS (Defined outside to prevent focus loss) ---
 
@@ -45,6 +49,128 @@ const PhotoUpload = ({ fieldId, readOnly, values, handleChange, previewImg, styl
           )}
         </>
       )}
+    </div>
+  );
+};
+
+const UserEmailLookupField = ({
+  fieldId,
+  label,
+  readOnly,
+  values,
+  handleChange,
+  styles,
+}) => {
+  const emailKey = `${fieldId}_email`;
+  const userIdKey = `${fieldId}_user_id`;
+  const email = values[emailKey] || "";
+  const resolvedName = values[fieldId] || "";
+  const [checking, setChecking] = useState(false);
+  const [status, setStatus] = useState(
+    resolvedName && email ? "found" : email && resolvedName ? "found" : ""
+  );
+  const [message, setMessage] = useState("");
+
+  const runLookup = async (rawEmail) => {
+    const trimmed = String(rawEmail || "").trim();
+    if (!trimmed) {
+      handleChange(emailKey, "");
+      handleChange(fieldId, "");
+      handleChange(userIdKey, "");
+      setStatus("");
+      setMessage("");
+      return;
+    }
+
+    if (!EMAIL_RE.test(trimmed)) {
+      setStatus("error");
+      setMessage("Enter a valid email address.");
+      handleChange(fieldId, "");
+      handleChange(userIdKey, "");
+      return;
+    }
+
+    setChecking(true);
+    setStatus("");
+    setMessage("");
+    try {
+      const res = await resolveUserByEmail(trimmed);
+      if (res?.exists && res.user) {
+        handleChange(emailKey, trimmed);
+        const name =
+          res.user.name ||
+          formatUserDisplayName(res.user);
+        handleChange(fieldId, name);
+        handleChange(userIdKey, res.user.id || "");
+        setStatus("found");
+        setMessage(name);
+      } else {
+        handleChange(emailKey, "");
+        handleChange(fieldId, "");
+        handleChange(userIdKey, "");
+        setStatus("error");
+        setMessage(
+          res?.message ||
+            "No user with this email exists. Ask an administrator to create an account."
+        );
+      }
+    } catch (err) {
+      handleChange(emailKey, "");
+      handleChange(fieldId, "");
+      handleChange(userIdKey, "");
+      setStatus("error");
+      setMessage(
+        err?.response?.data?.message ||
+          "Could not verify this email. Please try again."
+      );
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  if (readOnly) {
+    const display =
+      resolvedName && email
+        ? `${resolvedName} (${email})`
+        : resolvedName || email || values[fieldId] || "N/A";
+    return <div style={styles.input}>{display}</div>;
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <input
+        style={styles.input}
+        type="email"
+        autoComplete="email"
+        placeholder={`Enter ${label.toLowerCase()} email...`}
+        value={email}
+        onChange={(e) => {
+          const next = e.target.value;
+          handleChange(emailKey, next);
+          if (status) {
+            setStatus("");
+            setMessage("");
+          }
+          if (!next.trim()) {
+            handleChange(fieldId, "");
+            handleChange(userIdKey, "");
+          }
+        }}
+        onBlur={(e) => runLookup(e.target.value)}
+      />
+      {checking ? (
+        <span style={{ fontSize: 12, color: "#64748b" }}>Checking email…</span>
+      ) : null}
+      {status === "found" && message ? (
+        <span style={{ fontSize: 12, color: "#15803d", fontWeight: 600 }}>
+          {message}
+        </span>
+      ) : null}
+      {status === "error" && message ? (
+        <span style={{ fontSize: 12, color: "#dc2626", lineHeight: 1.4 }}>
+          {message}
+        </span>
+      ) : null}
     </div>
   );
 };
@@ -258,9 +384,9 @@ const HealthSafetyConcernForm = ({
     wrap: {
       fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
       width: "100%",
-      maxWidth: 980,
+      maxWidth: pdfLayout ? "100%" : 980,
       margin: "0 auto",
-      padding: readOnly ? "0 0 32px 0" : "2.5rem 2rem",
+      padding: pdfLayout ? 0 : readOnly ? "0 0 32px 0" : "2.5rem 2rem",
       color: "#1e293b",
       background: "#ffffff",
       position: "relative",
@@ -279,10 +405,10 @@ const HealthSafetyConcernForm = ({
     },
     reportHeader: {
       position: "relative",
-      marginBottom: "2.5rem",
-      paddingBottom: "1.25rem",
+      marginBottom: pdfLayout ? "0.75rem" : "2.5rem",
+      paddingBottom: pdfLayout ? "0.5rem" : "1.25rem",
       borderBottom: "2px solid #f1f5f9",
-      minHeight: 88,
+      minHeight: pdfLayout ? 56 : 88,
     },
     reportHeaderLogo: {
       position: "absolute",
@@ -326,7 +452,7 @@ const HealthSafetyConcernForm = ({
       width: "100%",
     },
     reportTitle: {
-      fontSize: 28,
+      fontSize: pdfLayout ? 20 : 28,
       fontWeight: pdfLayout ? 600 : 800,
       color: "#0f172a",
       margin: 0,
@@ -336,21 +462,21 @@ const HealthSafetyConcernForm = ({
       lineHeight: 1.25,
     },
     section: { 
-      marginBottom: "2.5rem",
-      padding: readOnly ? 0 : "1.5rem",
+      marginBottom: pdfLayout ? "0.65rem" : "2.5rem",
+      padding: readOnly ? 0 : pdfLayout ? 0 : "1.5rem",
       background: readOnly ? "transparent" : "#fff",
       borderRadius: 12,
       border: readOnly ? "none" : "1px solid #f1f5f9"
     },
     sectionLabel: {
-      fontSize: 13,
+      fontSize: pdfLayout ? 10 : 13,
       fontWeight: pdfLayout ? 600 : 700,
       letterSpacing: "0.05em",
       textTransform: "uppercase",
       color: "#ffffff",
       background: "#1e3a8a",
-      marginBottom: "1.5rem",
-      padding: readOnly ? "12px 16px" : "10px 16px",
+      marginBottom: pdfLayout ? "0.35rem" : "1.5rem",
+      padding: pdfLayout ? "6px 10px" : readOnly ? "12px 16px" : "10px 16px",
       borderRadius: "8px",
       display: "block",
       width: "100%",
@@ -392,15 +518,15 @@ const HealthSafetyConcernForm = ({
       transition: "border-color 0.2s ease, box-shadow 0.2s ease",
     },
     textarea: {
-      fontSize: 14,
+      fontSize: pdfLayout ? 11 : 14,
       color: "#1e293b",
       background: readOnly ? "transparent" : "#ffffff",
       border: readOnly ? "none" : "1px solid #e2e8f0",
       borderRadius: readOnly ? 0 : 10,
-      padding: readOnly ? "4px 0" : "12px 14px",
+      padding: readOnly ? (pdfLayout ? "2px 0" : "4px 0") : "12px 14px",
       fontFamily: "inherit",
       resize: "none",
-      minHeight: readOnly ? "24px" : 100,
+      minHeight: readOnly ? (pdfLayout ? "18px" : "24px") : 100,
       outline: "none",
       width: "100%",
       lineHeight: "1.6",
@@ -409,9 +535,9 @@ const HealthSafetyConcernForm = ({
     },
     checksGrid: {
       display: "grid",
-      gridTemplateColumns: "1fr 1fr",
-      gap: "10px 24px",
-      padding: readOnly ? 0 : "8px",
+      gridTemplateColumns: pdfLayout ? "1fr 1fr 1fr" : "1fr 1fr",
+      gap: pdfLayout ? "4px 12px" : "10px 24px",
+      padding: readOnly ? 0 : pdfLayout ? 0 : "8px",
     },
     checkItem: { 
       display: "flex", 
@@ -617,7 +743,7 @@ const HealthSafetyConcernForm = ({
       number: "6",
       fields: [
         { id: "noncon_action", label: "Correction action", type: "textarea" },
-        { id: "noncon_responsible", label: "Responsible person", type: "text" },
+        { id: "noncon_responsible", label: "Responsible person", type: "user_email" },
         { id: "noncon_date", label: "Date completed", type: "date" },
         { id: "noncon_photo", label: "Nonconformance photo", type: "photo" },
       ]
@@ -806,7 +932,9 @@ const HealthSafetyConcernForm = ({
     );
   };
 
-  const rootClassName = pdfLayout ? "pdf-export-root concern-pdf-export" : undefined;
+  const rootClassName = pdfLayout
+    ? "pdf-export-root concern-pdf-export concern-pdf-one-page"
+    : undefined;
 
   return (
     <div
@@ -969,6 +1097,15 @@ const HealthSafetyConcernForm = ({
                     values={values} 
                     handleChange={handleChange}
                     previewImg={previewImg}
+                    styles={styles}
+                  />
+                ) : field.type === "user_email" || field.id === "noncon_responsible" ? (
+                  <UserEmailLookupField
+                    fieldId={field.id}
+                    label={field.label}
+                    readOnly={readOnly}
+                    values={values}
+                    handleChange={handleChange}
                     styles={styles}
                   />
                 ) : (

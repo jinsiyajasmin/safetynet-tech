@@ -1,30 +1,30 @@
 # AWS ECR Public Gallery mirror (avoids Docker Hub TLS timeouts on some networks).
-ARG NODE_IMAGE=public.ecr.aws/docker/library/node:20-alpine
+# Bookworm slim (glibc) is more reliable for Prisma than Alpine (musl).
+ARG NODE_IMAGE=public.ecr.aws/docker/library/node:20-bookworm-slim
 FROM ${NODE_IMAGE}
 
-# Prisma on Alpine needs OpenSSL
-RUN apk add --no-cache openssl libc6-compat
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
 COPY package*.json ./
+COPY prisma ./prisma
 
-# Install dependencies (skip postinstall: schema not present yet)
-RUN npm install --ignore-scripts
+# Dummy URLs only for image build — real values come from compose/Coolify at runtime.
+ENV DATABASE_URL="postgresql://build:build@127.0.0.1:5432/build"
+ENV DIRECT_URL="postgresql://build:build@127.0.0.1:5432/build"
 
-# Copy application (includes prisma/schema.prisma)
+# Schema is present so postinstall can generate the Prisma client during install.
+RUN npm ci --omit=dev
+
 COPY . .
 
-# Generate Prisma client (dummy URLs only for this RUN — must not persist in the image).
-RUN DATABASE_URL="postgresql://build:build@127.0.0.1:5432/build" \
-    DIRECT_URL="postgresql://build:build@127.0.0.1:5432/build" \
-    npx prisma generate && \
-    chmod +x docker-entrypoint.sh && \
-    chmod +x docker-migrate.sh
+RUN npx prisma generate \
+  && chmod +x docker-entrypoint.sh \
+  && chmod +x docker-migrate.sh
 
-# Expose the port the app runs on
 EXPOSE 4000
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

@@ -22,6 +22,8 @@ const { getUploadsDir } = require("./src/utils/documentStorage");
 const responseRoutes = require("./src/routes/responseRoutes");
 const dashboardRoutes = require("./src/routes/dashboardRoutes");
 const savedSignatureRoutes = require("./src/routes/savedSignatureRoutes");
+const actionTrackerRoutes = require("./src/routes/actionTrackerRoutes");
+const notificationRoutes = require("./src/routes/notificationRoutes");
 
 const path = require("node:path");
 const fs = require("node:fs");
@@ -179,6 +181,8 @@ app.use("/api/documents", documentRoutes);
 app.use("/api/responses", responseRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/saved-signatures", savedSignatureRoutes);
+app.use("/api/action-tracker", actionTrackerRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.use((err, req, res, next) => { 
   console.error("Error Handler:", err);
@@ -234,6 +238,8 @@ app.get("/api/Health", healthHandler);
 
 const start = async () => {
   validateAppBaseUrlAtStartup();
+  const { logEmailTransportAtStartup } = require("./src/services/emailService");
+  await logEmailTransportAtStartup();
 
   const uploadsDir = getUploadsDir();
 

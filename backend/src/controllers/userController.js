@@ -5,12 +5,14 @@ const bcrypt = require("bcryptjs");
 const { validatePlainName } = require("../utils/plainTextName");
 const { validatePlainCompanyName } = require("../utils/plainTextCompany");
 const { sendInviteVerificationEmailWithTimeout } = require("../services/emailVerificationService");
+const { describeInviteEmailResult } = require("../services/emailService");
 const { validateNewPassword } = require("../utils/passwordPolicy");
 const {
   reqUserDbId,
   loadAdminActor,
   canManageTargetUser,
   invalidateSessionUserCache,
+  resolveTokenRole,
 } = require("../utils/userAuthorization");
 const {
   isSafetynettCompanyName,
@@ -26,6 +28,22 @@ const {
 const {
   sendViewAccessInviteEmailWithTimeout,
 } = require("../services/viewAccessInviteService");
+
+async function sendInviteWelcomeEmailStatus(user, { companyName, password }) {
+  try {
+    const emailResult = await sendInviteVerificationEmailWithTimeout(user, {
+      companyName,
+      temporaryPassword: password,
+    });
+    return describeInviteEmailResult(emailResult);
+  } catch (emailErr) {
+    console.error("Failed to send invite welcome email:", emailErr);
+    return describeInviteEmailResult({
+      success: false,
+      error: emailErr.message || "Email delivery failed",
+    });
+  }
+}
 
 // Role hierarchy — higher index = higher privilege
 const ROLE_HIERARCHY = ["worker", "supervisor", "site_manager", "company_admin", "superadmin"];
@@ -563,6 +581,94 @@ exports.lookupByEmail = asyncHandler(async (req, res) => {
   res.json({ success: true, exists: false, message: "No account yet — set a password and choose pages to create access." });
 });
 
+/** Form field lookup — any authenticated user can resolve a colleague by email within their company. */
+exports.resolveUserByEmail = asyncHandler(async (req, res) => {
+  const rawEmail = req.query.email;
+  if (!rawEmail || !/^\S+@\S+\.\S+$/.test(String(rawEmail).trim())) {
+    return res.status(400).json({ success: false, message: "Enter a valid email address" });
+  }
+
+  const normalizedEmail = String(rawEmail).trim().toLowerCase();
+  const effectiveRole = resolveTokenRole(req.user);
+  const clientId = req.actingClient?.id || req.user?.clientId || null;
+
+  const userWhere =
+    effectiveRole === "superadmin" && !clientId
+      ? { email: normalizedEmail }
+      : clientId
+        ? { email: normalizedEmail, clientId }
+        : { email: normalizedEmail };
+
+  const user = await prisma.user.findFirst({
+    where: userWhere,
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      active: true,
+      accessMode: true,
+    },
+  });
+
+  if (user) {
+    if (user.active === false) {
+      return res.json({
+        success: true,
+        exists: false,
+        message:
+          "This account is inactive. Ask an administrator to reactivate it or create a new account.",
+      });
+    }
+
+    if (String(user.accessMode || "standard").toLowerCase() === "view_only") {
+      return res.json({
+        success: true,
+        exists: false,
+        viewOnly: true,
+        message:
+          "This user has only view access — not allowed as responsible person.",
+      });
+    }
+
+    const name =
+      [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email;
+
+    return res.json({
+      success: true,
+      exists: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      },
+    });
+  }
+
+  const elsewhere = await prisma.user.findFirst({
+    where: { email: normalizedEmail },
+    select: { id: true },
+  });
+
+  if (elsewhere) {
+    return res.json({
+      success: true,
+      exists: false,
+      message:
+        "No user with this email exists in your organisation. Ask an administrator to create an account.",
+    });
+  }
+
+  res.json({
+    success: true,
+    exists: false,
+    message:
+      "No user with this email exists. Ask an administrator to create an account.",
+  });
+});
+
 exports.grantViewAccess = asyncHandler(async (req, res) => {
   const { email, password, allowedPages, accessMode } = req.body;
 
@@ -650,7 +756,7 @@ exports.grantViewAccess = asyncHandler(async (req, res) => {
         companyname: client.name,
         role: "worker",
         active: true,
-        emailVerified: true,
+        emailVerified: false,
         clientId: client.id,
         accessMode: mode,
         allowedPages: mergedPages,
@@ -659,9 +765,14 @@ exports.grantViewAccess = asyncHandler(async (req, res) => {
 
     invalidateSessionUserCache(target.id);
 
+    const emailStatus = await sendInviteWelcomeEmailStatus(target, {
+      companyName: client.name,
+      password,
+    });
+
     return res.status(201).json({
       success: true,
-      message: "User created with view access. They can sign in with this email and password.",
+      ...emailStatus,
       created: true,
       user: {
         id: target.id,
@@ -691,7 +802,7 @@ exports.grantViewAccess = asyncHandler(async (req, res) => {
       password: hashedPassword,
       accessMode: mode,
       allowedPages: mergedPages,
-      emailVerified: true,
+      emailVerified: false,
       active: true,
     },
     select: {
@@ -707,9 +818,17 @@ exports.grantViewAccess = asyncHandler(async (req, res) => {
 
   invalidateSessionUserCache(target.id);
 
+  const emailStatus = await sendInviteWelcomeEmailStatus(updated, {
+    companyName: client.name,
+    password,
+  });
+
   res.json({
     success: true,
-    message: "View access updated. The user can sign in with this email and password.",
+    ...emailStatus,
+    message: emailStatus.emailSent
+      ? "Access updated. A welcome email was sent to their inbox — they must verify their email before signing in."
+      : emailStatus.message.replace(/^User created/, "Access updated"),
     created: false,
     user: {
       ...updated,
@@ -967,9 +1086,14 @@ exports.getUserFormSubmissions = asyncHandler(async (req, res) => {
   const rows = await prisma.$queryRaw`
     SELECT
       fr.id,
+      fr."formId",
       fr.category,
       fr."createdAt",
       f.title AS "formTitle",
+      fr.answers->>'siteId' AS "siteId",
+      fr.answers->>'subfolderId' AS "subfolderId",
+      fr.answers->>'monitoringSection' AS "monitoringSection",
+      fr.answers->>'sheqFormCategory' AS "sheqFormCategory",
       COALESCE(
         NULLIF(TRIM(fr.answers->>'name'), ''),
         NULLIF(TRIM(fr.answers->>'report_heading'), ''),
@@ -983,6 +1107,12 @@ exports.getUserFormSubmissions = asyncHandler(async (req, res) => {
 
   const data = rows.map((row) => ({
     id: row.id,
+    formId: row.formId,
+    formTitle: row.formTitle || null,
+    siteId: row.siteId || null,
+    subfolderId: row.subfolderId || null,
+    monitoringSection: row.monitoringSection || null,
+    sheqFormCategory: row.sheqFormCategory || null,
     title:
       (row.customTitle && String(row.customTitle).trim()) ||
       row.formTitle ||
@@ -1026,17 +1156,36 @@ exports.deleteUser = asyncHandler(async (req, res) => {
   }
 
   // Detach heavy relations before delete so FK work is indexed and predictable on large tenants.
-  await prisma.$transaction([
-    prisma.formResponse.updateMany({
-      where: { submittedById: targetId },
-      data: { submittedById: null },
-    }),
-    prisma.siteDocument.updateMany({
-      where: { uploadedById: targetId },
-      data: { uploadedById: actor.id },
-    }),
-    prisma.user.delete({ where: { id: targetId } }),
-  ]);
+  try {
+    await prisma.$transaction([
+      prisma.nonconformanceAction.updateMany({
+        where: { assigneeId: targetId },
+        data: { assigneeId: actor.id },
+      }),
+      prisma.nonconformanceAction.updateMany({
+        where: { reporterId: targetId },
+        data: { reporterId: actor.id },
+      }),
+      prisma.formResponse.updateMany({
+        where: { submittedById: targetId },
+        data: { submittedById: null },
+      }),
+      prisma.siteDocument.updateMany({
+        where: { uploadedById: targetId },
+        data: { uploadedById: actor.id },
+      }),
+      prisma.user.delete({ where: { id: targetId } }),
+    ]);
+  } catch (err) {
+    if (err?.code === "P2003") {
+      return res.status(409).json({
+        success: false,
+        message:
+          "This user is still linked to records that could not be reassigned. Remove or reassign their actions and documents, then try again.",
+      });
+    }
+    throw err;
+  }
 
   invalidateSessionUserCache(targetId);
   res.json({ success: true, message: "User deleted successfully", id: targetId });
@@ -1196,30 +1345,14 @@ exports.inviteUser = asyncHandler(async (req, res) => {
     },
   });
 
-  let emailSent = false;
-  let emailError = null;
-
-  try {
-    const emailResult = await sendInviteVerificationEmailWithTimeout(newUser, {
-      companyName: resolvedCompany,
-      temporaryPassword: password,
-    });
-    emailSent = Boolean(emailResult?.success);
-    if (!emailSent) {
-      emailError = emailResult?.error || "Email delivery failed";
-    }
-  } catch (emailErr) {
-    console.error("Failed to send verification email:", emailErr);
-    emailError = emailErr.message || "Email delivery failed";
-  }
+  const emailStatus = await sendInviteWelcomeEmailStatus(newUser, {
+    companyName: resolvedCompany,
+    password,
+  });
 
   res.status(201).json({
     success: true,
-    message: emailSent
-      ? "User invited. They must verify their email before they can sign in."
-      : "User created, but the verification email could not be sent. Resend verification or share the link manually.",
-    emailSent,
-    emailError,
+    ...emailStatus,
     user: {
       id:          newUser.id,
       username:    newUser.username,

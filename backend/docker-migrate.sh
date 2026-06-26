@@ -18,6 +18,7 @@ fi
 
 if [ -z "$DATABASE_URL" ]; then
   echo "ERROR: DATABASE_URL is not set. Set it in Coolify / .env (PostgreSQL connection string)." >&2
+  echo "Local dev: copy .env.docker.example to .env or use backend/.env.example" >&2
   exit 1
 fi
 

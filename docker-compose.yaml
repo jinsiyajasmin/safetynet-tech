@@ -17,6 +17,14 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       APP_URL: ${APP_URL:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_RELAY_HOST: ${SMTP_RELAY_HOST:-}
       # DIRECT_URL is derived from DATABASE_URL at runtime when not set in Coolify.
 
     volumes:

@@ -28,6 +28,9 @@ import UnauthorizedPage from './pages/UnauthorizedPage';
 import CreateSitesPage from './pages/CreateSitesPage';
 import SitepackManagement from './pages/SitepackManagement';
 import ConcernReportDashboard from './pages/ConcernReportDashboard';
+import MonitoringSectionDashboardPage from './pages/MonitoringSectionDashboardPage';
+import MonitoringSectionPage from './pages/MonitoringSectionPage';
+import ActionTrackerPage from './pages/ActionTrackerPage';
 import AuditReportDashboard from './pages/AuditReportDashboard';
 import GeneralFormsList from './pages/GeneralFormsList';
 import SavedSignaturesPage from './pages/SavedSignaturesPage';
@@ -204,8 +207,37 @@ function App() {
           <Route path="/general-forms/alimak-weekly-check/:id" element={<RequireAuth><AlimakWeeklyCheckForm /></RequireAuth>} />
           <Route path="/frida-forms" element={<RequireAuth><GenericReportPage pageTitle="Friday pack forms" /></RequireAuth>} />
 
-          {/* Dashboards */}
+          {/* Dashboard KPI pages */}
           <Route path="/dashboard" element={<RequireAuth><ConcernReportDashboard /></RequireAuth>} />
+          <Route path="/dashboard/occupational-health-safety-kpis" element={<RequireAuth><MonitoringSectionDashboardPage section="ohs" /></RequireAuth>} />
+          <Route path="/dashboard/environmental-management-kpis" element={<RequireAuth><MonitoringSectionDashboardPage section="environmental" /></RequireAuth>} />
+          <Route path="/dashboard/quality-management-kpis" element={<RequireAuth><MonitoringSectionDashboardPage section="quality" /></RequireAuth>} />
+          <Route path="/dashboard/food-safety-management" element={<RequireAuth><MonitoringSectionDashboardPage section="food-safety" /></RequireAuth>} />
+
+          {/* Monitoring forms — sites, folders, submissions */}
+          <Route path="/monitoring/ohs/site/:siteId/folder/:folderId" element={<RequireAuth><MonitoringSectionPage section="ohs" /></RequireAuth>} />
+          <Route path="/monitoring/ohs/site/:siteId" element={<RequireAuth><MonitoringSectionPage section="ohs" /></RequireAuth>} />
+          <Route path="/monitoring/ohs" element={<RequireAuth><MonitoringSectionPage section="ohs" /></RequireAuth>} />
+          <Route path="/monitoring/environmental/site/:siteId/folder/:folderId" element={<RequireAuth><MonitoringSectionPage section="environmental" /></RequireAuth>} />
+          <Route path="/monitoring/environmental/site/:siteId" element={<RequireAuth><MonitoringSectionPage section="environmental" /></RequireAuth>} />
+          <Route path="/monitoring/environmental" element={<RequireAuth><MonitoringSectionPage section="environmental" /></RequireAuth>} />
+          <Route path="/monitoring/quality/site/:siteId/folder/:folderId" element={<RequireAuth><MonitoringSectionPage section="quality" /></RequireAuth>} />
+          <Route path="/monitoring/quality/site/:siteId" element={<RequireAuth><MonitoringSectionPage section="quality" /></RequireAuth>} />
+          <Route path="/monitoring/quality" element={<RequireAuth><MonitoringSectionPage section="quality" /></RequireAuth>} />
+          <Route path="/monitoring/food-safety/site/:siteId/folder/:folderId" element={<RequireAuth><MonitoringSectionPage section="food-safety" /></RequireAuth>} />
+          <Route path="/monitoring/food-safety/site/:siteId" element={<RequireAuth><MonitoringSectionPage section="food-safety" /></RequireAuth>} />
+          <Route path="/monitoring/food-safety" element={<RequireAuth><MonitoringSectionPage section="food-safety" /></RequireAuth>} />
+
+          {/* Legacy URLs → monitoring forms */}
+          <Route path="/dashboard/occupational-health-safety-kpis/site/:siteId/folder/:folderId" element={<RequireAuth><MonitoringSectionPage section="ohs" /></RequireAuth>} />
+          <Route path="/dashboard/occupational-health-safety-kpis/site/:siteId" element={<RequireAuth><MonitoringSectionPage section="ohs" /></RequireAuth>} />
+          <Route path="/dashboard/environmental-management-kpis/site/:siteId/folder/:folderId" element={<RequireAuth><MonitoringSectionPage section="environmental" /></RequireAuth>} />
+          <Route path="/dashboard/environmental-management-kpis/site/:siteId" element={<RequireAuth><MonitoringSectionPage section="environmental" /></RequireAuth>} />
+          <Route path="/dashboard/quality-management-kpis/site/:siteId/folder/:folderId" element={<RequireAuth><MonitoringSectionPage section="quality" /></RequireAuth>} />
+          <Route path="/dashboard/quality-management-kpis/site/:siteId" element={<RequireAuth><MonitoringSectionPage section="quality" /></RequireAuth>} />
+          <Route path="/dashboard/food-safety-management/site/:siteId/folder/:folderId" element={<RequireAuth><MonitoringSectionPage section="food-safety" /></RequireAuth>} />
+          <Route path="/dashboard/food-safety-management/site/:siteId" element={<RequireAuth><MonitoringSectionPage section="food-safety" /></RequireAuth>} />
+          <Route path="/action-tracker" element={<RequireAuth><ActionTrackerPage /></RequireAuth>} />
           <Route path="/concern-reports" element={<RequireAuth><ConcernReportDashboard /></RequireAuth>} />
           <Route path="/audit-reports" element={<RequireAuth><AuditReportDashboard /></RequireAuth>} />
 

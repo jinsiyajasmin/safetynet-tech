@@ -10,7 +10,7 @@ const { mergeWithAlwaysOn, normalizeAllowedPages } = require("../utils/pageAcces
 
 const INVITE_LINK_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 const OTP_EXPIRY_MS = 30 * 60 * 1000;
-const INVITE_EMAIL_TIMEOUT_MS = 12_000;
+const INVITE_EMAIL_TIMEOUT_MS = 25_000;
 
 function hashToken(token) {
   return crypto.createHash("sha256").update(String(token)).digest("hex");

@@ -110,6 +110,7 @@ async function assertManagersInCompany(req, managerIds) {
         where: {
             id: { in: managerIds },
             active: true,
+            accessMode: "standard",
             ...companyWhere,
         },
     });
@@ -301,8 +302,18 @@ exports.getSiteSubfolders = async (req, res) => {
             return res.status(403).json({ success: false, message: "You do not have access to this site." });
         }
 
+        const scope = String(req.query.scope || "").trim();
+        const monitoringSection = String(req.query.monitoringSection || "").trim();
+        const where = { siteId };
+
+        if (scope === "sitepack") {
+            where.monitoringSection = null;
+        } else if (monitoringSection) {
+            where.monitoringSection = monitoringSection;
+        }
+
         const subfolders = await prisma.siteSubfolder.findMany({
-            where: { siteId },
+            where,
             orderBy: { createdAt: "desc" },
         });
 
@@ -317,6 +328,11 @@ exports.createSiteSubfolder = async (req, res) => {
     try {
         const { siteId } = req.params;
         const name = String(req.body?.name || "").trim();
+        const monitoringSectionRaw = req.body?.monitoringSection;
+        const monitoringSection =
+            monitoringSectionRaw != null && String(monitoringSectionRaw).trim() !== ""
+                ? String(monitoringSectionRaw).trim()
+                : null;
 
         if (!name) {
             return res.status(400).json({ success: false, message: "Subfolder name is required." });
@@ -328,7 +344,7 @@ exports.createSiteSubfolder = async (req, res) => {
         }
 
         const subfolder = await prisma.siteSubfolder.create({
-            data: { name, siteId },
+            data: { name, siteId, monitoringSection },
         });
 
         res.status(201).json({ success: true, subfolder });
@@ -361,6 +377,39 @@ exports.deleteSiteSubfolder = async (req, res) => {
     }
 };
 
+exports.updateSiteSubfolder = async (req, res) => {
+    try {
+        const { siteId, subfolderId } = req.params;
+        const name = String(req.body?.name || "").trim();
+
+        if (!name) {
+            return res.status(400).json({ success: false, message: "Subfolder name is required." });
+        }
+
+        const actingClientId = req.actingClient?.id || null;
+        if (!(await userCanAccessSite(prisma, req.scopedUser || req.user, siteId, actingClientId))) {
+            return res.status(403).json({ success: false, message: "You do not have access to this site." });
+        }
+
+        const existing = await prisma.siteSubfolder.findFirst({
+            where: { id: subfolderId, siteId },
+        });
+        if (!existing) {
+            return res.status(404).json({ success: false, message: "Subfolder not found." });
+        }
+
+        const subfolder = await prisma.siteSubfolder.update({
+            where: { id: subfolderId },
+            data: { name },
+        });
+
+        res.json({ success: true, subfolder });
+    } catch (error) {
+        console.error("Error updating site subfolder:", error);
+        res.status(500).json({ success: false, message: "Failed to update subfolder." });
+    }
+};
+
 // All active users in the requester's company (for site manager assignment)
 exports.getSiteManagers = async (req, res) => {
     try {
@@ -372,6 +421,7 @@ exports.getSiteManagers = async (req, res) => {
         const managers = await prisma.user.findMany({
             where: {
                 active: true,
+                accessMode: "standard",
                 ...companyWhere,
             },
             select: {

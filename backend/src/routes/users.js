@@ -57,6 +57,13 @@ router.post(
   usersController.inviteViewAccess
 );
 
+// Form fields: resolve user name by email (any authenticated user, same company)
+router.get(
+  "/resolve-by-email",
+  requireAuth,
+  usersController.resolveUserByEmail
+);
+
 // List all users — superadmin and company_admin only (Users page)
 router.get(
   "/",

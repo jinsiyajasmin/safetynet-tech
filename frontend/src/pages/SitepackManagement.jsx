@@ -23,13 +23,21 @@ import {
     Menu,
     MenuItem,
     ListItemText,
-    Collapse
+    Collapse,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+    Tabs,
+    Tab,
 } from "@mui/material";
 
 import { 
     Building2, ClipboardList, FileText, DraftingCompass, BookOpen, 
     Award, ShieldCheck, UploadCloud, Eye, Download, Trash2, X,
-    AlertTriangle, UserCheck, Folder, ChevronDown, ChevronUp
+    AlertTriangle, UserCheck, Folder, ChevronDown, ChevronUp, Pencil
 } from "lucide-react";
 import SearchIcon from "@mui/icons-material/Search";
 import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined';
@@ -68,6 +76,8 @@ import api, {
   fetchFormResponsesList,
   fetchSiteSubfolders,
   createSiteSubfolder,
+  updateSiteSubfolder,
+  deleteSiteSubfolder,
   deleteDocument,
   fetchDocumentPreviewBlob,
   formatUploadError,
@@ -76,7 +86,10 @@ import { matchesSitepackScope, sitepackSearchParams, normalizeSitepackId, create
 import {
     FRIDAY_PACK_FORMS_CATEGORY,
     belongsInSitepackCategory,
+    fridayPackFormListFetchParams,
+    isFridayPackFormForUser,
     isFridayPackSiteSubmission,
+    userOwnsFormSubmission,
 } from "../utils/generalFormSubmissions";
 import {
     SITEPACK_FORM_GROUPS,
@@ -176,103 +189,101 @@ const TEMPLATES = [
 
 const FRIDAY_PACK_ACCENT = "#E89F17";
 
+const CREATE_FORM_TAB_SAVED = "saved";
+const CREATE_FORM_TAB_TEMPLATES = "templates";
+const CREATE_FORM_TAB_BUILDER = "builder";
+
 /** Template card for the Friday Pack “Create form” picker modal. */
-function FormPickerCard({ title, description, meta, onSelect, onPreview, isDarkMode }) {
+function FormPickerCard({ title, description, meta, onUse, onPreview, isDarkMode }) {
     return (
         <Card
-            onClick={onSelect}
             elevation={0}
             sx={{
-                cursor: "pointer",
                 borderRadius: 2.5,
                 height: "100%",
-                minHeight: 108,
                 display: "flex",
                 flexDirection: "column",
                 bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
                 border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
-                transition: "border-color 0.2s, box-shadow 0.2s, transform 0.2s",
-                "&:hover": {
-                    borderColor: FRIDAY_PACK_ACCENT,
-                    transform: "translateY(-2px)",
-                    boxShadow: isDarkMode
-                        ? "0 8px 24px rgba(0,0,0,0.35)"
-                        : "0 8px 24px rgba(232, 159, 23, 0.12)",
-                },
             }}
         >
             <CardContent
                 sx={{
-                    p: 2.5,
+                    p: 2,
                     flex: 1,
                     display: "flex",
                     flexDirection: "column",
-                    gap: 0.75,
-                    "&:last-child": { pb: 2.5 },
+                    gap: 1,
+                    "&:last-child": { pb: 2 },
                 }}
             >
-                <Box
-                    sx={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        justifyContent: "space-between",
-                        gap: 1,
-                    }}
-                >
-                    <Typography
-                        variant="subtitle2"
-                        fontWeight={700}
+                <Box sx={{ display: "flex", gap: 1.5, flex: 1 }}>
+                    <Box
                         sx={{
-                            flex: 1,
-                            lineHeight: 1.35,
-                            color: isDarkMode ? "#F9FAFB" : "#111827",
-                        }}
-                    >
-                        {title}
-                    </Typography>
-                    <IconButton
-                        size="small"
-                        aria-label={`Preview ${title}`}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onPreview();
-                        }}
-                        sx={{
+                            p: 1,
+                            borderRadius: 1.5,
+                            bgcolor: "rgba(232, 159, 23, 0.12)",
+                            color: FRIDAY_PACK_ACCENT,
+                            display: "flex",
                             flexShrink: 0,
-                            mt: -0.25,
-                            color: isDarkMode ? "#60A5FA" : "#0B4DA6",
-                            bgcolor: isDarkMode ? "rgba(55, 65, 81, 0.6)" : "#F3F4F6",
-                            "&:hover": {
-                                bgcolor: isDarkMode ? "#374151" : "#E5E7EB",
-                            },
+                            alignSelf: "flex-start",
                         }}
                     >
-                        <VisibilityOutlinedIcon sx={{ fontSize: 18 }} />
-                    </IconButton>
+                        <FileText size={18} />
+                    </Box>
+                    <Box sx={{ minWidth: 0 }}>
+                        <Typography
+                            variant="subtitle2"
+                            fontWeight={700}
+                            sx={{ lineHeight: 1.35, color: isDarkMode ? "#F9FAFB" : "#111827" }}
+                        >
+                            {title}
+                        </Typography>
+                        {description ? (
+                            <Typography
+                                variant="body2"
+                                sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280", mt: 0.5, lineHeight: 1.45 }}
+                            >
+                                {description}
+                            </Typography>
+                        ) : null}
+                        {meta ? (
+                            <Typography variant="caption" sx={{ color: isDarkMode ? "#6B7280" : "#9CA3AF", display: "block", mt: 0.5 }}>
+                                {meta}
+                            </Typography>
+                        ) : null}
+                    </Box>
                 </Box>
-                {description ? (
-                    <Typography
-                        variant="body2"
+                <Box sx={{ display: "flex", gap: 1, mt: "auto", pt: 0.5 }}>
+                    <Button
+                        fullWidth
+                        variant="outlined"
+                        startIcon={<Eye size={16} />}
+                        onClick={onPreview}
                         sx={{
-                            color: isDarkMode ? "#9CA3AF" : "#6B7280",
-                            lineHeight: 1.45,
-                            flexGrow: 1,
+                            textTransform: "none",
+                            fontWeight: 600,
+                            borderColor: isDarkMode ? "#4B5563" : "#E5E7EB",
+                            color: isDarkMode ? "#E5E7EB" : "#374151",
                         }}
                     >
-                        {description}
-                    </Typography>
-                ) : null}
-                {meta ? (
-                    <Typography
-                        variant="caption"
+                        Preview
+                    </Button>
+                    <Button
+                        fullWidth
+                        variant="contained"
+                        onClick={onUse}
                         sx={{
-                            color: isDarkMode ? "#6B7280" : "#9CA3AF",
-                            mt: description ? 0 : "auto",
+                            textTransform: "none",
+                            fontWeight: 600,
+                            bgcolor: FRIDAY_PACK_ACCENT,
+                            boxShadow: "none",
+                            "&:hover": { bgcolor: "#cc8b14", boxShadow: "none" },
                         }}
                     >
-                        {meta}
-                    </Typography>
-                ) : null}
+                        Use
+                    </Button>
+                </Box>
             </CardContent>
         </Card>
     );
@@ -341,9 +352,39 @@ function getSitepackReportFormPath(menuDoc, responseId, sitepackQuery) {
     });
 }
 
+const SITEPACK_STANDARD_FORM_TITLES = [
+    "Tool Box Talk Register",
+    "RAMS Briefing Form",
+    "Site Induction Register",
+    "Management Site Inspection Report",
+    "Daily Safe Start Briefing Sheet",
+    "Audit Action Form",
+    "Site Induction Form",
+    "LOLER Inspection Form",
+    "PUWER Inspection Form",
+    "Alimak Weekly Check",
+];
+
+function canSitepackFormDownloadWord(doc) {
+    if (!doc?.isFormBase) return false;
+    return !SITEPACK_STANDARD_FORM_TITLES.includes(getSitepackFormTemplateTitle(doc));
+}
+
+function formatSitepackFormDate(value) {
+    if (!value) return "—";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+    });
+}
+
 export default function SitepackManagement() {
     const { isDarkMode } = useTheme();
-    const { role } = useAuth();
+    const { role, currentUser } = useAuth();
+    const currentUserId = currentUser?.id || currentUser?._id;
 
     const [sites, setSites] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -362,6 +403,12 @@ export default function SitepackManagement() {
     const [newSubfolderName, setNewSubfolderName] = useState("");
     const [subfolderError, setSubfolderError] = useState("");
     const [creatingSubfolder, setCreatingSubfolder] = useState(false);
+    const [editSubfolderOpen, setEditSubfolderOpen] = useState(false);
+    const [editingSubfolder, setEditingSubfolder] = useState(null);
+    const [savingSubfolder, setSavingSubfolder] = useState(false);
+    const [deleteSubfolderOpen, setDeleteSubfolderOpen] = useState(false);
+    const [subfolderToDelete, setSubfolderToDelete] = useState(null);
+    const [deletingSubfolder, setDeletingSubfolder] = useState(false);
     const [modules, setModules] = useState(
         MODULES_CONFIG_DEFAULT.map((m) => ({ ...m, count: "0 documents", id: m.title }))
     );
@@ -383,6 +430,19 @@ export default function SitepackManagement() {
             category: selectedModule?.title,
             extra,
         });
+
+    const includeSitepackFormRow = (row, moduleTitle) => {
+        if (!belongsInSitepackCategory(row, moduleTitle)) return false;
+        if (moduleTitle === FRIDAY_PACK_FORMS_CATEGORY) {
+            return isFridayPackFormForUser(row, currentUserId);
+        }
+        return true;
+    };
+
+    const sitepackFormFetchParams = (moduleTitle, siteId) =>
+        moduleTitle === FRIDAY_PACK_FORMS_CATEGORY
+            ? fridayPackFormListFetchParams(siteId)
+            : { category: moduleTitle, siteId };
 
     // Persist View State
     useEffect(() => {
@@ -408,9 +468,12 @@ export default function SitepackManagement() {
     // UI State
     const [uploadModalOpen, setUploadModalOpen] = useState(false);
     const [createFormModalOpen, setCreateFormModalOpen] = useState(false);
-    const [graphModalOpen, setGraphModalOpen] = useState(false);
+    const [createFormPickerTab, setCreateFormPickerTab] = useState(CREATE_FORM_TAB_TEMPLATES);
+    const [createFormSearch, setCreateFormSearch] = useState("");
     const [savedGeneralSubmissions, setSavedGeneralSubmissions] = useState([]);
+    const [builderForms, setBuilderForms] = useState([]);
     const [createFormModalLoading, setCreateFormModalLoading] = useState(false);
+    const [graphModalOpen, setGraphModalOpen] = useState(false);
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [viewModalOpen, setViewModalOpen] = useState(false);
     const [viewDocUrl, setViewDocUrl] = useState(null);
@@ -465,7 +528,9 @@ export default function SitepackManagement() {
         const loadSubfolders = async () => {
             setSubfoldersLoading(true);
             try {
-                const { subfolders: list } = await fetchSiteSubfolders(getSiteId());
+                const { subfolders: list } = await fetchSiteSubfolders(getSiteId(), {
+                    scope: "sitepack",
+                });
                 setSubfolders(list || []);
                 if (location.state?.subfolderId && !selectedSubfolder?.name) {
                     const match = (list || []).find((sf) => sf.id === location.state.subfolderId);
@@ -500,12 +565,9 @@ export default function SitepackManagement() {
         const loadSubfolderCounts = async () => {
             const siteId = getSiteId();
             const moduleTitle = selectedModule.title;
-            const useBroadFormFetch = moduleTitle === FRIDAY_PACK_FORMS_CATEGORY;
             try {
                 const [formsRes, docsRes] = await Promise.all([
-                    fetchFormResponsesList(
-                        useBroadFormFetch ? { siteId } : { category: moduleTitle, siteId }
-                    ),
+                    fetchFormResponsesList(sitepackFormFetchParams(moduleTitle, siteId)),
                     fetchDocuments(siteId, moduleTitle),
                 ]);
                 if (cancelled) return;
@@ -522,7 +584,7 @@ export default function SitepackManagement() {
 
                 (formsRes?.data || []).forEach((row) => {
                     if (!matchesSitepackScope(row, { siteId })) return;
-                    if (!belongsInSitepackCategory(row, moduleTitle)) return;
+                    if (!includeSitepackFormRow(row, moduleTitle)) return;
                     bump(row.answers?.subfolderId ?? row.subfolderId);
                 });
                 (docsRes?.documents || []).forEach((doc) => bump(doc.subfolderId));
@@ -538,7 +600,7 @@ export default function SitepackManagement() {
         return () => {
             cancelled = true;
         };
-    }, [selectedSite, selectedModule, selectedSubfolder, location.key]);
+    }, [selectedSite, selectedModule, selectedSubfolder, location.key, currentUserId]);
 
     // Load module counts when viewing categories for a site
     useEffect(() => {
@@ -556,11 +618,15 @@ export default function SitepackManagement() {
                                 matchesSitepackScope(r, { siteId })
                             );
 
-                            siteResponses.forEach(r => {
-                                const cat = isFridayPackSiteSubmission(r)
-                                    ? FRIDAY_PACK_FORMS_CATEGORY
-                                    : (r.category || "General");
-                                formCountsByCategory[cat] = (formCountsByCategory[cat] || 0) + 1;
+                            siteResponses.forEach((r) => {
+                                if (!isFridayPackSiteSubmission(r)) {
+                                    const cat = r.category || "General";
+                                    formCountsByCategory[cat] = (formCountsByCategory[cat] || 0) + 1;
+                                    return;
+                                }
+                                if (!userOwnsFormSubmission(r, currentUserId)) return;
+                                formCountsByCategory[FRIDAY_PACK_FORMS_CATEGORY] =
+                                    (formCountsByCategory[FRIDAY_PACK_FORMS_CATEGORY] || 0) + 1;
                             });
                         }
                     } catch (e) {
@@ -590,7 +656,7 @@ export default function SitepackManagement() {
             };
             loadCounts();
         }
-    }, [selectedSite, selectedModule, location.key]);
+    }, [selectedSite, selectedModule, location.key, currentUserId]);
 
     // Load documents when module + subfolder selected (location.key refreshes after saving a form).
     useEffect(() => {
@@ -599,22 +665,62 @@ export default function SitepackManagement() {
             return;
         }
         reloadModuleDocuments();
-    }, [selectedSite, selectedSubfolder, selectedModule, location.key]);
+    }, [selectedSite, selectedSubfolder, selectedModule, location.key, currentUserId]);
 
     const generalFormTitleToPath = useMemo(
         () => Object.fromEntries(TEMPLATES.map((t) => [t.title, t.path])),
         []
     );
 
-    // Load custom form definitions + saved general-form responses for the Create Form dialog
+    const filteredSavedTemplates = useMemo(() => {
+        const q = createFormSearch.trim().toLowerCase();
+        if (!q) return savedGeneralSubmissions;
+        return savedGeneralSubmissions.filter((sub) => {
+            const primary = (sub.name || sub.answers?.name || sub.form?.title || "").toLowerCase();
+            const secondary = (sub.form?.title || "").toLowerCase();
+            return primary.includes(q) || secondary.includes(q);
+        });
+    }, [savedGeneralSubmissions, createFormSearch]);
+
+    const filteredBlankTemplates = useMemo(() => {
+        const q = createFormSearch.trim().toLowerCase();
+        if (!q) return TEMPLATES;
+        return TEMPLATES.filter(
+            (t) =>
+                t.title.toLowerCase().includes(q) ||
+                (t.description || "").toLowerCase().includes(q)
+        );
+    }, [createFormSearch]);
+
+    const filteredBuilderForms = useMemo(() => {
+        const q = createFormSearch.trim().toLowerCase();
+        if (!q) return builderForms;
+        return builderForms.filter((form) => {
+            const title = (form.title || "").toLowerCase();
+            const desc = (form.description || "").toLowerCase();
+            return title.includes(q) || desc.includes(q);
+        });
+    }, [builderForms, createFormSearch]);
+
+    const closeCreateFormModal = () => {
+        setCreateFormModalOpen(false);
+        setCreateFormPickerTab(CREATE_FORM_TAB_TEMPLATES);
+        setCreateFormSearch("");
+    };
+
+    // Load saved templates + form builder forms for the Create Form dialog
     useEffect(() => {
         if (!createFormModalOpen) return;
         let cancelled = false;
         const load = async () => {
             setCreateFormModalLoading(true);
             setSavedGeneralSubmissions([]);
+            setBuilderForms([]);
             try {
-                const responsesRes = await fetchFormResponsesList({ category: "General forms," });
+                const [responsesRes, formsRes] = await Promise.all([
+                    fetchFormResponsesList({ category: "General forms," }),
+                    api.get("/forms"),
+                ]);
                 if (cancelled) return;
                 if (responsesRes?.success) {
                     const list = responsesRes.data || [];
@@ -622,6 +728,16 @@ export default function SitepackManagement() {
                         .filter(isSavedGeneralFormTemplate)
                         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
                     setSavedGeneralSubmissions(saved);
+                }
+                if (formsRes.data?.success) {
+                    const userCreatedForms = (formsRes.data.data || []).filter(
+                        (form) =>
+                            !(
+                                form.fields?.length === 1 &&
+                                form.fields[0].id === "custom_hardcoded_form_data"
+                            )
+                    );
+                    setBuilderForms(userCreatedForms);
                 }
             } catch (e) {
                 console.error("Failed to load Create Form dialog data", e);
@@ -633,7 +749,7 @@ export default function SitepackManagement() {
         return () => {
             cancelled = true;
         };
-    }, [createFormModalOpen, generalFormTitleToPath]);
+    }, [createFormModalOpen]);
 
     // Handlers
     const handleSiteClick = (site) => {
@@ -692,6 +808,78 @@ export default function SitepackManagement() {
         }
     };
 
+    const handleOpenEditSubfolder = (event, subfolder) => {
+        event.stopPropagation();
+        setEditingSubfolder(subfolder);
+        setNewSubfolderName(subfolder.name);
+        setSubfolderError("");
+        setEditSubfolderOpen(true);
+    };
+
+    const handleCloseEditSubfolder = () => {
+        if (savingSubfolder) return;
+        setEditSubfolderOpen(false);
+        setEditingSubfolder(null);
+        setNewSubfolderName("");
+        setSubfolderError("");
+    };
+
+    const handleUpdateSubfolder = async () => {
+        const name = newSubfolderName.trim();
+        if (!name) {
+            setSubfolderError("Folder name is required");
+            return;
+        }
+        if (!editingSubfolder?.id) return;
+        setSavingSubfolder(true);
+        setSubfolderError("");
+        try {
+            const { subfolder } = await updateSiteSubfolder(getSiteId(), editingSubfolder.id, name);
+            setSubfolders((prev) =>
+                prev.map((sf) => (sf.id === subfolder.id ? subfolder : sf))
+            );
+            if (selectedSubfolder?.id === subfolder.id) {
+                setSelectedSubfolder(subfolder);
+            }
+            handleCloseEditSubfolder();
+        } catch (error) {
+            console.error("Failed to update subfolder", error);
+            setSubfolderError(error.response?.data?.message || "Failed to update folder");
+        } finally {
+            setSavingSubfolder(false);
+        }
+    };
+
+    const handleOpenDeleteSubfolder = (event, subfolder) => {
+        event.stopPropagation();
+        setSubfolderToDelete(subfolder);
+        setDeleteSubfolderOpen(true);
+    };
+
+    const handleCloseDeleteSubfolder = () => {
+        if (deletingSubfolder) return;
+        setDeleteSubfolderOpen(false);
+        setSubfolderToDelete(null);
+    };
+
+    const confirmDeleteSubfolder = async () => {
+        if (!subfolderToDelete?.id) return;
+        setDeletingSubfolder(true);
+        try {
+            await deleteSiteSubfolder(getSiteId(), subfolderToDelete.id);
+            setSubfolders((prev) => prev.filter((sf) => sf.id !== subfolderToDelete.id));
+            if (selectedSubfolder?.id === subfolderToDelete.id) {
+                setSelectedSubfolder(null);
+            }
+            handleCloseDeleteSubfolder();
+        } catch (error) {
+            console.error("Failed to delete subfolder", error);
+            window.alert(error.response?.data?.message || "Failed to delete folder");
+        } finally {
+            setDeletingSubfolder(false);
+        }
+    };
+
     const handleModuleClick = (module) => {
         setSelectedModule(module);
         setSelectedSubfolder(null);
@@ -713,7 +901,6 @@ export default function SitepackManagement() {
         const moduleTitle = selectedModule.title;
         const allFormsView = isAllFormsSubfolder(selectedSubfolder);
         const unfiledView = isUnfiledSubfolder(selectedSubfolder);
-        const useBroadFormFetch = moduleTitle === FRIDAY_PACK_FORMS_CATEGORY;
         let allItems = [];
 
         try {
@@ -734,9 +921,7 @@ export default function SitepackManagement() {
         }
 
         try {
-            const res = await fetchFormResponsesList(
-                useBroadFormFetch ? { siteId } : { category: moduleTitle, siteId }
-            );
+            const res = await fetchFormResponsesList(sitepackFormFetchParams(moduleTitle, siteId));
             if (res?.success) {
                 const scopeSubfolderId = allFormsView
                     ? ALL_SITEPACK_FORMS_ID
@@ -744,7 +929,7 @@ export default function SitepackManagement() {
                       ? selectedSubfolder.id
                       : subfolderId;
                 const siteResponses = (res.data || []).filter((r) => {
-                    if (!belongsInSitepackCategory(r, moduleTitle)) return false;
+                    if (!includeSitepackFormRow(r, moduleTitle)) return false;
                     return matchesSitepackScope(r, {
                         siteId,
                         subfolderId: scopeSubfolderId,
@@ -880,6 +1065,7 @@ export default function SitepackManagement() {
         const params = sitepackParams({ category: "Friday Pack Forms" });
         const qs = new URLSearchParams(params).toString();
 
+        closeCreateFormModal();
         if (isCustom) {
             navigate(`/forms/${customFormId}/use?${qs}`);
         } else {
@@ -898,10 +1084,21 @@ export default function SitepackManagement() {
         setPreviewModalOpen(true);
     };
 
+    const handleUseBuilderForm = (form) => {
+        const formId = form._id || form.id;
+        handleSelectForm(null, true, formId);
+    };
+
+    const handlePreviewBuilderForm = (form) => {
+        const formId = form._id || form.id;
+        handlePreviewForm(null, true, formId);
+    };
+
     const handleSelectSavedGeneralSubmission = (submission) => {
         const path = generalFormTitleToPath[submission.form?.title];
         if (!path) return;
         const rid = submission.id || submission._id;
+        closeCreateFormModal();
         navigate(pathWithSearchParams(path, sitepackParams({
             category: "Friday Pack Forms",
             fromTemplate: rid,
@@ -939,24 +1136,27 @@ export default function SitepackManagement() {
         }
     };
 
-    const handleView = async () => {
-        if (menuDoc?.isFormBase) {
-            handleMenuClose();
-            const resId = menuDoc.id || menuDoc._id;
-            const category = selectedModule?.title || menuDoc.rawResponse?.category || "Friday Pack Forms";
-            const reportPath = getSitepackReportFormPath(menuDoc, resId, sitepackParams({ category }));
+    const handleView = async (docOverride) => {
+        const activeDoc = docOverride || menuDoc;
+        if (!activeDoc) return;
+
+        if (activeDoc.isFormBase) {
+            if (!docOverride) handleMenuClose();
+            const resId = activeDoc.id || activeDoc._id;
+            const category = selectedModule?.title || activeDoc.rawResponse?.category || "Friday Pack Forms";
+            const reportPath = getSitepackReportFormPath(activeDoc, resId, sitepackParams({ category }));
             if (reportPath) {
                 navigate(reportPath);
                 return;
             }
-            const path = getSitepackFormPathForResponse(menuDoc, resId);
+            const path = getSitepackFormPathForResponse(activeDoc, resId);
             if (!path) return;
             navigate(pathWithSearchParams(path, sitepackParams({ category })));
             return;
         }
 
-        const docToView = menuDoc;
-        handleMenuClose();
+        const docToView = activeDoc;
+        if (!docOverride) handleMenuClose();
 
         if (!docToView?.url) return;
 
@@ -1053,17 +1253,7 @@ export default function SitepackManagement() {
     const handleDownload = () => {
         if (menuDoc?.isFormBase) {
             handleMenuClose();
-            const resId = menuDoc.id || menuDoc._id;
-            const category = selectedModule?.title || menuDoc.rawResponse?.category || "Friday Pack Forms";
-            const reportPath = getSitepackReportFormPath(menuDoc, resId, sitepackParams({ category }));
-            if (reportPath) {
-                window.open(pathWithSearchParams(reportPath, { action: "download" }), "_blank");
-                return;
-            }
-            const path = getSitepackFormPathForResponse(menuDoc, resId);
-            if (!path) return;
-            const url = pathWithSearchParams(path, sitepackParams({ category, action: "download" }));
-            window.open(url, "_blank");
+            runFormDownloadPdf(menuDoc);
             return;
         }
 
@@ -1077,19 +1267,69 @@ export default function SitepackManagement() {
     const handleDownloadWord = () => {
         if (menuDoc?.isFormBase) {
             handleMenuClose();
-            const resId = menuDoc.id || menuDoc._id;
-            const templateTitle = getSitepackFormTemplateTitle(menuDoc);
-            const standardForms = ['Tool Box Talk Register', 'RAMS Briefing Form', 'Site Induction Register', 'Management Site Inspection Report', 'Daily Safe Start Briefing Sheet', 'Audit Action Form', 'Site Induction Form', 'LOLER Inspection Form', 'PUWER Inspection Form', 'Alimak Weekly Check'];
-            
-            // Only supported for custom form builder forms
-            if (!standardForms.includes(templateTitle)) {
-                 const path = `/forms/${menuDoc.rawResponse?.formId}/use?responseId=${resId}`;
-                 const category = selectedModule?.title || "Friday Pack Forms";
-                 window.open(pathWithSearchParams(path, sitepackParams({ category, action: "download_word" })), "_blank");
-            }
+            runFormDownloadWord(menuDoc);
             return;
         }
         handleMenuClose();
+    };
+
+    const runFormDownloadPdf = (doc) => {
+        const resId = doc.id || doc._id;
+        const category = selectedModule?.title || doc?.rawResponse?.category || FRIDAY_PACK_FORMS_CATEGORY;
+        const reportPath = getSitepackReportFormPath(doc, resId, sitepackParams({ category }));
+        if (reportPath) {
+            window.open(pathWithSearchParams(reportPath, { action: "download" }), "_blank");
+            return;
+        }
+        const path = getSitepackFormPathForResponse(doc, resId);
+        if (!path) return;
+        window.open(pathWithSearchParams(path, sitepackParams({ category, action: "download" })), "_blank");
+    };
+
+    const runFormDownloadWord = (doc) => {
+        if (!canSitepackFormDownloadWord(doc)) return;
+        const resId = doc.id || doc._id;
+        const path = `/forms/${doc.rawResponse?.formId}/use?responseId=${resId}`;
+        const category = selectedModule?.title || FRIDAY_PACK_FORMS_CATEGORY;
+        window.open(pathWithSearchParams(path, sitepackParams({ category, action: "download_word" })), "_blank");
+    };
+
+    const handleFormPreview = (doc) => {
+        if (!doc?.isFormBase) {
+            handleView(doc);
+            return;
+        }
+        const resId = doc.id || doc._id;
+        const category = selectedModule?.title || FRIDAY_PACK_FORMS_CATEGORY;
+        const reportPath = getSitepackReportFormPath(doc, resId, sitepackParams({ category, preview: "true" }));
+        if (reportPath) {
+            setPreviewUrl(reportPath);
+            setPreviewModalOpen(true);
+            return;
+        }
+        const path = getSitepackFormPathForResponse(doc, resId);
+        if (!path) return;
+        setPreviewUrl(pathWithSearchParams(path, sitepackParams({ category, preview: "true" })));
+        setPreviewModalOpen(true);
+    };
+
+    const handleFormEdit = (doc) => {
+        if (!doc?.isFormBase) return;
+        const resId = doc.id || doc._id;
+        const category = selectedModule?.title || FRIDAY_PACK_FORMS_CATEGORY;
+        const reportPath = getSitepackReportFormPath(doc, resId, sitepackParams({ category }));
+        if (reportPath) {
+            navigate(reportPath);
+            return;
+        }
+        const path = getSitepackFormPathForResponse(doc, resId);
+        if (!path) return;
+        navigate(pathWithSearchParams(path, sitepackParams({ category })));
+    };
+
+    const handleFormDeletePrompt = (doc) => {
+        setMenuDoc(doc);
+        setDeleteModalOpen(true);
     };
 
     const handleDeleteClick = () => {
@@ -1117,6 +1357,39 @@ export default function SitepackManagement() {
     };
 
     const filteredDocs = docs;
+    const isFridayPackFolderView = selectedModule?.title === FRIDAY_PACK_FORMS_CATEGORY;
+    const fridayPackTableDocs = useMemo(
+        () =>
+            isFridayPackFolderView
+                ? [...filteredDocs].sort(
+                      (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+                  )
+                : filteredDocs,
+        [filteredDocs, isFridayPackFolderView]
+    );
+
+    const fridayPackActionBtnSx = {
+        textTransform: "none",
+        fontWeight: 600,
+        fontSize: "0.72rem",
+        borderRadius: 1.5,
+        minWidth: 0,
+        px: 1,
+        py: 0.35,
+        borderColor: isDarkMode ? "#374151" : "#E2E8F0",
+        color: isDarkMode ? "#E5E7EB" : "#334155",
+    };
+
+    const fridayPackTableHeadSx = {
+        fontWeight: 700,
+        fontSize: "0.7rem",
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+        bgcolor: isDarkMode ? "#111827" : "#F8FAFC",
+        color: isDarkMode ? "#9CA3AF" : "#64748B",
+        borderBottom: isDarkMode ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(15,23,42,0.08)",
+        py: 1.25,
+    };
 
     return (
         <Layout pageTitle={selectedSite ? selectedSite.name : "Site Pack Management"}>
@@ -1175,7 +1448,10 @@ export default function SitepackManagement() {
                         )}
                         {selectedModule && selectedSubfolder && (
                             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                                {filteredDocs.length} documents
+                                {filteredDocs.length}{" "}
+                                {selectedModule.title === FRIDAY_PACK_FORMS_CATEGORY
+                                    ? `saved item${filteredDocs.length === 1 ? "" : "s"}`
+                                    : `document${filteredDocs.length === 1 ? "" : "s"}`}
                             </Typography>
                         )}
 
@@ -1271,9 +1547,144 @@ export default function SitepackManagement() {
                         <>
                             {filteredDocs.length === 0 ? (
                                 <Typography color="text.secondary" align="center" sx={{ py: 5 }}>
-                                    No documents or saved forms in this folder yet.
+                                    {selectedModule?.title === FRIDAY_PACK_FORMS_CATEGORY
+                                        ? "No saved forms in this folder yet. Use Create Form to add one."
+                                        : "No documents or saved forms in this folder yet."}
                                 </Typography>
                             ) : null}
+                            {isFridayPackFolderView && fridayPackTableDocs.length > 0 ? (
+                                <Paper
+                                    elevation={0}
+                                    sx={{
+                                        borderRadius: 3,
+                                        overflow: "hidden",
+                                        border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
+                                        bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                                    }}
+                                >
+                                    <TableContainer>
+                                        <Table size="small">
+                                            <TableHead>
+                                                <TableRow>
+                                                    <TableCell sx={{ ...fridayPackTableHeadSx, width: 56 }}>#</TableCell>
+                                                    <TableCell sx={fridayPackTableHeadSx}>Form</TableCell>
+                                                    <TableCell sx={{ ...fridayPackTableHeadSx, width: 140 }}>Template</TableCell>
+                                                    <TableCell sx={{ ...fridayPackTableHeadSx, width: 120 }}>Submitted</TableCell>
+                                                    <TableCell align="right" sx={{ ...fridayPackTableHeadSx, width: 360 }}>Actions</TableCell>
+                                                </TableRow>
+                                            </TableHead>
+                                            <TableBody>
+                                                {fridayPackTableDocs.map((doc, index) => (
+                                                    <TableRow
+                                                        key={doc.id || doc._id}
+                                                        hover
+                                                        sx={{
+                                                            "&:last-child td": { borderBottom: 0 },
+                                                            "& td": {
+                                                                borderBottom: isDarkMode
+                                                                    ? "1px solid rgba(255,255,255,0.05)"
+                                                                    : "1px solid rgba(15,23,42,0.06)",
+                                                                py: 1.35,
+                                                            },
+                                                        }}
+                                                    >
+                                                        <TableCell>
+                                                            <Typography variant="body2" sx={{ fontWeight: 700, color: isDarkMode ? "#94A3B8" : "#64748B" }}>
+                                                                {index + 1}
+                                                            </Typography>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Typography variant="body2" sx={{ fontWeight: 600, color: isDarkMode ? "#F9FAFB" : "#111827", lineHeight: 1.35 }}>
+                                                                {doc.title}
+                                                            </Typography>
+                                                            {doc.tags?.length > 0 ? (
+                                                                <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap", mt: 0.5 }}>
+                                                                    {doc.tags.slice(0, 3).map((tag) => (
+                                                                        <Chip
+                                                                            key={tag}
+                                                                            label={tag}
+                                                                            size="small"
+                                                                            sx={{ height: 18, fontSize: "0.65rem" }}
+                                                                        />
+                                                                    ))}
+                                                                </Box>
+                                                            ) : null}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Typography variant="caption" sx={{ color: isDarkMode ? "#94A3B8" : "#64748B", fontWeight: 500 }}>
+                                                                {doc.templateTitle || doc.size || "—"}
+                                                            </Typography>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Typography variant="caption" sx={{ color: isDarkMode ? "#94A3B8" : "#64748B", fontWeight: 600, whiteSpace: "nowrap" }}>
+                                                                {formatSitepackFormDate(doc.createdAt)}
+                                                            </Typography>
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                            <Box sx={{ display: "flex", gap: 0.5, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                                                                <Button
+                                                                    size="small"
+                                                                    variant="outlined"
+                                                                    startIcon={<Eye size={13} />}
+                                                                    onClick={() => handleFormPreview(doc)}
+                                                                    sx={fridayPackActionBtnSx}
+                                                                >
+                                                                    View
+                                                                </Button>
+                                                                {doc.isFormBase ? (
+                                                                    <Button
+                                                                        size="small"
+                                                                        variant="outlined"
+                                                                        startIcon={<Pencil size={13} />}
+                                                                        onClick={() => handleFormEdit(doc)}
+                                                                        sx={fridayPackActionBtnSx}
+                                                                    >
+                                                                        Edit
+                                                                    </Button>
+                                                                ) : null}
+                                                                <Button
+                                                                    size="small"
+                                                                    variant="outlined"
+                                                                    startIcon={<Download size={13} />}
+                                                                    onClick={() => (doc.isFormBase ? runFormDownloadPdf(doc) : runDocumentDownload(doc))}
+                                                                    sx={fridayPackActionBtnSx}
+                                                                >
+                                                                    PDF
+                                                                </Button>
+                                                                {canSitepackFormDownloadWord(doc) ? (
+                                                                    <Button
+                                                                        size="small"
+                                                                        variant="outlined"
+                                                                        startIcon={<FileText size={13} />}
+                                                                        onClick={() => runFormDownloadWord(doc)}
+                                                                        sx={fridayPackActionBtnSx}
+                                                                    >
+                                                                        Word
+                                                                    </Button>
+                                                                ) : null}
+                                                                <Button
+                                                                    size="small"
+                                                                    variant="outlined"
+                                                                    color="error"
+                                                                    startIcon={<Trash2 size={13} />}
+                                                                    onClick={() => handleFormDeletePrompt(doc)}
+                                                                    sx={{
+                                                                        ...fridayPackActionBtnSx,
+                                                                        borderColor: isDarkMode ? "rgba(239,68,68,0.35)" : "rgba(239,68,68,0.25)",
+                                                                        color: "#EF4444",
+                                                                    }}
+                                                                >
+                                                                    Delete
+                                                                </Button>
+                                                            </Box>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </TableContainer>
+                                </Paper>
+                            ) : (
                             <Grid container spacing={3}>
                                 {filteredDocs.map((doc) => {
                                     let icon = <DescriptionOutlinedIcon sx={{ fontSize: 32 }} />;
@@ -1414,6 +1825,7 @@ export default function SitepackManagement() {
                                     );
                                 })}
                             </Grid>
+                            )}
                         </>
                     ) : (
                         // SUBFOLDER LIST VIEW
@@ -1469,7 +1881,9 @@ export default function SitepackManagement() {
                                                     </Box>
                                                     <Box sx={{ flex: 1, minWidth: 0 }}>
                                                         <Typography variant="h6" fontWeight={700} noWrap sx={{ fontSize: "1.05rem", color: isDarkMode ? "#F9FAFB" : "#111827" }}>
-                                                            All saved forms
+                                                            {selectedModule?.title === FRIDAY_PACK_FORMS_CATEGORY
+                                                                ? "All my saved forms"
+                                                                : "All saved forms"}
                                                         </Typography>
                                                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                                                             {totalCategoryItemCount} item{totalCategoryItemCount === 1 ? "" : "s"} across all subfolders
@@ -1555,12 +1969,36 @@ export default function SitepackManagement() {
                                                     border: isDarkMode ? "1px solid #374151" : '1px solid #E5E7EB',
                                                     transition: 'all 0.2s ease-in-out',
                                                     cursor: 'pointer',
+                                                    position: "relative",
                                                     "&:hover": {
                                                         borderColor: "#3B82F6",
                                                         boxShadow: isDarkMode ? "0 4px 20px rgba(0,0,0,0.4)" : "0 4px 6px -1px rgba(59, 130, 246, 0.1), 0 2px 4px -1px rgba(59, 130, 246, 0.06)"
                                                     }
                                                 }}
                                             >
+                                                {selectedModule?.title === FRIDAY_PACK_FORMS_CATEGORY ? (
+                                                    <Box
+                                                        sx={{ position: "absolute", top: 6, right: 6, zIndex: 2, display: "flex", gap: 0.25 }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <IconButton
+                                                            size="small"
+                                                            aria-label="Edit folder"
+                                                            onClick={(e) => handleOpenEditSubfolder(e, subfolder)}
+                                                            sx={{ color: isDarkMode ? "#9CA3AF" : "#64748B" }}
+                                                        >
+                                                            <Pencil size={15} />
+                                                        </IconButton>
+                                                        <IconButton
+                                                            size="small"
+                                                            aria-label="Delete folder"
+                                                            onClick={(e) => handleOpenDeleteSubfolder(e, subfolder)}
+                                                            sx={{ color: "#EF4444" }}
+                                                        >
+                                                            <Trash2 size={15} />
+                                                        </IconButton>
+                                                    </Box>
+                                                ) : null}
                                                 <CardActionArea sx={{ height: '100%', p: 3, display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
                                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, width: '100%' }}>
                                                         <Box
@@ -1981,13 +2419,19 @@ export default function SitepackManagement() {
                     <Eye size={18} color="#6B7280" />
                     <ListItemText primary="View" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
                 </MenuItem>
+                {menuDoc?.isFormBase ? (
+                    <MenuItem onClick={() => { handleMenuClose(); handleFormEdit(menuDoc); }} sx={{ gap: 1.5, py: 1.5 }}>
+                        <Pencil size={18} color="#6B7280" />
+                        <ListItemText primary="Edit" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
+                    </MenuItem>
+                ) : null}
                 {selectedModule?.title !== "Induction" && (
                     <MenuItem onClick={handleDownload} disabled={downloadInProgress} sx={{ gap: 1.5, py: 1.5 }}>
                         <Download size={18} color="#6B7280" />
                         <ListItemText primary="Download as PDF" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
                     </MenuItem>
                 )}
-                {selectedModule?.title !== "Induction" && menuDoc?.isFormBase && !['Tool Box Talk Register', 'RAMS Briefing Form', 'Site Induction Register', 'Management Site Inspection Report', 'Daily Safe Start Briefing Sheet', 'Audit Action Form', 'Site Induction Form', 'LOLER Inspection Form', 'PUWER Inspection Form', 'Alimak Weekly Check'].includes(getSitepackFormTemplateTitle(menuDoc)) && (
+                {selectedModule?.title !== "Induction" && menuDoc?.isFormBase && canSitepackFormDownloadWord(menuDoc) && (
                     <MenuItem onClick={handleDownloadWord} sx={{ gap: 1.5, py: 1.5 }}>
                         <FileText size={18} color="#6B7280" />
                         <ListItemText primary="Download as Word" primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }} />
@@ -2058,6 +2502,112 @@ export default function SitepackManagement() {
                         }}
                     >
                         {creatingSubfolder ? "Creating..." : "Create"}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Edit Subfolder Dialog */}
+            <Dialog
+                open={editSubfolderOpen}
+                onClose={handleCloseEditSubfolder}
+                PaperProps={{
+                    sx: {
+                        borderRadius: 3,
+                        padding: 2,
+                        minWidth: 360,
+                        bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                        color: isDarkMode ? "#F9FAFB" : "inherit",
+                    },
+                }}
+            >
+                <DialogTitle sx={{ pb: 1, fontWeight: 600, fontSize: "1.25rem" }}>
+                    Rename folder
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" sx={{ mb: 2, color: isDarkMode ? "#9CA3AF" : "text.secondary" }}>
+                        Update the folder name for {selectedModule?.title || "this category"}.
+                    </Typography>
+                    <TextField
+                        autoFocus
+                        fullWidth
+                        label="Folder name"
+                        value={newSubfolderName}
+                        onChange={(e) => {
+                            setNewSubfolderName(e.target.value);
+                            setSubfolderError("");
+                        }}
+                        error={Boolean(subfolderError)}
+                        helperText={subfolderError}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") handleUpdateSubfolder();
+                        }}
+                    />
+                </DialogContent>
+                <DialogActions sx={{ borderTop: isDarkMode ? "1px solid #374151" : "none", pt: 2 }}>
+                    <Button
+                        onClick={handleCloseEditSubfolder}
+                        disabled={savingSubfolder}
+                        variant="outlined"
+                        sx={{ textTransform: "none", borderRadius: 50, px: 3 }}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        onClick={handleUpdateSubfolder}
+                        disabled={savingSubfolder}
+                        variant="contained"
+                        sx={{
+                            textTransform: "none",
+                            borderRadius: 50,
+                            px: 3,
+                            bgcolor: "#3B82F6",
+                            "&:hover": { bgcolor: "#2563EB" },
+                        }}
+                    >
+                        {savingSubfolder ? "Saving..." : "Save"}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Delete Subfolder Dialog */}
+            <Dialog
+                open={deleteSubfolderOpen}
+                onClose={handleCloseDeleteSubfolder}
+                PaperProps={{
+                    sx: {
+                        borderRadius: 3,
+                        padding: 2,
+                        minWidth: 360,
+                        bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
+                        color: isDarkMode ? "#F9FAFB" : "inherit",
+                    },
+                }}
+            >
+                <DialogTitle sx={{ pb: 1, fontWeight: 600, fontSize: "1.25rem", color: "#EF4444" }}>
+                    Delete folder?
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "text.secondary" }}>
+                        Delete &quot;{subfolderToDelete?.name}&quot;? Saved forms inside this folder will remain on the site but may become unfiled.
+                    </Typography>
+                </DialogContent>
+                <DialogActions sx={{ pt: 2 }}>
+                    <Button
+                        onClick={handleCloseDeleteSubfolder}
+                        disabled={deletingSubfolder}
+                        variant="outlined"
+                        sx={{ textTransform: "none", borderRadius: 50, px: 3 }}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        onClick={confirmDeleteSubfolder}
+                        disabled={deletingSubfolder}
+                        variant="contained"
+                        color="error"
+                        sx={{ textTransform: "none", borderRadius: 50, px: 3 }}
+                    >
+                        {deletingSubfolder ? "Deleting..." : "Delete folder"}
                     </Button>
                 </DialogActions>
             </Dialog>
@@ -2265,158 +2815,149 @@ export default function SitepackManagement() {
             {/* Create Form Modal */}
             <Dialog
                 open={createFormModalOpen}
-                onClose={() => setCreateFormModalOpen(false)}
+                onClose={closeCreateFormModal}
                 maxWidth="md"
                 fullWidth
-                scroll="paper"
                 PaperProps={{
                     sx: {
                         borderRadius: 3,
                         overflow: "hidden",
-                        maxHeight: "min(90vh, 880px)",
                         bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
-                        boxShadow: isDarkMode
-                            ? "0 25px 50px -12px rgba(0,0,0,0.6)"
-                            : "0 25px 50px -12px rgba(0,0,0,0.18)",
+                        color: isDarkMode ? "#F9FAFB" : "inherit",
                     },
                 }}
             >
                 <DialogTitle
                     sx={{
-                        m: 0,
-                        p: 0,
-                        bgcolor: FRIDAY_PACK_ACCENT,
+                        fontWeight: 700,
+                        color: isDarkMode ? "#F9FAFB" : "#111827",
+                        pb: 1,
                     }}
                 >
-                    <Box
-                        sx={{
-                            display: "flex",
-                            alignItems: "flex-start",
-                            justifyContent: "space-between",
-                            gap: 2,
-                            px: 3,
-                            py: 2.5,
-                        }}
-                    >
-                        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, minWidth: 0 }}>
-                            <Box
-                                sx={{
-                                    mt: 0.25,
-                                    p: 1,
-                                    borderRadius: 2,
-                                    bgcolor: "rgba(255,255,255,0.2)",
-                                    display: "flex",
-                                    flexShrink: 0,
-                                }}
-                            >
-                                <ClipboardList size={22} color="#FFFFFF" strokeWidth={2} />
-                            </Box>
-                            <Box sx={{ minWidth: 0 }}>
-                                <Typography
-                                    variant="h6"
-                                    fontWeight={700}
-                                    sx={{ color: "#FFFFFF", lineHeight: 1.3, fontSize: "1.125rem" }}
-                                >
-                                    Select a Form Template
-                                </Typography>
-                                <Typography
-                                    variant="body2"
-                                    sx={{ color: "rgba(255,255,255,0.88)", mt: 0.5, lineHeight: 1.45 }}
-                                >
-                                    Start from a saved version or pick a blank template for this site&apos;s Friday pack.
-                                </Typography>
-                            </Box>
-                        </Box>
-                        <IconButton
-                            size="small"
-                            onClick={() => setCreateFormModalOpen(false)}
-                            sx={{
-                                flexShrink: 0,
-                                color: "#FFFFFF",
-                                bgcolor: "rgba(255,255,255,0.15)",
-                                "&:hover": { bgcolor: "rgba(255,255,255,0.28)" },
-                            }}
-                        >
-                            <X size={18} />
-                        </IconButton>
-                    </Box>
+                    Select template / form
                 </DialogTitle>
 
-                <DialogContent
+                <Box
                     sx={{
-                        p: 0,
-                        bgcolor: isDarkMode ? "#111827" : "#F9FAFB",
-                        overflowY: "auto",
+                        px: 3,
+                        borderBottom: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
                     }}
                 >
-                    <Box sx={{ px: { xs: 2, sm: 3 }, py: 3 }}>
-                        {/* Saved general forms */}
-                        <Box sx={{ mb: 3 }}>
-                            <Box
-                                sx={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
-                                    gap: 1,
-                                    mb: 1,
-                                }}
-                            >
-                                <Typography
-                                    variant="overline"
-                                    sx={{
-                                        fontWeight: 700,
-                                        letterSpacing: "0.08em",
-                                        color: FRIDAY_PACK_ACCENT,
-                                        lineHeight: 1.2,
-                                    }}
-                                >
-                                    Saved templates
-                                </Typography>
-                                {!createFormModalLoading && (
+                    <Tabs
+                        value={createFormPickerTab}
+                        onChange={(_, value) => setCreateFormPickerTab(value)}
+                        sx={{
+                            minHeight: 40,
+                            "& .MuiTab-root": {
+                                textTransform: "none",
+                                fontWeight: 600,
+                                minHeight: 40,
+                                color: isDarkMode ? "#9CA3AF" : "#6B7280",
+                            },
+                            "& .Mui-selected": { color: "#E89F17" },
+                            "& .MuiTabs-indicator": { bgcolor: "#E89F17" },
+                        }}
+                    >
+                        <Tab
+                            value={CREATE_FORM_TAB_TEMPLATES}
+                            label={
+                                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                    Template library
                                     <Chip
                                         size="small"
-                                        label={savedGeneralSubmissions.length}
-                                        sx={{
-                                            height: 22,
-                                            fontWeight: 600,
-                                            bgcolor: isDarkMode ? "rgba(232,159,23,0.15)" : "rgba(232,159,23,0.12)",
-                                            color: FRIDAY_PACK_ACCENT,
-                                        }}
+                                        label={filteredBlankTemplates.length}
+                                        sx={{ height: 20, fontSize: "0.7rem" }}
                                     />
-                                )}
-                            </Box>
-                            <Typography
-                                variant="body2"
-                                color="text.secondary"
-                                sx={{ mb: 2, maxWidth: 520, lineHeight: 1.5 }}
-                            >
-                                Forms saved from Templates. Select one to pre-fill this Friday pack submission.
-                            </Typography>
-
-                            {createFormModalLoading ? (
-                                <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-                                    <CircularProgress size={32} sx={{ color: FRIDAY_PACK_ACCENT }} />
                                 </Box>
-                            ) : savedGeneralSubmissions.length === 0 ? (
-                                <Paper
-                                    elevation={0}
-                                    sx={{
-                                        py: 2.5,
-                                        px: 2.5,
-                                        borderRadius: 2,
-                                        textAlign: "center",
-                                        bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF",
-                                        border: "1px dashed",
-                                        borderColor: isDarkMode ? "#4B5563" : "#D1D5DB",
-                                    }}
-                                >
-                                    <Typography variant="body2" color="text.secondary">
-                                        No saved forms yet. Edit a template in Templates and save it to see it here.
+                            }
+                        />
+                        <Tab
+                            value={CREATE_FORM_TAB_SAVED}
+                            label={
+                                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                    Saved templates
+                                    <Chip
+                                        size="small"
+                                        label={filteredSavedTemplates.length}
+                                        sx={{ height: 20, fontSize: "0.7rem" }}
+                                    />
+                                </Box>
+                            }
+                        />
+                        <Tab
+                            value={CREATE_FORM_TAB_BUILDER}
+                            label={
+                                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                    Form builder
+                                    <Chip
+                                        size="small"
+                                        label={filteredBuilderForms.length}
+                                        sx={{ height: 20, fontSize: "0.7rem" }}
+                                    />
+                                </Box>
+                            }
+                        />
+                    </Tabs>
+                </Box>
+
+                <DialogContent
+                    dividers
+                    sx={{
+                        maxHeight: "70vh",
+                        bgcolor: isDarkMode ? "#111827" : "#FFFFFF",
+                    }}
+                >
+                    <TextField
+                        fullWidth
+                        size="small"
+                        placeholder={
+                            createFormPickerTab === CREATE_FORM_TAB_SAVED
+                                ? "Search saved templates..."
+                                : createFormPickerTab === CREATE_FORM_TAB_BUILDER
+                                  ? "Search form builder forms..."
+                                  : "Search templates..."
+                        }
+                        value={createFormSearch}
+                        onChange={(e) => setCreateFormSearch(e.target.value)}
+                        InputProps={{
+                            startAdornment: (
+                                <InputAdornment position="start">
+                                    <SearchIcon sx={{ fontSize: 18, color: isDarkMode ? "#9CA3AF" : "#6B7280" }} />
+                                </InputAdornment>
+                            ),
+                            sx: { borderRadius: 2 },
+                        }}
+                        sx={{ mb: 2.5 }}
+                    />
+
+                    {createFormModalLoading ? (
+                        <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+                            <CircularProgress sx={{ color: FRIDAY_PACK_ACCENT }} />
+                        </Box>
+                    ) : (
+                        <Box
+                            sx={{
+                                display: "grid",
+                                gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" },
+                                gap: 2,
+                            }}
+                        >
+                            {createFormPickerTab === CREATE_FORM_TAB_SAVED &&
+                                (filteredSavedTemplates.length === 0 ? (
+                                    <Typography
+                                        sx={{
+                                            color: isDarkMode ? "#9CA3AF" : "#6B7280",
+                                            gridColumn: "1 / -1",
+                                            py: 3,
+                                            textAlign: "center",
+                                        }}
+                                    >
+                                        {savedGeneralSubmissions.length === 0
+                                            ? "No saved templates yet. Save a template from the Templates page to see it here."
+                                            : "No saved templates match your search."}
                                     </Typography>
-                                </Paper>
-                            ) : (
-                                <Grid container spacing={2}>
-                                    {savedGeneralSubmissions.map((sub) => {
+                                ) : (
+                                    filteredSavedTemplates.map((sub) => {
                                         const primary =
                                             sub.name ||
                                             sub.answers?.name ||
@@ -2427,79 +2968,93 @@ export default function SitepackManagement() {
                                                 ? sub.form.title
                                                 : null;
                                         const rid = sub.id || sub._id;
-                                        const savedLabel = `Saved ${new Date(sub.createdAt).toLocaleDateString("en-GB", {
-                                            day: "2-digit",
-                                            month: "short",
-                                            year: "numeric",
-                                        })}`;
+                                        const savedLabel = sub.createdAt
+                                            ? `Saved ${new Date(sub.createdAt).toLocaleDateString("en-GB", {
+                                                  day: "2-digit",
+                                                  month: "short",
+                                                  year: "numeric",
+                                              })}`
+                                            : null;
                                         return (
-                                            <Grid item xs={12} sm={6} key={rid}>
-                                                <FormPickerCard
-                                                    isDarkMode={isDarkMode}
-                                                    title={primary}
-                                                    description={secondary}
-                                                    meta={savedLabel}
-                                                    onSelect={() => handleSelectSavedGeneralSubmission(sub)}
-                                                    onPreview={() => handlePreviewSavedGeneralSubmission(sub)}
-                                                />
-                                            </Grid>
+                                            <FormPickerCard
+                                                key={rid}
+                                                isDarkMode={isDarkMode}
+                                                title={primary}
+                                                description={secondary}
+                                                meta={savedLabel}
+                                                onUse={() => handleSelectSavedGeneralSubmission(sub)}
+                                                onPreview={() => handlePreviewSavedGeneralSubmission(sub)}
+                                            />
                                         );
-                                    })}
-                                </Grid>
-                            )}
-                        </Box>
+                                    })
+                                ))}
 
-                        <Divider sx={{ mb: 3, borderColor: isDarkMode ? "#374151" : "#E5E7EB" }} />
-
-                        {/* Blank templates */}
-                        <Box>
-                            <Box
-                                sx={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
-                                    gap: 1,
-                                    mb: 1,
-                                }}
-                            >
-                                <Typography
-                                    variant="overline"
-                                    sx={{
-                                        fontWeight: 700,
-                                        letterSpacing: "0.08em",
-                                        color: isDarkMode ? "#9CA3AF" : "#6B7280",
-                                        lineHeight: 1.2,
-                                    }}
-                                >
-                                    Blank templates
-                                </Typography>
-                                <Chip
-                                    size="small"
-                                    label={TEMPLATES.length}
-                                    sx={{
-                                        height: 22,
-                                        fontWeight: 600,
-                                        bgcolor: isDarkMode ? "#374151" : "#E5E7EB",
-                                        color: isDarkMode ? "#D1D5DB" : "#4B5563",
-                                    }}
-                                />
-                            </Box>
-                            <Grid container spacing={2}>
-                                {TEMPLATES.map((template) => (
-                                    <Grid item xs={12} sm={6} key={template.id}>
+                            {createFormPickerTab === CREATE_FORM_TAB_TEMPLATES &&
+                                (filteredBlankTemplates.length === 0 ? (
+                                    <Typography
+                                        sx={{
+                                            color: isDarkMode ? "#9CA3AF" : "#6B7280",
+                                            gridColumn: "1 / -1",
+                                            py: 3,
+                                            textAlign: "center",
+                                        }}
+                                    >
+                                        No templates match your search.
+                                    </Typography>
+                                ) : (
+                                    filteredBlankTemplates.map((template) => (
                                         <FormPickerCard
+                                            key={template.id}
                                             isDarkMode={isDarkMode}
                                             title={template.title}
                                             description={template.description}
-                                            onSelect={() => handleSelectForm(template.path, false)}
+                                            onUse={() => handleSelectForm(template.path, false)}
                                             onPreview={() => handlePreviewForm(template.path, false)}
                                         />
-                                    </Grid>
+                                    ))
                                 ))}
-                            </Grid>
+
+                            {createFormPickerTab === CREATE_FORM_TAB_BUILDER &&
+                                (filteredBuilderForms.length === 0 ? (
+                                    <Typography
+                                        sx={{
+                                            color: isDarkMode ? "#9CA3AF" : "#6B7280",
+                                            gridColumn: "1 / -1",
+                                            py: 3,
+                                            textAlign: "center",
+                                        }}
+                                    >
+                                        {builderForms.length === 0
+                                            ? "No form builder forms yet. Create forms in the Form Builder first."
+                                            : "No form builder forms match your search."}
+                                    </Typography>
+                                ) : (
+                                    filteredBuilderForms.map((form) => {
+                                        const formId = form._id || form.id;
+                                        return (
+                                            <FormPickerCard
+                                                key={formId}
+                                                isDarkMode={isDarkMode}
+                                                title={form.title || "Untitled form"}
+                                                description={
+                                                    form.description ||
+                                                    "Custom form from the form builder"
+                                                }
+                                                onUse={() => handleUseBuilderForm(form)}
+                                                onPreview={() => handlePreviewBuilderForm(form)}
+                                            />
+                                        );
+                                    })
+                                ))}
                         </Box>
-                    </Box>
+                    )}
                 </DialogContent>
+
+                <DialogActions sx={{ px: 3, py: 2 }}>
+                    <Button onClick={closeCreateFormModal} sx={{ textTransform: "none" }}>
+                        Cancel
+                    </Button>
+                </DialogActions>
             </Dialog>
 
             {/* Graph Analytics Modal */}

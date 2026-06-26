@@ -20,9 +20,21 @@ import api, {
     formatFormSaveError,
 } from "../services/api";
 import { appendSitepackToAnswers } from "../utils/sitepackContext";
-import { getOrCreateTemplateForm } from "../services/formUtils";
+import { getMonitoringSection } from "../constants/monitoringSections";
+import { getOrCreateTemplateForm, saveGeneralFormResponse } from "../services/formUtils";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
 import SaveChoiceDialog from "../components/SaveChoiceDialog";
+import GeneralFormTemplateInfoBanner from "../components/GeneralFormTemplateInfoBanner";
+import { useGeneralFormTemplateAccess } from "../hooks/useGeneralFormTemplateAccess";
+import { GENERAL_FORMS_CATEGORY } from "../utils/generalFormSubmissions";
+import {
+    withGeneralFormVisibility,
+    GENERAL_FORM_VISIBILITY,
+} from "../utils/generalFormVisibility";
+import {
+    isTemplatesPageEditContext,
+    templateSaveButtonLabel,
+} from "../utils/templatePageContext";
 import SignatureCapture from "../components/SignatureCapture";
 import { useGeneralFormLeave } from "../hooks/useGeneralFormLeave";
 import { useGeneralFormAutoSave } from "../hooks/useGeneralFormAutoSave";
@@ -1290,13 +1302,27 @@ export default function SheqInstallationForm({
     const isDownloadSession = action === "download" || autoDownload;
     const isViewMode = searchParams.get("view") === "true";
     const fromTemplateId = searchParams.get("fromTemplate");
+    const monitoringSectionKey = searchParams.get("monitoringSection");
+    const isTemplatesPageEdit = isTemplatesPageEditContext(searchParams);
+    const templateCatalogTitle =
+        category === SHEQ_INSPECTION_CATEGORY ? "SHEQ Service" : "SHEQ Installation";
     const containerRef = useRef(null);
 
     const [loading, setLoading] = useState(() => Boolean(id || fromTemplateId));
     const [saving, setSaving] = useState(false);
     const [downloading, setDownloading] = useState(false);
+    const { canEdit: canEditTemplate } = useGeneralFormTemplateAccess(
+        action,
+        downloading,
+        null,
+        null
+    );
     const [saveDialogOpen, setSaveDialogOpen] = useState(false);
-    const [formMetadata, setFormMetadata] = useState({ name: "", tags: "" });
+    const [formMetadata, setFormMetadata] = useState({
+        name: "",
+        tags: "",
+        visibility: GENERAL_FORM_VISIBILITY.PRIVATE,
+    });
     const [persistedResponseId, setPersistedResponseId] = useState(id || null);
     const [autoSaveStatus, setAutoSaveStatus] = useState(null);
     const [lastSavedAt, setLastSavedAt] = useState(null);
@@ -1385,11 +1411,13 @@ export default function SheqInstallationForm({
     });
 
     const listPath =
-        category === SHEQ_INSPECTION_CATEGORY
-            ? "/sheq-inspection"
-            : category === SHEQ_INSTALLATION_CATEGORY
-              ? "/shq-installation"
-              : "/general-forms";
+        isTemplatesPageEdit
+            ? "/general-forms"
+            : category === SHEQ_INSPECTION_CATEGORY
+              ? "/sheq-inspection"
+              : category === SHEQ_INSTALLATION_CATEGORY
+                ? "/shq-installation"
+                : "/general-forms";
 
     const prepareSavePayload = async (name = "", tags = "") => {
         const payload = buildSavePayload(name, tags);
@@ -1446,7 +1474,12 @@ export default function SheqInstallationForm({
         };
     };
 
-    const performSave = async (asNew = false, name = "", tags = "", { silent = false } = {}) => {
+    const performSave = async (
+        asNew = false,
+        name = "",
+        tags = "",
+        { silent = false, visibility = formMetadata.visibility } = {}
+    ) => {
         setSaving(true);
         try {
             const payload = await prepareSavePayload(name, tags);
@@ -1456,29 +1489,78 @@ export default function SheqInstallationForm({
                     ? SHEQ_INSPECTION_CATEGORY
                     : SHEQ_INSTALLATION_CATEGORY;
 
+            const monitoringMeta = monitoringSectionKey
+                ? getMonitoringSection(monitoringSectionKey)
+                : null;
+            const saveCategory = isTemplatesPageEdit
+                ? GENERAL_FORMS_CATEGORY
+                : monitoringMeta?.category || category;
+            const formTitleForSave = isTemplatesPageEdit
+                ? templateCatalogTitle
+                : templateTitle;
+
+            let answersPayload = monitoringSectionKey
+                ? {
+                      ...payload,
+                      monitoringSection: monitoringSectionKey,
+                      sheqFormCategory: category,
+                  }
+                : payload;
+
+            if (isTemplatesPageEdit) {
+                answersPayload = withGeneralFormVisibility(
+                    {
+                        ...answersPayload,
+                        savedFromTemplatesPage: true,
+                        templateModuleTitle: templateCatalogTitle,
+                        sheqFormCategory: category,
+                    },
+                    visibility,
+                    { hasSiteContext: false }
+                );
+            }
+
             const existingId = persistedResponseIdRef.current;
             let savedId = existingId;
 
-            if (existingId && !asNew) {
+            if (existingId && !asNew && !isTemplatesPageEdit) {
                 const res = await api.put(
                     `/forms/responses/${existingId}`,
-                    { answers: payload, category },
+                    { answers: answersPayload, category: saveCategory },
                     saveRequest
                 );
                 if (!res.data?.success) {
                     throw new Error(res.data?.message || "Update failed");
                 }
+            } else if (existingId && !asNew && isTemplatesPageEdit) {
+                savedId = await saveGeneralFormResponse({
+                    formTitle: formTitleForSave,
+                    persistedResponseId: existingId,
+                    asNew: false,
+                    payload: answersPayload,
+                    category: saveCategory,
+                });
             } else {
-                const formId = await getOrCreateTemplateForm(templateTitle);
-                const res = await api.post(
-                    `/forms/${formId}/responses`,
-                    { answers: payload, category },
-                    saveRequest
-                );
-                if (!res.data?.success) {
-                    throw new Error(res.data?.message || "Save failed");
+                if (isTemplatesPageEdit) {
+                    savedId = await saveGeneralFormResponse({
+                        formTitle: formTitleForSave,
+                        persistedResponseId: null,
+                        asNew,
+                        payload: answersPayload,
+                        category: saveCategory,
+                    });
+                } else {
+                    const formId = await getOrCreateTemplateForm(templateTitle);
+                    const res = await api.post(
+                        `/forms/${formId}/responses`,
+                        { answers: answersPayload, category: saveCategory },
+                        saveRequest
+                    );
+                    if (!res.data?.success) {
+                        throw new Error(res.data?.message || "Save failed");
+                    }
+                    savedId = res.data?.data?.id || res.data?.data?._id || null;
                 }
-                savedId = res.data?.data?.id || res.data?.data?._id || null;
                 if (savedId && !asNew) {
                     setPersistedResponseId(savedId);
                     persistedResponseIdRef.current = savedId;
@@ -1494,7 +1576,7 @@ export default function SheqInstallationForm({
                 }
             }
 
-            setFormMetadata({ name: payload.name, tags: payload.tags });
+            setFormMetadata({ name: payload.name, tags: payload.tags, visibility: payload.visibility ?? formMetadata.visibility });
             resetDirtyRef.current();
             if (!silent) {
                 setLastSavedAt(new Date());
@@ -1531,7 +1613,7 @@ export default function SheqInstallationForm({
     resetDirtyRef.current = resetDirty;
 
     useGeneralFormAutoSave({
-        enabled: !isViewMode && !isModal && !isDownloadSession,
+        enabled: !isViewMode && !isModal && !isDownloadSession && !isTemplatesPageEdit,
         isDirty,
         saving,
         loading,
@@ -1726,6 +1808,7 @@ export default function SheqInstallationForm({
         setFormMetadata({
             name: asTemplate ? "" : baseName,
             tags: asTemplate ? "" : ans.tags || "",
+            visibility: ans.visibility || GENERAL_FORM_VISIBILITY.PRIVATE,
         });
     };
 
@@ -1793,6 +1876,10 @@ export default function SheqInstallationForm({
 
     const handleSaveClick = () => {
         if (isViewMode) return;
+        if (isTemplatesPageEdit) {
+            setSaveDialogOpen(true);
+            return;
+        }
         if (persistedResponseId) {
             setSaveDialogOpen(true);
         } else {
@@ -1807,8 +1894,10 @@ export default function SheqInstallationForm({
         triggerPdfDownload(responseId);
     };
 
-    const executeSave = async (asNew = false, name = "", tags = "") => {
-        const ok = await performSave(asNew, name, tags);
+    const executeSave = async (asNew = false, name = "", tags = "", visibility) => {
+        const ok = await performSave(asNew, name, tags, {
+            visibility: visibility ?? formMetadata.visibility,
+        });
         if (!ok) return;
         setSaveDialogOpen(false);
         resetDirty();
@@ -2133,7 +2222,8 @@ export default function SheqInstallationForm({
     const sectionTitleTextColor = "#FFF";
     const textColor = isDarkMode ? "#F9FAFB" : "#111827";
     const cellPadding = "4px 8px";
-    const contentReadOnly = isViewMode || downloading;
+    const contentReadOnly =
+        isViewMode || downloading || (isTemplatesPageEdit && !canEditTemplate);
     const pdfMb = downloading ? 1 : 4;
     const engineerPdfRows = downloading ? Math.min(6, countTextLines(formData.engineers, 2)) : 10;
     const summaryChartItems = summaryData.items;
@@ -2235,7 +2325,7 @@ export default function SheqInstallationForm({
                             Auto-saved {autoSaveStatus.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
                         </Typography>
                     )}
-                    {lastSavedAt && !isViewMode && (
+                    {lastSavedAt && !isDirty && !isViewMode && (
                         <Typography variant="caption" sx={{ alignSelf: "center", color: "success.main", fontWeight: 600 }}>
                             Saved {lastSavedAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
                         </Typography>
@@ -2291,13 +2381,21 @@ export default function SheqInstallationForm({
                             } 
                         }}
                     >
-                        {downloading ? "Downloading..." : (saving ? "Saving..." : "Save")}
+                        {templateSaveButtonLabel({ saving, downloading })}
                     </Button>
                     )}
                 </Box>
             </Box>
 
-            <Box sx={{ 
+            {isTemplatesPageEdit && (
+                <GeneralFormTemplateInfoBanner
+                    canEdit={canEditTemplate}
+                    isSitePackContext={false}
+                    pdfLayout={downloading}
+                />
+            )}
+
+            <Box sx={{
                 display: 'flex', 
                 justifyContent: 'center', 
                 mb: downloading ? 2 : 8, 
@@ -4214,7 +4312,11 @@ export default function SheqInstallationForm({
                 existingId={persistedResponseId}
                 defaultName={formMetadata.name || `${category === SHEQ_INSPECTION_CATEGORY ? "Service" : "Installation"} - ${new Date().toLocaleDateString()}`}
                 defaultTags={formMetadata.tags}
+                defaultVisibility={formMetadata.visibility}
+                showVisibilityChoice={isTemplatesPageEdit}
                 saving={saving}
+                templateFlow={isTemplatesPageEdit}
+                nameFieldLabel="Template name"
             />
             {UnsavedDialog}
         </Box>

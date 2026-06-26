@@ -1,5 +1,6 @@
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, ImageRun, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle } from 'docx';
 import { saveAs } from 'file-saver';
+import { absolutizeImageSrc } from './compressImage';
 
 /**
  * Helper to load an image from a URL or Base64 string as an ArrayBuffer,
@@ -7,6 +8,7 @@ import { saveAs } from 'file-saver';
  */
 const fetchImageAsArrayBuffer = async (src) => {
     try {
+        if (!src || typeof src !== 'string') return null;
         if (src.startsWith('data:')) {
             // It's a base64 string
             const base64Data = src.split(',')[1];
@@ -18,8 +20,9 @@ const fetchImageAsArrayBuffer = async (src) => {
             }
             return bytes.buffer;
         } else {
-            // It's a regular URL
-            const response = await fetch(src);
+            // It's a regular URL — resolve backend upload paths
+            const absolute = absolutizeImageSrc(src);
+            const response = await fetch(absolute, { credentials: 'include', mode: 'cors' });
             const blob = await response.blob();
             const arrayBuffer = await blob.arrayBuffer();
             return arrayBuffer;
@@ -80,7 +83,7 @@ export const downloadWordFromForm = async (form, values, fileName = "document", 
                 return childrenElements;
             }
 
-            // Logo Renderer (New)
+            // Logo Renderer (uploaded value or template default)
             if (field.type === "logo") {
                 const alignMap = {
                     left: AlignmentType.LEFT,
@@ -89,8 +92,12 @@ export const downloadWordFromForm = async (form, values, fileName = "document", 
                 };
                 const imgAlignment = alignMap[field.alignment] || AlignmentType.LEFT;
 
-                if (field.url) {
-                    const imgBuffer = await fetchImageAsArrayBuffer(field.url);
+                const previewSrc = values[`${field.id}_preview`];
+                const valueSrc = typeof values[field.id] === 'string' ? values[field.id] : null;
+                const imgSrc = previewSrc || valueSrc || field.url;
+
+                if (imgSrc) {
+                    const imgBuffer = await fetchImageAsArrayBuffer(imgSrc);
                     if (imgBuffer) {
                         childrenElements.push(
                             new Paragraph({
@@ -99,7 +106,7 @@ export const downloadWordFromForm = async (form, values, fileName = "document", 
                                     new ImageRun({
                                         data: imgBuffer,
                                         transformation: {
-                                            width: isNested ? 80 : 150, // Logos are usually smaller
+                                            width: isNested ? 80 : 150,
                                             height: isNested ? 30 : 60,
                                         },
                                         type: "png",

@@ -16,7 +16,7 @@ import {
     appendSitepackToAnswers,
     resolveFormCategoryFromSearchParams,
 } from "../utils/sitepackContext";
-import { getOrCreateTemplateForm } from "../services/formUtils";
+import { saveGeneralFormResponse } from "../services/formUtils";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
 import { useGeneralFormTemplateAccess } from "../hooks/useGeneralFormTemplateAccess";
 import { useGeneralFormLeave } from "../hooks/useGeneralFormLeave";
@@ -26,6 +26,12 @@ import {
 } from "../utils/generalFormVisibility";
 import FormDocumentHeader from "../components/FormDocumentHeader";
 import GeneralFormSubmissionDeleteButton from "../components/GeneralFormSubmissionDeleteButton";
+import GeneralFormTemplateInfoBanner from "../components/GeneralFormTemplateInfoBanner";
+import { useGeneralFormSaveNavigate } from "../hooks/useGeneralFormSaveNavigate";
+import { appendTemplatesPageMetadata, templateSaveButtonLabel } from "../utils/templatePageContext";
+
+const FORM_TITLE = "Audit Action Form";
+const FORM_BASE_PATH = "/general-forms/audit-action-form";
 import FormHeaderApprovedRow from "../components/FormHeaderApprovedRow";
 
 export default function AuditActionForm() {
@@ -103,6 +109,8 @@ export default function AuditActionForm() {
 
     const { canEdit, siteId, subfolderId, pdfLayout, contentReadOnly } = useGeneralFormTemplateAccess(action, downloading, persistedSiteId, persistedSubfolderId);
 
+    const navigateAfterFirstSave = useGeneralFormSaveNavigate(FORM_BASE_PATH);
+
     const performSave = async (
         asNew = false,
         name = "",
@@ -118,20 +126,20 @@ export default function AuditActionForm() {
                 name: name || formMetadata.name,
                 tags: tags || formMetadata.tags,
             };
+            payload = appendTemplatesPageMetadata(payload, searchParams, FORM_TITLE);
             payload = appendSitepackToAnswers(payload, { siteId, subfolderId });
             payload = withGeneralFormVisibility(payload, visibility, {
                 hasSiteContext: Boolean(siteId),
             });
 
-            if (persistedResponseId && !asNew) {
-                await api.put(`/forms/responses/${persistedResponseId}`, { answers: payload, category });
-            } else {
-                const formId = await getOrCreateTemplateForm("Audit Action Form");
-                await api.post(`/forms/${formId}/responses`, {
-                    answers: payload,
-                    category,
-                });
-            }
+            const savedId = await saveGeneralFormResponse({
+                formTitle: FORM_TITLE,
+                persistedResponseId,
+                asNew,
+                payload,
+                category,
+            });
+            navigateAfterFirstSave(savedId, asNew);
 
             setFormMetadata({
                 name: name || formMetadata.name,
@@ -281,11 +289,17 @@ export default function AuditActionForm() {
                             "&:hover": { bgcolor: "#cc8b14", boxShadow: "none" } 
                         }}
                     >
-                        {downloading ? "Downloading PDF..." : (saving ? "Saving..." : "Save Form")}
+                        {templateSaveButtonLabel({ saving, downloading })}
                     </Button>
                 </Box>
                 )}
             </Box>
+
+            <GeneralFormTemplateInfoBanner
+                canEdit={canEdit}
+                isSitePackContext={Boolean(siteId)}
+                pdfLayout={pdfLayout}
+            />
 
             <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, justifyContent: 'center', mb: 8, overflowX: "auto", px: { xs: 2, md: 0 } }}>
                 <Paper 

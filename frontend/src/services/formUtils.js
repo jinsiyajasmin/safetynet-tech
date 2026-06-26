@@ -1,6 +1,35 @@
 import api, { formResponseSaveConfig } from './api';
 
 /**
+ * Create or update a general-form template response. Returns the saved response id.
+ */
+export async function saveGeneralFormResponse({
+    formTitle,
+    persistedResponseId,
+    asNew = false,
+    payload,
+    category,
+}) {
+    const requestConfig = formResponseSaveConfig();
+    if (persistedResponseId && !asNew) {
+        await api.put(
+            `/forms/responses/${persistedResponseId}`,
+            { answers: payload, category },
+            requestConfig
+        );
+        return persistedResponseId;
+    }
+    const formId = await getOrCreateTemplateForm(formTitle);
+    const res = await api.post(
+        `/forms/${formId}/responses`,
+        { answers: payload, category },
+        requestConfig
+    );
+    const saved = res.data?.data;
+    return saved?.id || saved?._id || null;
+}
+
+/**
  * Ensures a generic parent "Form" definition exists in the database for our specific hardcoded forms.
  * Since the backend requires a Form to exist before a FormResponse can be saved, this dynamically fetches
  * or creates an empty/dummy form named the exact `formTitle` so it can be associated.

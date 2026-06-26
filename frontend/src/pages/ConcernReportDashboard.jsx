@@ -262,7 +262,30 @@ const defaultDashboard = {
     },
 };
 
-export default function ConcernReportDashboard() {
+const DASHBOARD_SECTIONS = {
+    default: {
+        title: "Dashboard",
+        subtitle: "reports over time and by category.",
+    },
+    ohs: {
+        title: "Occupational Health and Safety",
+        subtitle: "health and safety performance indicators.",
+    },
+    environmental: {
+        title: "Environmental Management",
+        subtitle: "environmental performance indicators.",
+    },
+    quality: {
+        title: "Quality Management",
+        subtitle: "quality performance indicators.",
+    },
+    "food-safety": {
+        title: "Food Safety Management",
+        subtitle: "food safety performance indicators.",
+    },
+};
+
+export default function ConcernReportDashboard({ section = "default" }) {
     const { currentUser } = useAuth();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -333,6 +356,7 @@ export default function ConcernReportDashboard() {
     );
     const caps = data.scope?.capabilities || defaultDashboard.scope.capabilities;
     const scopeLabel = data.scope?.label || "Your data";
+    const sectionMeta = DASHBOARD_SECTIONS[section] || DASHBOARD_SECTIONS.default;
     const showFormsByCompany = Boolean(caps.showFormsByCompany);
     const formsByCompany = data.formsByCompany || [];
     const companyBarData = formsByCompany.map((row) => ({
@@ -347,6 +371,13 @@ export default function ConcernReportDashboard() {
     const companiesWithForms = formsByCompany.filter((r) => (r.count ?? 0) > 0).length;
 
     const statCards = [
+        {
+            key: "forms",
+            icon: FormatListBulletedIcon,
+            color: "green",
+            label: "Forms completed",
+            value: data.stats.totalReports ?? 0,
+        },
         {
             key: "sites",
             icon: DomainIcon,
@@ -375,6 +406,20 @@ export default function ConcernReportDashboard() {
             label: "Total SHEQ forms",
             value: data.stats.sheqForms ?? sheqSummary.total ?? 0,
         },
+        {
+            key: "noncon",
+            icon: WarningAmberIcon,
+            color: "red",
+            label: "Total nonconformances",
+            value: data.stats.totalNonconformances ?? 0,
+        },
+        {
+            key: "pending-noncon",
+            icon: FactCheckIcon,
+            color: "blue",
+            label: "Pending nonconformances",
+            value: data.stats.pendingNonconformances ?? 0,
+        },
     ];
 
     return (
@@ -390,10 +435,10 @@ export default function ConcernReportDashboard() {
                 <PageContent sx={{ py: { xs: 2.5, md: 3.5 }, pb: { xs: 4, md: 5 } }}>
                     <div style={{ marginBottom: 24 }}>
                         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: T.ink, letterSpacing: "-0.02em" }}>
-                            Dashboard
+                            {sectionMeta.title}
                         </h1>
                         <p style={{ margin: "6px 0 0", fontSize: 13, color: T.inkMid }}>
-                            {scopeLabel} — reports over time and by category.
+                            {scopeLabel} — {sectionMeta.subtitle}
                         </p>
                     </div>
 

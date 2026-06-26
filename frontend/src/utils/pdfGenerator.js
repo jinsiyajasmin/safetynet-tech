@@ -1,5 +1,6 @@
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { inlineImagesForPdfCapture, absolutizeImageSrc } from "./compressImage";
 
 const MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_MAX_OUTPUT_BYTES = 5 * 1024 * 1024;
@@ -122,9 +123,8 @@ function absolutizeMediaUrlsInClone(_document, clonedRoot) {
     clonedRoot.querySelectorAll("img[src]").forEach((img) => {
         const s = img.getAttribute("src");
         if (!s || s.startsWith("data:") || s.startsWith("blob:") || /^https?:\/\//i.test(s)) return;
-        if (s.startsWith("/")) {
-            img.setAttribute("src", `${window.location.origin}${s}`);
-        }
+        const absolute = absolutizeImageSrc(s);
+        if (absolute) img.setAttribute("src", absolute);
     });
 }
 
@@ -377,6 +377,44 @@ function html2canvasOnClone(_document, clonedElement) {
             margin-left: auto !important;
             margin-right: 0 !important;
             display: block !important;
+        }
+        .concern-pdf-export.concern-pdf-one-page {
+            width: 100% !important;
+            max-width: 100% !important;
+            padding: 0 !important;
+            box-sizing: border-box !important;
+        }
+        .concern-pdf-export.concern-pdf-one-page .concern-report-header {
+            margin-bottom: 8px !important;
+            padding-bottom: 6px !important;
+            min-height: 0 !important;
+        }
+        .concern-pdf-export.concern-pdf-one-page .concern-header-title h1 {
+            font-size: 18px !important;
+            line-height: 1.2 !important;
+        }
+        .concern-pdf-export.concern-pdf-one-page [data-pdf-block] {
+            margin-bottom: 6px !important;
+            padding: 0 !important;
+        }
+        .concern-pdf-export.concern-pdf-one-page .pdf-upload-photo img {
+            max-height: 110px !important;
+        }
+        .concern-pdf-export.concern-pdf-one-page .pdf-header-logo {
+            max-height: 56px !important;
+            max-width: 160px !important;
+        }
+        .concern-pdf-export.concern-pdf-one-page .pdf-signature-img {
+            max-height: 48px !important;
+        }
+        .concern-pdf-export.concern-pdf-one-page textarea,
+        .concern-pdf-export.concern-pdf-one-page input {
+            font-size: 10px !important;
+            line-height: 1.3 !important;
+        }
+        .concern-pdf-export.concern-pdf-one-page label {
+            font-size: 9px !important;
+            line-height: 1.25 !important;
         }
         .weekly-pdf-export .pdf-header {
             display: flex !important;
@@ -750,6 +788,7 @@ export const downloadPdfFromRef = async (printRef, fileName = "document", onComp
 
     try {
         if (!options.skipPreCaptureWaits) {
+            await inlineImagesForPdfCapture(printRef.current, options.imageShrinkOpts);
             await waitForImages(printRef.current, 8000, options);
             await waitForChart(printRef.current, options.chartWaitTimeoutMs ?? 2000);
             await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));

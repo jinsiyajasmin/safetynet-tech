@@ -1,6 +1,7 @@
 const prisma = require("../prismaClient");
 const { sendEmail } = require("../services/emailService");
 const { notifyAdminsOfNewFormSubmission } = require("../services/formSubmissionNotifyService");
+const { createNonconformanceFromFormSubmission } = require("../services/nonconformanceActionService");
 const { assertGeneralFormTemplateWrite } = require("../utils/generalFormTemplatePolicy");
 const {
   buildCompanyFormResponseWhere,
@@ -321,6 +322,14 @@ exports.saveResponse = async (req, res) => {
       answers: sanitizedAnswers,
     }).catch((err) => {
       console.error("Form submission admin notification failed:", err);
+    });
+
+    createNonconformanceFromFormSubmission({
+      answers: sanitizedAnswers,
+      formResponseId: response.id,
+      submitterId,
+    }).catch((err) => {
+      console.error("Nonconformance action creation failed:", err);
     });
 
     res.json({ success: true, data: response });

@@ -1,18 +1,19 @@
 # Auto-loaded by `docker compose` for local development (not used when Coolify passes `-f docker-compose.yaml` only).
-# Adds Postgres and fixes DATABASE_URL host (`db` instead of `localhost` from .env).
+# Adds Postgres and fixes DATABASE_URL host (`db` instead of `localhost` from .env`).
+# Container names and ports are scoped to this repo to avoid clashes with other local stacks.
 
 services:
   db:
     image: public.ecr.aws/docker/library/postgres:15-alpine
-    container_name: safetyapp_db
+    container_name: site-mate_db
     restart: always
     environment:
       POSTGRES_USER: safetyuser
       POSTGRES_PASSWORD: safetypassword
       POSTGRES_DB: safetyapp_db
     ports:
-      # 5434 avoids clashing with local Postgres (5432) and other tools on 5433.
-      - "5434:5432"
+      # 5435 avoids clashing with other local stacks on 5434 and default Postgres on 5432.
+      - "5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -21,21 +22,50 @@ services:
       timeout: 5s
       retries: 5
 
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: site-mate_mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    environment:
+      # When SMTP_RELAY_HOST is set in .env, Mailpit forwards mail to real inboxes.
+      MP_SMTP_RELAY_HOST: ${SMTP_RELAY_HOST:-}
+      MP_SMTP_RELAY_PORT: ${SMTP_RELAY_PORT:-587}
+      MP_SMTP_RELAY_STARTTLS: ${SMTP_RELAY_STARTTLS:-1}
+      MP_SMTP_RELAY_AUTH: ${SMTP_RELAY_AUTH:-plain}
+      MP_SMTP_RELAY_USERNAME: ${SMTP_USER:-}
+      MP_SMTP_RELAY_PASSWORD: ${SMTP_PASS:-}
+
   backend:
+    container_name: site-mate_backend
     environment:
       NODE_ENV: development
-      APP_URL: http://localhost:8080
+      APP_URL: http://localhost:8082
       DATABASE_URL: postgresql://safetyuser:safetypassword@db:5432/safetyapp_db?schema=public
       DIRECT_URL: postgresql://safetyuser:safetypassword@db:5432/safetyapp_db?schema=public
+      JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret-do-not-use-in-production}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-Sitemate <no-reply@localhost>}
+      SMTP_RELAY_HOST: ${SMTP_RELAY_HOST:-}
+      SMTP_RELAY_PORT: ${SMTP_RELAY_PORT:-587}
     ports:
-      - "4000:4000"
+      - "4002:4000"
     depends_on:
       db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
 
   frontend:
+    container_name: site-mate_frontend
     ports:
-      - "8080:80"
+      - "8082:80"
 
 volumes:
   postgres_data:

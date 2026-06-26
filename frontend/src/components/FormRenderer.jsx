@@ -22,6 +22,7 @@ export default function FormRenderer({
     isSubmitting = false,
     logoUrl,
     submitLabel = "Submit",
+    exportMode = false,
 }) {
     const themeContext = useTheme();
     const isDarkMode = themeContext?.isDarkMode;
@@ -477,6 +478,7 @@ export default function FormRenderer({
                         <Box sx={{ mb: isNested ? 0.5 : 1 }}>
                             <Box
                                 component="img"
+                                className={exportMode ? "pdf-upload-photo" : undefined}
                                 src={
                                     values[f.id + "_preview"] ||
                                     (typeof values[f.id] === 'string' ? values[f.id] : null) ||
@@ -547,6 +549,7 @@ export default function FormRenderer({
                         <Box sx={{ textAlign: f.alignment === 'center' ? 'center' : f.alignment === 'right' ? 'right' : 'left' }}>
                             <Box
                                 component="img"
+                                className={exportMode ? "pdf-upload-photo pdf-header-logo" : undefined}
                                 src={
                                     values[f.id + "_preview"] ||
                                     (typeof values[f.id] === 'string' ? values[f.id] : null) ||
@@ -565,7 +568,7 @@ export default function FormRenderer({
                     ) : (
                         f.url ? (
                             <Box sx={{ textAlign: f.alignment === 'center' ? 'center' : f.alignment === 'right' ? 'right' : 'left' }}>
-                                <Box component="img" src={f.url} alt="Logo" sx={{ height: isNested ? 40 : 80, width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
+                                <Box component="img" className={exportMode ? "pdf-upload-photo pdf-header-logo" : undefined} src={f.url} alt="Logo" sx={{ height: isNested ? 40 : 80, width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
                                 {!readOnly && (
                                     <Button size="small" component="label" sx={{ display: 'block', mt: 0.5, mx: f.alignment === 'center' ? 'auto' : 0, fontSize: '0.7rem' }}>
                                         Change Logo
@@ -611,6 +614,7 @@ export default function FormRenderer({
             {logoUrl && (
                 <Box
                     component="img"
+                    className={exportMode ? "pdf-header-logo" : undefined}
                     src={logoUrl}
                     alt="Company Logo"
                     sx={{

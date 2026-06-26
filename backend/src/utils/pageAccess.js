@@ -75,6 +75,8 @@ const VIEW_ONLY_WRITE_ALLOWLIST = [
   /^\/api\/auth\/forgot-password/i,
   /^\/api\/auth\/reset-password/i,
   /^\/api\/auth\/2fa/i,
+  /^\/api\/action-tracker\//i,
+  /^\/api\/notifications\//i,
 ];
 
 function isViewOnlyWriteAllowed(req) {

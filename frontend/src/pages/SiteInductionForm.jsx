@@ -15,7 +15,7 @@ import {
     appendSitepackToAnswers,
     resolveFormCategoryFromSearchParams,
 } from "../utils/sitepackContext";
-import { getOrCreateTemplateForm } from "../services/formUtils";
+import { saveGeneralFormResponse } from "../services/formUtils";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
 import { useRef } from "react";
 import SignatureCapture from "../components/SignatureCapture";
@@ -26,6 +26,12 @@ import {
     GENERAL_FORM_VISIBILITY,
 } from "../utils/generalFormVisibility";
 import GeneralFormSubmissionDeleteButton from "../components/GeneralFormSubmissionDeleteButton";
+import GeneralFormTemplateInfoBanner from "../components/GeneralFormTemplateInfoBanner";
+import { useGeneralFormSaveNavigate } from "../hooks/useGeneralFormSaveNavigate";
+import { appendTemplatesPageMetadata, templateSaveButtonLabel } from "../utils/templatePageContext";
+
+const FORM_TITLE = "Site Induction Register";
+const FORM_BASE_PATH = "/general-forms/site-induction";
 import FormLogoUploadSlot from "../components/FormLogoUploadSlot";
 
 export default function SiteInductionForm() {
@@ -106,6 +112,8 @@ export default function SiteInductionForm() {
         persistedSubfolderId
     );
 
+    const navigateAfterFirstSave = useGeneralFormSaveNavigate(FORM_BASE_PATH);
+
     const performSave = async (
         asNew = false,
         name = "",
@@ -123,20 +131,20 @@ export default function SiteInductionForm() {
                 name: name || formMetadata.name,
                 tags: tags || formMetadata.tags,
             };
+            payload = appendTemplatesPageMetadata(payload, searchParams, FORM_TITLE);
             payload = appendSitepackToAnswers(payload, { siteId, subfolderId });
             payload = withGeneralFormVisibility(payload, visibility, {
                 hasSiteContext: Boolean(siteId),
             });
 
-            if (persistedResponseId && !asNew) {
-                await api.put(`/forms/responses/${persistedResponseId}`, { answers: payload, category });
-            } else {
-                const formId = await getOrCreateTemplateForm("Site Induction Register");
-                await api.post(`/forms/${formId}/responses`, {
-                    answers: payload,
-                    category,
-                });
-            }
+            const savedId = await saveGeneralFormResponse({
+                formTitle: FORM_TITLE,
+                persistedResponseId,
+                asNew,
+                payload,
+                category,
+            });
+            navigateAfterFirstSave(savedId, asNew);
 
             setFormMetadata({
                 name: name || formMetadata.name,
@@ -303,11 +311,17 @@ export default function SiteInductionForm() {
                             "&:hover": { bgcolor: "#cc8b14", boxShadow: "none" } 
                         }}
                     >
-                        {downloading ? "Downloading PDF..." : (saving ? "Saving..." : "Save Form")}
+                        {templateSaveButtonLabel({ saving, downloading })}
                     </Button>
                 </Box>
                 )}
             </Box>
+
+            <GeneralFormTemplateInfoBanner
+                canEdit={canEdit}
+                isSitePackContext={Boolean(siteId)}
+                pdfLayout={downloading || action === 'download'}
+            />
 
             <Box sx={{ width: '100%', overflowX: 'auto', mb: 8 }}>
                 <Box sx={{ minWidth: (downloading || action === 'download') ? "1000px" : "100%", display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, justifyContent: 'center', px: { xs: 2, md: 0 } }}>
@@ -853,6 +867,7 @@ export default function SiteInductionForm() {
                 defaultVisibility={formMetadata.visibility}
                 showVisibilityChoice={!siteId}
                 saving={saving}
+                templateFlow
             />
             {UnsavedDialog}
         </Layout>

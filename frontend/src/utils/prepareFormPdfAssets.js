@@ -69,3 +69,57 @@ export async function prepareConcernWeeklyPdfAssets(values = {}, logoUrl = null,
 
     return out;
 }
+
+function collectFormFields(fields = [], acc = []) {
+    for (const field of fields) {
+        if (!field) continue;
+        acc.push(field);
+        if (field.type === "grid" && field.cellFields) {
+            Object.values(field.cellFields).forEach((nestedList) => {
+                collectFormFields(nestedList, acc);
+            });
+        }
+    }
+    return acc;
+}
+
+function imageOptsForFieldType(type) {
+    if (type === "logo") return LOGO_OPTS;
+    if (type === "signature") return SIG_OPTS;
+    return PHOTO_OPTS;
+}
+
+/** Inline logos, photos, and signatures for custom form-builder PDF/Word export. */
+export async function prepareCustomFormPdfAssets(form, values = {}, companyLogoUrl = null) {
+    const out = { ...values };
+    const allFields = collectFormFields(form?.fields || []);
+
+    await Promise.all(
+        allFields.map(async (field) => {
+            if (!["logo", "image_upload", "signature"].includes(field.type)) return;
+
+            const id = field.id;
+            const previewKey = `${id}_preview`;
+            const val = values[id];
+            const preview = values[previewKey];
+            const src =
+                preview ||
+                (typeof val === "string" ? val : null) ||
+                (field.type === "logo" ? field.url : null);
+
+            if (!src) return;
+
+            const opts = imageOptsForFieldType(field.type);
+            await prepareImageField(out, id, src, opts);
+        })
+    );
+
+    if (companyLogoUrl) {
+        const headerLogo = await fetchImageAsDataUrl(companyLogoUrl, LOGO_OPTS);
+        if (headerLogo) {
+            out.__companyLogoUrl = headerLogo;
+        }
+    }
+
+    return out;
+}

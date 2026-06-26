@@ -50,6 +50,23 @@ import {
     matchesSitepackScope,
     sitepackNavState,
 } from "../utils/sitepackContext";
+import { getMonitoringSection } from "../constants/monitoringSections";
+import { monitoringFolderPath, monitoringSitePath } from "../utils/monitoringContext";
+import SaveChoiceDialog from "../components/SaveChoiceDialog";
+import GeneralFormTemplateInfoBanner from "../components/GeneralFormTemplateInfoBanner";
+import { saveGeneralFormResponse } from "../services/formUtils";
+import { GENERAL_FORMS_CATEGORY } from "../utils/generalFormSubmissions";
+import { canEditGeneralFormTemplate } from "../utils/generalFormTemplateAccess";
+import {
+    withGeneralFormVisibility,
+    GENERAL_FORM_VISIBILITY,
+} from "../utils/generalFormVisibility";
+import {
+    appendTemplatesPageMetadata,
+    isTemplatesPageEditContext,
+    templatesPageListUrl,
+    templateSaveButtonLabel,
+} from "../utils/templatePageContext";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 const getSubheading = (title) => {
@@ -86,6 +103,33 @@ const getSubheading = (title) => {
 };
 
 const STATIC_CONCERN_FORM_ID = "health-safety-concern-static-id";
+
+/** PDF: scale the full concern report onto one A4 page. */
+const CONCERN_PDF_OPTIONS = {
+    paginateBlocks: false,
+    onePageOnly: true,
+    skipBuiltInFooter: true,
+    marginX: 8,
+    headerInsetMm: 6,
+    footerInsetMm: 6,
+    blockScale: 2,
+    jpegQuality: 0.86,
+    minJpegQuality: 0.6,
+    maxOutputBytes: 5 * 1024 * 1024,
+    targetMaxBytes: 450_000,
+};
+
+const WEEKLY_PDF_OPTIONS = {
+    paginateBlocks: true,
+    blockScale: 1.75,
+    jpegQuality: 0.82,
+    minJpegQuality: 0.55,
+    maxOutputBytes: 5 * 1024 * 1024,
+    targetMaxBytes: 320_000,
+    skipBuiltInFooter: false,
+    useRunningHeader: true,
+    imageCompression: "FAST",
+};
 
 /** Built-in concern/weekly UI vs form-builder template chosen via "Choose Form". */
 function inferFormDisplayKind(form, pageTitle) {
@@ -139,9 +183,13 @@ export default function GenericReportPage({ pageTitle }) {
     const search = searchParams.get("search") || "";
     const siteId = searchParams.get("siteId");
     const subfolderId = searchParams.get("subfolderId");
+    const monitoringSection = searchParams.get("monitoringSection");
     const urlResponseId = searchParams.get("responseId");
     const shouldAutoCreate = searchParams.get("create") === "true";
+    const isTemplatesPageEdit = isTemplatesPageEditContext(searchParams);
+    const canEditTemplate = canEditGeneralFormTemplate(role, { siteId });
     const isSitepackContext = Boolean(siteId);
+    const isMonitoringContext = Boolean(monitoringSection && siteId);
     const [dialogOpen, setDialogOpen] = useState(false);
 
     const handleChangePage = (event, newPage) => {
@@ -194,6 +242,12 @@ export default function GenericReportPage({ pageTitle }) {
     const [emailDialogOpen, setEmailDialogOpen] = useState(false);
     const [recipientEmail, setRecipientEmail] = useState("");
     const [emailingItem, setEmailingItem] = useState(null);
+    const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
+    const [templateMetadata, setTemplateMetadata] = useState({
+        name: "",
+        tags: "",
+        visibility: GENERAL_FORM_VISIBILITY.PRIVATE,
+    });
 
     const getSubmissionTitle = (row) =>
         row?.answers?.report_heading?.trim() ||
@@ -227,6 +281,14 @@ export default function GenericReportPage({ pageTitle }) {
     }, [pageTitle, isSitepackContext, siteId, subfolderId]);
 
     const navigateBackToSitepack = useCallback(() => {
+        if (isMonitoringContext) {
+            if (subfolderId) {
+                navigate(monitoringFolderPath(monitoringSection, siteId, subfolderId));
+            } else {
+                navigate(monitoringSitePath(monitoringSection, siteId));
+            }
+            return;
+        }
         navigate("/sitepack-management", {
             state: sitepackNavState({
                 siteId,
@@ -234,7 +296,7 @@ export default function GenericReportPage({ pageTitle }) {
                 moduleTitle: pageTitle,
             }),
         });
-    }, [navigate, siteId, subfolderId, pageTitle]);
+    }, [navigate, siteId, subfolderId, pageTitle, isMonitoringContext, monitoringSection]);
 
     // Reset state when title changes (e.g. navigating between sidebar items)
     useEffect(() => {
@@ -296,7 +358,17 @@ export default function GenericReportPage({ pageTitle }) {
         reader.onerror = error => reject(error);
     });
 
-    const handleSubmit = async () => {
+    const handleSubmit = () => {
+        if (!selectedForm) return;
+        if (isTemplatesPageEdit) {
+            if (!canEditTemplate) return;
+            setTemplateSaveOpen(true);
+            return;
+        }
+        return submitReport();
+    };
+
+    const submitReport = async () => {
         if (!selectedForm) return;
 
         setIsSubmitting(true);
@@ -330,19 +402,27 @@ export default function GenericReportPage({ pageTitle }) {
                 siteId,
                 subfolderId,
             });
+            if (monitoringSection) {
+                answersWithSitepack.monitoringSection = monitoringSection;
+                answersWithSitepack.reportModuleTitle = pageTitle;
+            }
+
+            const monitoringMeta = getMonitoringSection(monitoringSection);
+            const saveCategory =
+                monitoringMeta?.category && monitoringSection ? monitoringMeta.category : pageTitle;
 
             let res;
             if (viewMode === "editing" && editingId) {
                 res = await api.put(`/forms/responses/${editingId}`, {
                     answers: answersWithSitepack,
-                    category: pageTitle,
+                    category: saveCategory,
                 });
             } else {
                 const formId = selectedForm.id || selectedForm._id;
                 res = await api.post(`/forms/${formId}/responses`, {
                     formId: formId,
                     answers: answersWithSitepack,
-                    category: pageTitle,
+                    category: saveCategory,
                 });
             }
 
@@ -365,6 +445,80 @@ export default function GenericReportPage({ pageTitle }) {
                 err?.response?.data?.message ||
                 err?.message ||
                 "Failed to save form. Please try again.";
+            alert(msg);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const executeTemplateSave = async (
+        asNew = false,
+        name = "",
+        tags = "",
+        visibility = templateMetadata.visibility
+    ) => {
+        if (!selectedForm || !canEditTemplate) return;
+
+        setIsSubmitting(true);
+        try {
+            let workingValues = { ...formValues };
+            if (
+                (activeFormKind === "concern" || activeFormKind === "weekly") &&
+                !workingValues.report_heading?.trim()
+            ) {
+                workingValues.report_heading = selectedForm.title;
+            }
+
+            const processedAnswers = {};
+            for (const [key, value] of Object.entries(workingValues)) {
+                if (value instanceof File) {
+                    processedAnswers[key] = await toBase64(value);
+                } else if (!key.endsWith("_preview")) {
+                    if (typeof value === "string" && value.startsWith("blob:")) {
+                        continue;
+                    }
+                    if ((key === "logo" || key === "company_logo") && (value == null || value === "")) {
+                        processedAnswers[key] = null;
+                        continue;
+                    }
+                    processedAnswers[key] = value;
+                }
+            }
+
+            let payload = appendTemplatesPageMetadata(
+                {
+                    ...processedAnswers,
+                    name: name || templateMetadata.name,
+                    tags: tags || templateMetadata.tags,
+                },
+                searchParams,
+                pageTitle
+            );
+            payload = withGeneralFormVisibility(payload, visibility, { hasSiteContext: false });
+
+            const savedId = await saveGeneralFormResponse({
+                formTitle: pageTitle,
+                persistedResponseId: editingId,
+                asNew,
+                payload,
+                category: GENERAL_FORMS_CATEGORY,
+            });
+
+            if (savedId) {
+                setTemplateSaveOpen(false);
+                setTemplateMetadata({
+                    name: payload.name,
+                    tags: payload.tags,
+                    visibility: payload.visibility ?? templateMetadata.visibility,
+                });
+                navigate(templatesPageListUrl());
+            }
+        } catch (err) {
+            console.error("Template save failed", err);
+            const msg =
+                err?.response?.data?.message ||
+                err?.message ||
+                "Failed to save template. Please try again.";
             alert(msg);
         } finally {
             setIsSubmitting(false);
@@ -490,7 +644,18 @@ export default function GenericReportPage({ pageTitle }) {
                 ) {
                     return;
                 }
-                await openSubmissionView(sub, "viewed");
+                await openSubmissionView(
+                    sub,
+                    isTemplatesPageEdit && canEditTemplate ? "editing" : "viewed"
+                );
+                if (isTemplatesPageEdit && sub.answers) {
+                    setTemplateMetadata({
+                        name: sub.answers.name || sub.name || "",
+                        tags: sub.answers.tags || "",
+                        visibility:
+                            sub.answers.visibility || GENERAL_FORM_VISIBILITY.PRIVATE,
+                    });
+                }
             } catch (e) {
                 console.error("Failed to open report from link", e);
             }
@@ -551,6 +716,19 @@ export default function GenericReportPage({ pageTitle }) {
             await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
             await new Promise((resolve) => {
+                const pdfOptions =
+                    activeFormKind === "concern"
+                        ? CONCERN_PDF_OPTIONS
+                        : activeFormKind === "weekly"
+                          ? WEEKLY_PDF_OPTIONS
+                          : {
+                              paginateBlocks: false,
+                              blockScale: 1.75,
+                              jpegQuality: 0.82,
+                              maxOutputBytes: 5 * 1024 * 1024,
+                              targetMaxBytes: 320_000,
+                          };
+
                 downloadPdfFromRef(
                     printRef,
                     fileName,
@@ -562,17 +740,7 @@ export default function GenericReportPage({ pageTitle }) {
                         }
                         resolve();
                     },
-                    {
-                        paginateBlocks: isBuiltIn,
-                        blockScale: 1.75,
-                        jpegQuality: 0.82,
-                        minJpegQuality: 0.55,
-                        maxOutputBytes: 5 * 1024 * 1024,
-                        targetMaxBytes: 320_000,
-                        skipBuiltInFooter: false,
-                        useRunningHeader: isBuiltIn,
-                        imageCompression: "FAST",
-                    }
+                    pdfOptions
                 );
             });
         } catch (err) {
@@ -607,18 +775,30 @@ export default function GenericReportPage({ pageTitle }) {
                 <Box>
                     <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, justifyContent: "space-between", mb: 4, alignItems: { xs: "flex-start", sm: "center" }, gap: { xs: 2.5, sm: 0 } }}>
                         <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
-                            {isSitepackContext && viewMode === "initial" && (
+                            {(isSitepackContext && viewMode === "initial") ||
+                            (isMonitoringContext && viewMode !== "initial") ||
+                            (isTemplatesPageEdit && viewMode !== "initial") ? (
                                 <IconButton
-                                    onClick={navigateBackToSitepack}
+                                    onClick={() => {
+                                        if (isTemplatesPageEdit) {
+                                            navigate("/general-forms");
+                                            return;
+                                        }
+                                        navigateBackToSitepack();
+                                    }}
                                     sx={{ mt: -0.5, color: isDarkMode ? "#9CA3AF" : "#6B7280" }}
-                                    aria-label="Back to site pack"
+                                    aria-label="Back"
                                 >
                                     <ArrowBackIcon />
                                 </IconButton>
-                            )}
+                            ) : null}
                             <Box>
                                 <Typography variant="h6" sx={{ fontWeight: 600, color: isDarkMode ? "#F9FAFB" : "#111827", }}>
-                                    {isSitepackContext ? pageTitle : `All Reports - ${pageTitle}`}
+                                    {isTemplatesPageEdit
+                                        ? pageTitle
+                                        : isSitepackContext
+                                          ? pageTitle
+                                          : `All Reports - ${pageTitle}`}
                                 </Typography>
                                 <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280", mt: 0.5 }}>
                                     {isSitepackContext
@@ -661,7 +841,7 @@ export default function GenericReportPage({ pageTitle }) {
                                     <Button 
                                         variant="contained" 
                                         onClick={handleSubmit}
-                                        disabled={isSubmitting}
+                                        disabled={isSubmitting || (isTemplatesPageEdit && !canEditTemplate)}
                                         sx={{
                                             textTransform: "none",
                                             borderRadius: 4,
@@ -675,9 +855,16 @@ export default function GenericReportPage({ pageTitle }) {
                                             "&.Mui-disabled": { bgcolor: "rgba(234, 179, 8, 0.5)", color: "rgba(17, 24, 39, 0.5)" }
                                         }}
                                     >
-                                        {isSubmitting ? "Saving..." : (viewMode === "editing" ? "Update Report" : "Save Report")}
+                                        {isTemplatesPageEdit
+                                            ? templateSaveButtonLabel({ saving: isSubmitting })
+                                            : isSubmitting
+                                              ? "Saving..."
+                                              : viewMode === "editing"
+                                                ? "Update Report"
+                                                : "Save Report"}
                                     </Button>
                                 )}
+                                {!isTemplatesPageEdit && (
                                 <Button 
                                     variant="outlined" 
                                     onClick={() => {
@@ -707,6 +894,7 @@ export default function GenericReportPage({ pageTitle }) {
                                 >
                                     Back to List
                                 </Button>
+                                )}
                             </Box>
                         )}
                         {viewMode === "initial" && (
@@ -759,7 +947,15 @@ export default function GenericReportPage({ pageTitle }) {
                         )}
                     </Box>
 
-                    {viewMode === "initial" && (
+                    {isTemplatesPageEdit && viewMode !== "initial" && (
+                        <GeneralFormTemplateInfoBanner
+                            canEdit={canEditTemplate}
+                            isSitePackContext={false}
+                            pdfLayout={false}
+                        />
+                    )}
+
+                    {viewMode === "initial" && !isTemplatesPageEdit && (
                         <Paper sx={{ width: '100%', mb: 2, borderRadius: 3, boxShadow: isDarkMode ? "0 4px 20px rgba(0,0,0,0.5)" : "0 1px 3px 0 rgba(0, 0, 0, 0.1)", border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB", bgcolor: isDarkMode ? "#1B212C" : "#FFFFFF" }}>
                             <TableContainer>
                                 <Table>
@@ -845,6 +1041,7 @@ export default function GenericReportPage({ pageTitle }) {
                                     values={formValues}
                                     onChange={handleFormChange}
                                     logoUrl={logoUrl}
+                                    readOnly={isTemplatesPageEdit && !canEditTemplate}
                                 />
                             ) : activeFormKind === "concern" ? (
                                 <HealthSafetyConcernForm 
@@ -852,6 +1049,7 @@ export default function GenericReportPage({ pageTitle }) {
                                     onChange={handleFormChange}
                                     logoUrl={logoUrl}
                                     formType={concernFormTypeFromPageTitle(pageTitle)}
+                                    readOnly={isTemplatesPageEdit && !canEditTemplate}
                                 />
                             ) : (
                                 <>
@@ -876,9 +1074,10 @@ export default function GenericReportPage({ pageTitle }) {
                             <Paper
                                 elevation={0}
                                 sx={{
-                                    width: '1000px', // Wider container means text renders smaller relative to the page = "zoomed out"
-                                    minHeight: '1414px', // Standard A4 ratio for 1000px width (1000 * 1.414)
-                                    p: '60px',
+                                    width: activeFormKind === "concern" && downloading ? "794px" : "1000px",
+                                    minHeight:
+                                        activeFormKind === "concern" && downloading ? "auto" : "1414px",
+                                    p: activeFormKind === "concern" && downloading ? "24px 28px" : "60px",
                                     position: 'relative',
                                     display: 'flex',
                                     flexDirection: 'column',
@@ -997,6 +1196,19 @@ export default function GenericReportPage({ pageTitle }) {
                     <Trash2 size={18} style={{ marginRight: 12, color: "#EF4444" }} /> Delete
                 </MenuItem>
             </Menu>
+            <SaveChoiceDialog
+                open={templateSaveOpen}
+                onClose={() => setTemplateSaveOpen(false)}
+                onSave={executeTemplateSave}
+                existingId={editingId}
+                defaultName={templateMetadata.name}
+                defaultTags={templateMetadata.tags}
+                defaultVisibility={templateMetadata.visibility}
+                showVisibilityChoice
+                saving={isSubmitting}
+                templateFlow
+                nameFieldLabel="Template name"
+            />
         </Layout>
     );
 }

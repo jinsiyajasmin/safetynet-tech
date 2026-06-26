@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { Box, Drawer } from "@mui/material";
 import Sidebar from "./Sidebar";
 import TopNav from "./TopNav";
@@ -7,26 +7,42 @@ import ViewOnlyBanner from "./ViewOnlyBanner";
 import { useTheme } from "../context/ThemeContext";
 import { useLocation } from "react-router-dom";
 
+const SIDEBAR_WIDTH = 280;
+const SIDEBAR_STORAGE_KEY = "site-mate-sidebar-open";
+
 const Layout = ({ children, pageTitle, disablePadding = false }) => {
     const { isDarkMode } = useTheme();
     const [mobileOpen, setMobileOpen] = useState(false);
+    const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(() => {
+        if (typeof window === "undefined") return true;
+        return localStorage.getItem(SIDEBAR_STORAGE_KEY) !== "false";
+    });
 
     const handleDrawerToggle = () => {
         setMobileOpen(!mobileOpen);
     };
 
+    const toggleDesktopSidebar = useCallback(() => {
+        setDesktopSidebarOpen((open) => {
+            const next = !open;
+            localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+            return next;
+        });
+    }, []);
+
     const location = useLocation();
     const previewParams = new URLSearchParams(location.search);
     const isPreview = previewParams.get("preview") === "true";
+    const isEmbedded = previewParams.get("embedded") === "true";
     const isPreviewFill =
         isPreview &&
         previewParams.get("siteId") &&
         previewParams.get("fromTemplate");
 
-    if (isPreview) {
+    if (isPreview || isEmbedded) {
         return (
             <Box sx={{ bgcolor: isDarkMode ? "#1B212C" : "#fff", height: "100vh", overflow: "auto", p: { xs: 1, md: 3 } }}>
-                {!isPreviewFill && (
+                {isPreview && !isPreviewFill && (
                     <style>
                         {`
                             button, a, [role="button"] { display: none !important; }
@@ -53,12 +69,16 @@ const Layout = ({ children, pageTitle, disablePadding = false }) => {
                 component="aside"
                 sx={{
                     display: { xs: "none", md: "block" },
-                    width: 280, // Matches Sidebar.jsx width
+                    width: desktopSidebarOpen ? SIDEBAR_WIDTH : 0,
                     flexShrink: 0,
                     height: "100%",
+                    overflow: "hidden",
+                    transition: "width 0.25s ease",
                 }}
             >
-                <Sidebar sx={{ height: "100%", width: "100%" }} />
+                <Sidebar
+                    sx={{ height: "100%", width: SIDEBAR_WIDTH, flexShrink: 0 }}
+                />
             </Box>
 
             {/* Mobile Sidebar Drawer */}
@@ -90,7 +110,12 @@ const Layout = ({ children, pageTitle, disablePadding = false }) => {
                     width: "100%",
                 }}
             >
-                <TopNav pageTitle={pageTitle} onMobileMenuClick={handleDrawerToggle} />
+                <TopNav
+                    pageTitle={pageTitle}
+                    onMobileMenuClick={handleDrawerToggle}
+                    desktopSidebarOpen={desktopSidebarOpen}
+                    onDesktopSidebarToggle={toggleDesktopSidebar}
+                />
 
                 <Box
                     component="main"

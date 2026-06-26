@@ -32,6 +32,10 @@ async function mergeDuplicateSafetynettClients(prisma) {
       where: { clientId: duplicate.id },
       data: { clientId: canonical.id },
     });
+    await prisma.nonconformanceAction.updateMany({
+      where: { clientId: duplicate.id },
+      data: { clientId: canonical.id },
+    });
     await prisma.client.delete({ where: { id: duplicate.id } });
   }
 

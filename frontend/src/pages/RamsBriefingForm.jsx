@@ -19,7 +19,7 @@ import {
     appendSitepackToAnswers,
     resolveFormCategoryFromSearchParams,
 } from "../utils/sitepackContext";
-import { getOrCreateTemplateForm } from "../services/formUtils";
+import { saveGeneralFormResponse } from "../services/formUtils";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
 import { useRef } from "react";
 import { useGeneralFormTemplateAccess } from "../hooks/useGeneralFormTemplateAccess";
@@ -32,7 +32,9 @@ import FormDocumentHeader from "../components/FormDocumentHeader";
 import FormHeaderApprovedRow from "../components/FormHeaderApprovedRow";
 import FormTableCellTextField from "../components/FormTableCellTextField";
 import GeneralFormSubmissionDeleteButton from "../components/GeneralFormSubmissionDeleteButton";
-import FormEditableParagraph from "../components/FormEditableParagraph";
+import GeneralFormTemplateInfoBanner from "../components/GeneralFormTemplateInfoBanner";
+import { useGeneralFormSaveNavigate } from "../hooks/useGeneralFormSaveNavigate";
+import { appendTemplatesPageMetadata, templateSaveButtonLabel } from "../utils/templatePageContext";
 
 const DEFAULT_BRIEFING_LABELS = {
     headerTitle: "RAMS BRIEFING REGISTER",
@@ -62,6 +64,9 @@ const DEFAULT_BRIEFING_LABELS = {
     clarificationNote:
         "If you have any doubt about information given or contained in this method statement – ask for clarification.",
 };
+
+const FORM_TITLE = "RAMS Briefing Form";
+const FORM_BASE_PATH = "/general-forms/rams-briefing";
 
 export default function RamsBriefingForm() {
   const logoUrl = useCompanyLogo();
@@ -115,6 +120,8 @@ export default function RamsBriefingForm() {
     /** General Forms template edit: editable boilerplate sentences and labels. */
     const canEditTemplateText = canEdit && !isSitePackContext && !pdfLayout;
 
+    const navigateAfterFirstSave = useGeneralFormSaveNavigate(FORM_BASE_PATH);
+
     const performSave = async (
         asNew = false,
         name = "",
@@ -131,20 +138,20 @@ export default function RamsBriefingForm() {
                 name: name || formMetadata.name,
                 tags: tags || formMetadata.tags,
             };
+            payload = appendTemplatesPageMetadata(payload, searchParams, FORM_TITLE);
             payload = appendSitepackToAnswers(payload, { siteId, subfolderId });
             payload = withGeneralFormVisibility(payload, visibility, {
                 hasSiteContext: Boolean(siteId),
             });
 
-            if (persistedResponseId && !asNew) {
-                await api.put(`/forms/responses/${persistedResponseId}`, { answers: payload, category });
-            } else {
-                const formId = await getOrCreateTemplateForm("RAMS Briefing Form");
-                await api.post(`/forms/${formId}/responses`, {
-                    answers: payload,
-                    category,
-                });
-            }
+            const savedId = await saveGeneralFormResponse({
+                formTitle: FORM_TITLE,
+                persistedResponseId,
+                asNew,
+                payload,
+                category,
+            });
+            navigateAfterFirstSave(savedId, asNew);
 
             setFormMetadata({
                 name: name || formMetadata.name,
@@ -309,11 +316,17 @@ export default function RamsBriefingForm() {
                             "&:hover": { bgcolor: "#cc8b14", boxShadow: "none" } 
                         }}
                     >
-                        {downloading ? "Downloading PDF..." : (saving ? "Saving..." : "Save Form")}
+                        {templateSaveButtonLabel({ saving, downloading })}
                     </Button>
                 </Box>
                 )}
             </Box>
+
+            <GeneralFormTemplateInfoBanner
+                canEdit={canEdit}
+                isSitePackContext={isSitePackContext}
+                pdfLayout={pdfLayout}
+            />
 
             <Box sx={{ display: 'flex', flexWrap: { xs: 'wrap', md: 'nowrap' }, justifyContent: 'center', mb: 8, overflowX: "auto", px: { xs: 2, md: 0 } }}>
                 {/* Form Container */}

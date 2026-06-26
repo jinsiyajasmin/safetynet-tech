@@ -2,7 +2,6 @@ const crypto = require("node:crypto");
 const asyncHandler = require("express-async-handler");
 const prisma = require("../prismaClient");
 
-const MIN_SIGNATURES = 1;
 const MAX_SIGNATURES = 20;
 const MAX_LABEL_LENGTH = 200;
 const MAX_IMAGE_LENGTH = 800_000;
@@ -90,12 +89,6 @@ exports.syncSavedSignatures = asyncHandler(async (req, res) => {
     return res.status(400).json({
       success: false,
       message: "signatures must be an array",
-    });
-  }
-  if (signatures.length < MIN_SIGNATURES) {
-    return res.status(400).json({
-      success: false,
-      message: "At least one saved signature is required",
     });
   }
   if (signatures.length > MAX_SIGNATURES) {

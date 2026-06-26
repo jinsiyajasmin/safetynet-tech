@@ -1,56 +1,103 @@
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Box,
-  Typography,
   IconButton,
-  Avatar,
-  Drawer,
-  Button,
+  Menu,
+  MenuItem,
+  Typography,
   Divider,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText
+  Button,
 } from "@mui/material";
-import { LogOut, User, Settings, Menu } from "lucide-react";
-import NotificationsNoneOutlinedIcon from "@mui/icons-material/NotificationsNoneOutlined";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Settings, Menu as MenuIcon, PanelLeft, PanelLeftClose, Bell } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
-import { useAuth } from "../context/AuthContext";
-import { clearExpiryTimer } from "../utils/authSession";
+import {
+  fetchNotifications,
+  fetchUnreadNotificationCount,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from "../services/api";
 
-export default function TopNav({ pageTitle, onMobileMenuClick }) {
+const iconButtonSx = (isDarkMode) => ({
+  color: isDarkMode ? "#F9FAFB" : "#111827",
+  "&:hover": {
+    bgcolor: isDarkMode ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)",
+  },
+});
+
+export default function TopNav({
+  pageTitle,
+  onMobileMenuClick,
+  desktopSidebarOpen = true,
+  onDesktopSidebarToggle,
+}) {
   const { isDarkMode } = useTheme();
-  const location = useLocation();
-
-  // State for offcanvas
-  const [drawerOpen, setDrawerOpen] = React.useState(false);
   const navigate = useNavigate();
-  const { clearUser, currentUser } = useAuth();
+  const [notifAnchor, setNotifAnchor] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loadingNotifs, setLoadingNotifs] = useState(false);
 
-  // Get user from local storage
-  const getUser = () => {
+  const loadUnreadCount = useCallback(async () => {
     try {
-      const userStr = localStorage.getItem("user");
-      return userStr ? JSON.parse(userStr) : null;
-    } catch (e) {
-      return null;
+      const res = await fetchUnreadNotificationCount();
+      setUnreadCount(res?.count || 0);
+    } catch {
+      /* ignore polling errors */
+    }
+  }, []);
+
+  const loadNotifications = useCallback(async () => {
+    setLoadingNotifs(true);
+    try {
+      const res = await fetchNotifications(20);
+      setNotifications(res?.data || []);
+    } catch {
+      setNotifications([]);
+    } finally {
+      setLoadingNotifs(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadUnreadCount();
+    const interval = setInterval(loadUnreadCount, 60000);
+    return () => clearInterval(interval);
+  }, [loadUnreadCount]);
+
+  const openNotifications = async (event) => {
+    setNotifAnchor(event.currentTarget);
+    await loadNotifications();
+    await loadUnreadCount();
+  };
+
+  const closeNotifications = () => {
+    setNotifAnchor(null);
+  };
+
+  const handleNotificationClick = async (notification) => {
+    if (!notification.read) {
+      try {
+        await markNotificationRead(notification.id);
+      } catch {
+        /* ignore */
+      }
+    }
+    closeNotifications();
+    await loadUnreadCount();
+    if (notification.link) {
+      navigate(notification.link);
     }
   };
-  const user = currentUser || getUser();
 
-  const handleLogout = () => {
-    clearExpiryTimer();
-    clearUser();
-    navigate("/login", { replace: true });
-  };
-
-  // User initials
-  const getInitials = () => {
-    if (!user) return "?";
-    const first = user.firstName ? user.firstName.charAt(0).toUpperCase() : "";
-    const last = user.lastName ? user.lastName.charAt(0).toUpperCase() : "";
-    return first + last || user.username?.charAt(0).toUpperCase() || "U";
+  const handleMarkAllRead = async () => {
+    try {
+      await markAllNotificationsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch {
+      /* ignore */
+    }
   };
 
   return (
@@ -67,148 +114,128 @@ export default function TopNav({ pageTitle, onMobileMenuClick }) {
         borderBottom: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
       }}
     >
-      {/* LEFT: MENU ICON + PAGE TITLE */}
       <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
         <IconButton
           edge="start"
           color="inherit"
-          aria-label="menu"
+          aria-label="Open navigation menu"
           onClick={onMobileMenuClick}
-          sx={{ display: { md: "none" }, color: isDarkMode ? "#F9FAFB" : "#111827" }}
+          sx={{ display: { xs: "flex", md: "none" }, ...iconButtonSx(isDarkMode) }}
         >
-          <Menu />
+          <MenuIcon size={20} />
+        </IconButton>
+        {onDesktopSidebarToggle ? (
+          <IconButton
+            edge="start"
+            color="inherit"
+            aria-label={desktopSidebarOpen ? "Close sidebar" : "Open sidebar"}
+            onClick={onDesktopSidebarToggle}
+            sx={{ display: { xs: "none", md: "flex" }, ...iconButtonSx(isDarkMode) }}
+          >
+            {desktopSidebarOpen ? <PanelLeftClose size={20} /> : <PanelLeft size={20} />}
+          </IconButton>
+        ) : null}
+      </Box>
+
+      <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.5, md: 1 } }}>
+        <IconButton
+          aria-label="Notifications"
+          onClick={openNotifications}
+          sx={{ ...iconButtonSx(isDarkMode), position: "relative" }}
+        >
+          <Bell size={20} />
+          {unreadCount > 0 ? (
+            <Box
+              sx={{
+                position: "absolute",
+                top: 8,
+                right: 8,
+                width: 9,
+                height: 9,
+                borderRadius: "50%",
+                bgcolor: "#EF4444",
+                border: `2px solid ${isDarkMode ? "#111827" : "#FFFFFF"}`,
+              }}
+            />
+          ) : null}
+        </IconButton>
+        <IconButton
+          aria-label="Settings"
+          onClick={() => navigate("/account-settings")}
+          sx={iconButtonSx(isDarkMode)}
+        >
+          <Settings size={20} />
         </IconButton>
       </Box>
 
-      {/* RIGHT: AVATAR */}
-      <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1.5, md: 3 } }}>
-
-        {/* AVATAR */}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          {/* Avatar with ring */}
-          <Box
-            onClick={() => setDrawerOpen(true)}
-            sx={{
-              p: 0.25,
-              borderRadius: "50%",
-              background: "linear-gradient(135deg, #F59E0B 0%, #EAB308 100%)",
-              cursor: "pointer",
-            }}
-          >
-            <Avatar
-              sx={{
-                width: 38,
-                height: 38,
-                bgcolor: "#2563EB",
-                fontWeight: 700,
-                fontSize: "0.9rem",
-              }}
-            >
-              {getInitials()}
-            </Avatar>
-          </Box>
-        </Box>
-      </Box>
-
-      {/* OFFCANVAS DRAWER */}
-      <Drawer
-        anchor="right"
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+      <Menu
+        anchorEl={notifAnchor}
+        open={Boolean(notifAnchor)}
+        onClose={closeNotifications}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
         PaperProps={{
           sx: {
-            width: 320,
-            bgcolor: isDarkMode ? "#111827" : "#FFFFFF",
+            mt: 1,
+            minWidth: 320,
+            maxWidth: 380,
+            bgcolor: isDarkMode ? "#1F2937" : "#FFFFFF",
             color: isDarkMode ? "#F9FAFB" : "#111827",
-            p: 3,
-            pt: 6, // More space on top
-            borderLeft: isDarkMode ? "1px solid #374151" : "none"
-          }
+            border: isDarkMode ? "1px solid #374151" : "1px solid #E5E7EB",
+          },
         }}
       >
-        <Box sx={{ display: "flex", flexDirection: "column" }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 4 }}>
-            <Avatar
-              sx={{
-                width: 64,
-                height: 64,
-                fontSize: "1.5rem",
-                bgcolor: "#2563EB",
-                boxShadow: "0 4px 12px rgba(37, 99, 235, 0.4)"
-              }}
-            >
-              {getInitials()}
-            </Avatar>
-            <Box sx={{ display: "flex", flexDirection: "column" }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-                {user?.firstName} {user?.lastName}
-              </Typography>
-              <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280", fontSize: "0.85rem" }}>
-                {user?.email}
-              </Typography>
-            </Box>
-          </Box>
-
-          <Divider sx={{ mb: 2, borderColor: isDarkMode ? "#374151" : "#E5E7EB" }} />
-
-          <List sx={{ px: 0 }}>
-            <ListItem
-              button
-              onClick={() => { setDrawerOpen(false); navigate("/profile"); }}
-              sx={{
-                borderRadius: 0,
-                mb: 1,
-                color: isDarkMode ? "#F9FAFB" : "#374151",
-                "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" }
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 40, color: isDarkMode ? "#9CA3AF" : "#6B7280" }}>
-                <User size={20} />
-              </ListItemIcon>
-              <ListItemText primary="Profile" primaryTypographyProps={{ fontWeight: 500 }} />
-            </ListItem>
-
-            <ListItem
-              button
-              onClick={() => { setDrawerOpen(false); navigate("/account-settings"); }}
-              sx={{
-                borderRadius: 0,
-                mb: 1,
-                color: isDarkMode ? "#F9FAFB" : "#374151",
-                "&:hover": { bgcolor: isDarkMode ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)" }
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 40, color: isDarkMode ? "#9CA3AF" : "#6B7280" }}>
-                <Settings size={20} />
-              </ListItemIcon>
-              <ListItemText primary="Account Settings" primaryTypographyProps={{ fontWeight: 500 }} />
-            </ListItem>
-          </List>
-
-          <Box sx={{ mt: 6 }}>
-            <Button
-              fullWidth
-              variant="outlined"
-              color="error"
-              onClick={handleLogout}
-              startIcon={<LogOut size={18} />}
-              sx={{
-                borderRadius: 0,
-                textTransform: "none",
-                fontWeight: 600,
-                borderColor: isDarkMode ? "#EF4444" : "rgba(239, 68, 68, 0.5)",
-                color: "#EF4444",
-                "&:hover": {
-                  bgcolor: "rgba(239, 68, 68, 0.05)",
-                  borderColor: "#EF4444"
-                }
-              }}
-            >
-              Logout
+        <Box sx={{ px: 2, py: 1.25, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            Notifications
+          </Typography>
+          {unreadCount > 0 ? (
+            <Button size="small" onClick={handleMarkAllRead} sx={{ textTransform: "none", minWidth: 0 }}>
+              Mark all read
             </Button>
-          </Box>
+          ) : null}
         </Box>
-      </Drawer>
-    </Box >
+        <Divider />
+        {loadingNotifs ? (
+          <MenuItem disabled>
+            <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280" }}>
+              Loading…
+            </Typography>
+          </MenuItem>
+        ) : notifications.length === 0 ? (
+          <MenuItem disabled sx={{ opacity: 1 }}>
+            <Typography variant="body2" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280" }}>
+              No new notifications
+            </Typography>
+          </MenuItem>
+        ) : (
+          notifications.map((notification) => (
+            <MenuItem
+              key={notification.id}
+              onClick={() => handleNotificationClick(notification)}
+              sx={{
+                alignItems: "flex-start",
+                whiteSpace: "normal",
+                py: 1.25,
+                bgcolor: notification.read
+                  ? "transparent"
+                  : isDarkMode
+                    ? "rgba(239, 68, 68, 0.08)"
+                    : "rgba(239, 68, 68, 0.06)",
+              }}
+            >
+              <Box sx={{ width: "100%" }}>
+                <Typography variant="body2" sx={{ fontWeight: notification.read ? 500 : 700 }}>
+                  {notification.title}
+                </Typography>
+                <Typography variant="caption" sx={{ color: isDarkMode ? "#9CA3AF" : "#6B7280", display: "block", mt: 0.25 }}>
+                  {notification.message}
+                </Typography>
+              </Box>
+            </MenuItem>
+          ))
+        )}
+      </Menu>
+    </Box>
   );
 }

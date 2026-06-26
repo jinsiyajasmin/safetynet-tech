@@ -15,12 +15,10 @@ import {
   UserCog,
   FileText,
   Building2,
-  AlertTriangle,
-  Shield,
-  ClipboardCheck,
   ChevronDown,
   LayoutDashboard,
   TrendingUp,
+  ListChecks,
   Sun,
   Moon,
   PenLine,
@@ -30,6 +28,7 @@ import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 
 import { Link as RouterLink, useLocation } from "react-router-dom";
+import { MONITORING_SECTIONS } from "../constants/monitoringSections";
 
 /* === COLORS === */
 const ACTIVE_COLOR = "#1B212C";
@@ -47,11 +46,35 @@ const SUPERVISOR_PLUS = ["superadmin", "company_admin", "site_manager", "supervi
 const MENU_GROUPS = [
   {
     id: "dashboard",
-    pageKey: "dashboard",
     heading: "Dashboard",
     icon: <LayoutDashboard size={20} />,
-    to: "/dashboard",
     roles: ALL_ROLES,
+    items: [
+      {
+        id: "ohs-kpis",
+        pageKey: "dashboard",
+        label: "Occupational Health and Safety",
+        to: MONITORING_SECTIONS.ohs.dashboardPath,
+      },
+      {
+        id: "environmental-kpis",
+        pageKey: "dashboard",
+        label: "Environmental Management",
+        to: MONITORING_SECTIONS.environmental.dashboardPath,
+      },
+      {
+        id: "quality-kpis",
+        pageKey: "dashboard",
+        label: "Quality Management",
+        to: MONITORING_SECTIONS.quality.dashboardPath,
+      },
+      {
+        id: "food-safety",
+        pageKey: "dashboard",
+        label: "Food Safety Management",
+        to: MONITORING_SECTIONS["food-safety"].dashboardPath,
+      },
+    ],
   },
   {
     id: "clients",
@@ -78,14 +101,12 @@ const MENU_GROUPS = [
     roles: COMPANY_ADMINS,
   },
   {
-    id: "sites",
-    heading: "Sites",
-    icon: <Building2 size={20} />,
-    roles: ALL_ROLES,
-    items: [
-      { id: "create-sites", pageKey: "create-sites", label: "Create Sites", to: "/create-sites", roles: COMPANY_ADMINS },
-      { id: "sitepack-management", pageKey: "sitepack-management", label: "Sitepack Management", to: "/sitepack-management", roles: ALL_ROLES },
-    ],
+    id: "form-build",
+    pageKey: "forms",
+    heading: "Form Builder",
+    icon: <FileText size={20} />,
+    to: "/forms",
+    roles: SUPERVISOR_PLUS,
   },
   {
     id: "general-forms",
@@ -104,48 +125,54 @@ const MENU_GROUPS = [
     roles: ALL_ROLES,
   },
   {
-    id: "form-build",
-    pageKey: "forms",
-    heading: "Form Builder",
-    icon: <FileText size={20} />,
-    to: "/forms",
-    roles: SUPERVISOR_PLUS,
-  },
-  {
-    id: "report-concern",
-    heading: "Report concern",
-    icon: <AlertTriangle size={20} />,
+    id: "sites",
+    heading: "Sites",
+    icon: <Building2 size={20} />,
     roles: ALL_ROLES,
     items: [
-      { id: "health-safety", pageKey: "report-health-safety", label: "Health and Safety concern", to: "/report-health-safety" },
-      { id: "sustainability", pageKey: "report-environmental", label: "Sustainability concern", to: "/report-environmental" },
-      { id: "quality", pageKey: "report-quality", label: "Quality concern", to: "/report-quality" },
-      { id: "positive", pageKey: "report-positive", label: "Positive observation", to: "/report-positive" },
+      { id: "create-sites", pageKey: "create-sites", label: "Create Sites", to: "/create-sites", roles: COMPANY_ADMINS },
+      { id: "sitepack-management", pageKey: "sitepack-management", label: "Sitepack Management", to: "/sitepack-management", roles: ALL_ROLES },
     ],
   },
   {
-    id: "health-inspection",
-    heading: "Health and Safety inspection",
-    icon: <ClipboardCheck size={20} />,
+    id: "ohs-monitoring",
+    pageKey: "dashboard",
+    heading: "Occupational Health and Safety Monitoring",
+    icon: <TrendingUp size={20} />,
+    to: MONITORING_SECTIONS.ohs.basePath,
     roles: ALL_ROLES,
-    items: [
-      {
-        id: "weekly-supervisor",
-        pageKey: "weekly-supervisor",
-        label: "Weekly supervisor health & safety inspection",
-        to: "/weekly-supervisor",
-      },
-    ],
   },
   {
-    id: "sheq",
-    heading: "SHEQ Inspection service",
-    icon: <Shield size={20} />,
+    id: "environmental-monitoring",
+    pageKey: "dashboard",
+    heading: "Environmental Management Monitoring",
+    icon: <TrendingUp size={20} />,
+    to: MONITORING_SECTIONS.environmental.basePath,
     roles: ALL_ROLES,
-    items: [
-      { id: "sheq-inspection", pageKey: "sheq", label: "SHEQ service", to: "/sheq-inspection" },
-      { id: "shq-installation", pageKey: "shq-installation", label: "SHEQ Installation", to: "/shq-installation" },
-    ],
+  },
+  {
+    id: "quality-monitoring",
+    pageKey: "dashboard",
+    heading: "Quality Management Monitoring",
+    icon: <TrendingUp size={20} />,
+    to: MONITORING_SECTIONS.quality.basePath,
+    roles: ALL_ROLES,
+  },
+  {
+    id: "food-safety-monitoring",
+    pageKey: "dashboard",
+    heading: "Food Safety Management Monitoring",
+    icon: <TrendingUp size={20} />,
+    to: MONITORING_SECTIONS["food-safety"].basePath,
+    roles: ALL_ROLES,
+  },
+  {
+    id: "action-tracker",
+    pageKey: "action-tracker",
+    heading: "Action tracker",
+    icon: <ListChecks size={20} />,
+    to: "/action-tracker",
+    roles: ALL_ROLES,
   },
 ];
 
@@ -224,11 +251,20 @@ export default function Sidebar({ sx = {} }) {
 
 
   useEffect(() => {
+    const path = location.pathname || "";
+
     for (const group of MENU_GROUPS) {
       if (group.items?.some((item) => isActive(item.to))) {
         setOpenGroup(group.id);
         return;
       }
+      if (group.to && isActive(group.to)) {
+        setOpenGroup(group.id);
+        return;
+      }
+    }
+    if (path === "/dashboard" || path === "/concern-reports") {
+      setOpenGroup("dashboard");
     }
   }, [location.pathname]);
 
@@ -250,8 +286,6 @@ export default function Sidebar({ sx = {} }) {
     >
       {/* LOGO */}
       <Box
-        component={RouterLink}
-        to="/dashboard"
         sx={{
           p: 2,
           pb: 1.5,
@@ -259,21 +293,32 @@ export default function Sidebar({ sx = {} }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "flex-start",
-          textDecoration: "none",
         }}
       >
         <Box
-          component="img"
-          src={SIDEBAR_LOGO_SRC}
-          alt="Sitemate"
+          component={RouterLink}
+          to="/dashboard"
           sx={{
-            height: 72,
-            width: "auto",
-            maxWidth: "100%",
-            objectFit: "contain",
-            display: "block",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-start",
+            textDecoration: "none",
+            width: "100%",
           }}
-        />
+        >
+          <Box
+            component="img"
+            src={SIDEBAR_LOGO_SRC}
+            alt="Sitemate"
+            sx={{
+              height: 72,
+              width: "auto",
+              maxWidth: "100%",
+              objectFit: "contain",
+              display: "block",
+            }}
+          />
+        </Box>
       </Box>
 
       {/* MENU */}

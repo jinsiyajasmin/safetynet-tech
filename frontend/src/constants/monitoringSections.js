@@ -1,0 +1,54 @@
+export const MONITORING_SECTIONS = {
+  ohs: {
+    key: "ohs",
+    title: "Occupational Health and Safety Monitoring",
+    dashboardTitle: "Occupational Health and Safety",
+    dashboardSubtitle: "KPIs, forms completed, nonconformances, and SHEQ activity.",
+    subtitle: "Select a site to fill monitoring forms and review saved submissions.",
+    category: "Occupational Health and Safety Monitoring",
+    dashboardPath: "/dashboard/occupational-health-safety-kpis",
+    basePath: "/monitoring/ohs",
+  },
+  environmental: {
+    key: "environmental",
+    title: "Environmental Management Monitoring",
+    dashboardTitle: "Environmental Management",
+    dashboardSubtitle: "KPIs, forms completed, and sustainability reports.",
+    subtitle: "Select a site to fill monitoring forms and review saved submissions.",
+    category: "Environmental Management Monitoring",
+    dashboardPath: "/dashboard/environmental-management-kpis",
+    basePath: "/monitoring/environmental",
+  },
+  quality: {
+    key: "quality",
+    title: "Quality Management Monitoring",
+    dashboardTitle: "Quality Management",
+    dashboardSubtitle: "KPIs, forms completed, and quality reports.",
+    subtitle: "Select a site to fill monitoring forms and review saved submissions.",
+    category: "Quality Management Monitoring",
+    dashboardPath: "/dashboard/quality-management-kpis",
+    basePath: "/monitoring/quality",
+  },
+  "food-safety": {
+    key: "food-safety",
+    title: "Food Safety Management Monitoring",
+    dashboardTitle: "Food Safety Management",
+    dashboardSubtitle: "KPIs and food safety form activity.",
+    subtitle: "Select a site to fill monitoring forms and review saved submissions.",
+    category: "Food Safety Management Monitoring",
+    dashboardPath: "/dashboard/food-safety-management",
+    basePath: "/monitoring/food-safety",
+  },
+};
+
+export function getMonitoringSection(sectionKey) {
+  return MONITORING_SECTIONS[sectionKey] || null;
+}
+
+export const MONITORING_DASHBOARD_PATHS = Object.values(MONITORING_SECTIONS).map(
+  (s) => s.dashboardPath
+);
+
+export const MONITORING_FORMS_PATHS = Object.values(MONITORING_SECTIONS).map(
+  (s) => s.basePath
+);

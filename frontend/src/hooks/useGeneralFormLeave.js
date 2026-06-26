@@ -1,8 +1,13 @@
 import { useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAutoFormDirty } from "./useAutoFormDirty";
 import { useUnsavedFormGuard } from "./useUnsavedFormGuard.jsx";
 import { resolveSitepackModuleTitle } from "../utils/sitepackContext";
+import { monitoringFolderPath, monitoringSitePath } from "../utils/monitoringContext";
+import {
+    isTemplatesPageEditContext,
+    templatesPageListUrl,
+} from "../utils/templatePageContext";
 
 /**
  * Standard leave/save guard for general forms and site-pack form fills.
@@ -21,9 +26,19 @@ export function useGeneralFormLeave({
     onOpenSaveDialog,
 }) {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const monitoringSection = searchParams.get("monitoringSection");
     const leaveAfterSaveRef = useRef(false);
 
     const navigateBack = useCallback(() => {
+        if (monitoringSection && siteId) {
+            if (subfolderId) {
+                navigate(monitoringFolderPath(monitoringSection, siteId, subfolderId));
+            } else {
+                navigate(monitoringSitePath(monitoringSection, siteId));
+            }
+            return;
+        }
         if (siteId) {
             const state = {
                 siteId,
@@ -33,10 +48,12 @@ export function useGeneralFormLeave({
             navigate("/sitepack-management", { state });
         } else if (listPath) {
             navigate(listPath);
+        } else if (isTemplatesPageEditContext(searchParams)) {
+            navigate(templatesPageListUrl());
         } else {
             navigate("/general-forms");
         }
-    }, [navigate, siteId, subfolderId, category, listPath]);
+    }, [navigate, monitoringSection, siteId, subfolderId, category, listPath, searchParams]);
 
     const { isDirty, resetDirty } = useAutoFormDirty(watchDeps, { enabled, loading });
 

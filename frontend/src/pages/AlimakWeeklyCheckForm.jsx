@@ -21,7 +21,7 @@ import {
     appendSitepackToAnswers,
     resolveFormCategoryFromSearchParams,
 } from "../utils/sitepackContext";
-import { getOrCreateTemplateForm } from "../services/formUtils";
+import { saveGeneralFormResponse } from "../services/formUtils";
 import { downloadPdfFromRef } from "../utils/pdfGenerator";
 import { useGeneralFormTemplateAccess } from "../hooks/useGeneralFormTemplateAccess";
 import { useGeneralFormLeave } from "../hooks/useGeneralFormLeave";
@@ -33,6 +33,11 @@ import FormLogoHeaderColumn from "../components/FormLogoHeaderColumn";
 import { formHeaderCenterColumnSx } from "../components/FormDocumentHeader";
 import SaveChoiceDialog from "../components/SaveChoiceDialog";
 import GeneralFormSubmissionDeleteButton from "../components/GeneralFormSubmissionDeleteButton";
+import GeneralFormTemplateInfoBanner from "../components/GeneralFormTemplateInfoBanner";
+import { useGeneralFormSaveNavigate } from "../hooks/useGeneralFormSaveNavigate";
+import { appendTemplatesPageMetadata, templateSaveButtonLabel } from "../utils/templatePageContext";
+
+const FORM_BASE_PATH = "/general-forms/alimak-weekly-check";
 import SignatureCapture from "../components/SignatureCapture";
 
 const FORM_TITLE = "Alimak Weekly Check";
@@ -146,6 +151,7 @@ export default function AlimakWeeklyCheckForm() {
             persistedSubfolderId
         );
     const canFillFields = !contentReadOnly;
+    const navigateAfterFirstSave = useGeneralFormSaveNavigate(FORM_BASE_PATH);
 
     const performSave = async (
         asNew = false,
@@ -165,23 +171,20 @@ export default function AlimakWeeklyCheckForm() {
                 name: name || formMetadata.name,
                 tags: tags || formMetadata.tags,
             };
+            payload = appendTemplatesPageMetadata(payload, searchParams, FORM_TITLE);
             payload = appendSitepackToAnswers(payload, { siteId, subfolderId });
             payload = withGeneralFormVisibility(payload, visibility, {
                 hasSiteContext: Boolean(siteId),
             });
 
-            if (persistedResponseId && !asNew) {
-                await api.put(`/forms/responses/${persistedResponseId}`, {
-                    answers: payload,
-                    category,
-                });
-            } else {
-                const formId = await getOrCreateTemplateForm(FORM_TITLE);
-                await api.post(`/forms/${formId}/responses`, {
-                    answers: payload,
-                    category,
-                });
-            }
+            const savedId = await saveGeneralFormResponse({
+                formTitle: FORM_TITLE,
+                persistedResponseId,
+                asNew,
+                payload,
+                category,
+            });
+            navigateAfterFirstSave(savedId, asNew);
 
             setFormMetadata({
                 name: name || formMetadata.name,
@@ -454,15 +457,17 @@ export default function AlimakWeeklyCheckForm() {
                                 "&:hover": { bgcolor: "#cc8b14", boxShadow: "none" },
                             }}
                         >
-                            {downloading
-                                ? "Downloading PDF..."
-                                : saving
-                                  ? "Saving..."
-                                  : "Save Form"}
+                            {templateSaveButtonLabel({ saving, downloading })}
                         </Button>
                     </Box>
                 )}
             </Box>
+
+            <GeneralFormTemplateInfoBanner
+                canEdit={canEdit}
+                isSitePackContext={Boolean(siteId)}
+                pdfLayout={pdfLayout}
+            />
 
             <Box
                 sx={{
