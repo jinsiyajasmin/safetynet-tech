@@ -6,6 +6,7 @@ import { ThemeProvider, CssBaseline } from "@mui/material";
 import { BrowserRouter } from "react-router-dom";
 import theme from './Theme.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
+import { NotificationProvider } from './context/NotificationContext.jsx';
 import SessionManager from './components/SessionManager.jsx';
 
 const routerBasename =
@@ -18,9 +19,11 @@ createRoot(document.getElementById('root')).render(
     <ThemeProvider theme={theme}>
       <BrowserRouter basename={routerBasename}>
         <AuthProvider>
-          <SessionManager />
-          <CssBaseline /> {/* resets default browser styles */}
-          <App />
+          <NotificationProvider>
+            <SessionManager />
+            <CssBaseline /> {/* resets default browser styles */}
+            <App />
+          </NotificationProvider>
         </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>

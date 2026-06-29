@@ -19,7 +19,24 @@ function matchesSitepackScope(record, { siteId, subfolderId }) {
   return !rSubfolderId;
 }
 
+function buildSitepackScopeWhere({ siteId, subfolderId }) {
+  const wantSite = normalizeSitepackId(siteId);
+  const wantSubfolder = normalizeSitepackId(subfolderId);
+  if (!wantSite && !wantSubfolder) return null;
+
+  const clauses = [];
+  if (wantSite) {
+    clauses.push({ answers: { path: ["siteId"], equals: wantSite } });
+  }
+  if (wantSubfolder) {
+    clauses.push({ answers: { path: ["subfolderId"], equals: wantSubfolder } });
+  }
+  if (clauses.length === 1) return clauses[0];
+  return { AND: clauses };
+}
+
 module.exports = {
   normalizeSitepackId,
   matchesSitepackScope,
+  buildSitepackScopeWhere,
 };

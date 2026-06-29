@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Box,
   IconButton,
@@ -11,12 +11,7 @@ import {
 import { Settings, Menu as MenuIcon, PanelLeft, PanelLeftClose, Bell } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
-import {
-  fetchNotifications,
-  fetchUnreadNotificationCount,
-  markAllNotificationsRead,
-  markNotificationRead,
-} from "../services/api";
+import { useNotifications } from "../context/NotificationContext";
 
 const iconButtonSx = (isDarkMode) => ({
   color: isDarkMode ? "#F9FAFB" : "#111827",
@@ -34,41 +29,20 @@ export default function TopNav({
   const { isDarkMode } = useTheme();
   const navigate = useNavigate();
   const [notifAnchor, setNotifAnchor] = useState(null);
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loadingNotifs, setLoadingNotifs] = useState(false);
-
-  const loadUnreadCount = useCallback(async () => {
-    try {
-      const res = await fetchUnreadNotificationCount();
-      setUnreadCount(res?.count || 0);
-    } catch {
-      /* ignore polling errors */
-    }
-  }, []);
-
-  const loadNotifications = useCallback(async () => {
-    setLoadingNotifs(true);
-    try {
-      const res = await fetchNotifications(20);
-      setNotifications(res?.data || []);
-    } catch {
-      setNotifications([]);
-    } finally {
-      setLoadingNotifs(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadUnreadCount();
-    const interval = setInterval(loadUnreadCount, 60000);
-    return () => clearInterval(interval);
-  }, [loadUnreadCount]);
+  const {
+    unreadCount,
+    notifications,
+    loadingNotifs,
+    refreshUnreadCount,
+    loadNotifications,
+    markNotificationRead,
+    markAllNotificationsRead,
+  } = useNotifications();
 
   const openNotifications = async (event) => {
     setNotifAnchor(event.currentTarget);
     await loadNotifications();
-    await loadUnreadCount();
+    await refreshUnreadCount(true);
   };
 
   const closeNotifications = () => {
@@ -76,27 +50,11 @@ export default function TopNav({
   };
 
   const handleNotificationClick = async (notification) => {
-    if (!notification.read) {
-      try {
-        await markNotificationRead(notification.id);
-      } catch {
-        /* ignore */
-      }
-    }
+    await markNotificationRead(notification);
     closeNotifications();
-    await loadUnreadCount();
+    await refreshUnreadCount(true);
     if (notification.link) {
       navigate(notification.link);
-    }
-  };
-
-  const handleMarkAllRead = async () => {
-    try {
-      await markAllNotificationsRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-      setUnreadCount(0);
-    } catch {
-      /* ignore */
     }
   };
 
@@ -190,7 +148,11 @@ export default function TopNav({
             Notifications
           </Typography>
           {unreadCount > 0 ? (
-            <Button size="small" onClick={handleMarkAllRead} sx={{ textTransform: "none", minWidth: 0 }}>
+            <Button
+              size="small"
+              onClick={markAllNotificationsRead}
+              sx={{ textTransform: "none", minWidth: 0 }}
+            >
               Mark all read
             </Button>
           ) : null}

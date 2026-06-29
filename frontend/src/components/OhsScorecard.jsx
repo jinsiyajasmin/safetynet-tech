@@ -1,0 +1,212 @@
+import React, { useMemo } from "react";
+import { Box } from "@mui/material";
+import { Shield } from "lucide-react";
+import { DASHBOARD_THEME } from "./dashboard/dashboardUi";
+import KpiStatusBadge, { kpiStatusCellStyle } from "./dashboard/KpiStatusBadge";
+import {
+  buildScorecardRows,
+  scorecardVarianceStatus,
+} from "../utils/ohsDashboardUtils";
+
+const T = DASHBOARD_THEME;
+
+const thStyle = {
+  padding: "10px 12px",
+  textAlign: "left",
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: "#fff",
+  background: "#111827",
+  borderRight: "1px solid #374151",
+  whiteSpace: "nowrap",
+};
+
+const tdStyle = {
+  padding: 0,
+  borderRight: "1px solid #d1d5db",
+  borderBottom: "1px solid #d1d5db",
+  verticalAlign: "middle",
+};
+
+function cellInputStyle({ editable, tone }) {
+  const toneStyles = {
+    target: { bg: "#fffbeb", color: "#c2410c", fontWeight: 600 },
+    actual: { bg: "#eff6ff", color: "#1d4ed8", fontWeight: 600 },
+    default: { bg: "#fff", color: T.ink, fontWeight: 400 },
+    readonly: { bg: "#f9fafb", color: T.inkMid, fontWeight: 500 },
+  };
+  const t = toneStyles[tone] || toneStyles.default;
+
+  return {
+    width: "100%",
+    border: "none",
+    outline: "none",
+    background: t.bg,
+    fontFamily: "inherit",
+    fontSize: 13,
+    fontWeight: t.fontWeight,
+    padding: "10px 12px",
+    boxSizing: "border-box",
+    color: t.color,
+    cursor: editable ? "text" : "default",
+  };
+}
+
+function ScorecardCell({ value, onChange, placeholder, editable = true, tone = "default", align = "left" }) {
+  return (
+    <input
+      type="text"
+      value={value}
+      onChange={(e) => onChange?.(e.target.value)}
+      placeholder={placeholder}
+      readOnly={!editable}
+      style={{ ...cellInputStyle({ editable, tone }), textAlign: align }}
+    />
+  );
+}
+
+export default function OhsScorecard({ statRows, targets, onUpdateTarget }) {
+  const rows = useMemo(() => buildScorecardRows(statRows, targets), [statRows, targets]);
+
+  return (
+    <Box sx={{ mb: 3 }}>
+      <Box
+        sx={{
+          borderRadius: "8px 8px 0 0",
+          overflow: "hidden",
+          border: "1px solid #86efac",
+          borderBottom: "none",
+        }}
+      >
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            px: 2,
+            py: 1.25,
+            bgcolor: "#16a34a",
+            color: "#fff",
+          }}
+        >
+          <Shield size={18} strokeWidth={2.5} />
+          <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.06em" }}>
+            OCCUPATIONAL HEALTH AND SAFETY SCORECARD
+          </span>
+        </Box>
+      </Box>
+
+      <Box
+        sx={{
+          overflowX: "auto",
+          border: "1px solid #d1d5db",
+          borderRadius: "0 0 8px 8px",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+        }}
+      >
+        {rows.length === 0 ? (
+          <Box sx={{ p: 3, bgcolor: "#fff", textAlign: "center" }}>
+            <p style={{ margin: 0, fontSize: 13, color: T.inkMid }}>
+              Add an indicator and monthly values above to generate the scorecard.
+            </p>
+          </Box>
+        ) : (
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              minWidth: 860,
+              background: "#fff",
+            }}
+          >
+            <thead>
+              <tr>
+                <th style={thStyle}>Indicator</th>
+                <th style={{ ...thStyle, width: 120, textAlign: "right" }}>Target</th>
+                <th style={{ ...thStyle, width: 120, textAlign: "right" }}>Actual (YTD)</th>
+                <th style={{ ...thStyle, width: 110 }}>Unit</th>
+                <th style={{ ...thStyle, width: 110, textAlign: "right" }}>Variance</th>
+                <th style={{ ...thStyle, width: 120, borderRight: "none" }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+            {rows.map((row, index) => {
+              const { style: v, status } = scorecardVarianceStatus(
+                row.target,
+                row.actual,
+                row.lowerBetter
+              );
+              const rowBg = index % 2 === 0 ? "#fff" : "#fafaf8";
+
+                return (
+                  <tr key={row.id} style={{ background: rowBg }}>
+                    <td style={tdStyle}>
+                      <ScorecardCell
+                        value={row.indicator}
+                        editable={false}
+                        tone="readonly"
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <ScorecardCell
+                        value={row.target}
+                        onChange={(val) => onUpdateTarget(row.id, "target", val)}
+                        placeholder="0"
+                        editable
+                        tone="target"
+                        align="right"
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <ScorecardCell
+                        value={row.actual}
+                        editable={false}
+                        tone="actual"
+                        align="right"
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <ScorecardCell
+                        value={row.unit}
+                        onChange={(val) => onUpdateTarget(row.id, "unit", val)}
+                        placeholder="Unit"
+                        editable
+                        tone="readonly"
+                      />
+                    </td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        background: v.bg,
+                        textAlign: "right",
+                        fontWeight: 700,
+                        fontSize: 13,
+                        color: v.color,
+                        padding: "10px 12px",
+                      }}
+                    >
+                      {v.label}
+                    </td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        borderRight: "none",
+                        textAlign: "center",
+                        padding: "10px 8px",
+                        ...kpiStatusCellStyle(status, rowBg),
+                      }}
+                    >
+                      <KpiStatusBadge status={status} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </Box>
+    </Box>
+  );
+}

@@ -23,6 +23,8 @@ import {
   ListOrdered,
 } from "lucide-react";
 import { fetchSectionDashboardStats } from "../services/api";
+import { fetchWithCache } from "../utils/fetchCache";
+import { useAuth } from "../context/AuthContext";
 import {
   DASHBOARD_THEME,
   DashboardCard,
@@ -77,6 +79,7 @@ function sectionStatCards(sectionKey, stats) {
 }
 
 export default function MonitoringDashboardOverview({ sectionKey }) {
+  const { currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -86,7 +89,11 @@ export default function MonitoringDashboardOverview({ sectionKey }) {
     let cancelled = false;
     setLoading(true);
     setError("");
-    fetchSectionDashboardStats(sectionKey)
+    const scopeKey =
+      currentUser?.actingClientId || currentUser?.clientId || currentUser?.id || "anon";
+    fetchWithCache(`section-dashboard:${sectionKey}:${scopeKey}`, () =>
+      fetchSectionDashboardStats(sectionKey)
+    )
       .then((payload) => {
         if (cancelled) return;
         if (payload?.success) {
@@ -105,7 +112,7 @@ export default function MonitoringDashboardOverview({ sectionKey }) {
     return () => {
       cancelled = true;
     };
-  }, [sectionKey]);
+  }, [sectionKey, currentUser?.actingClientId, currentUser?.clientId, currentUser?.id]);
 
   const cards = useMemo(
     () => sectionStatCards(sectionKey, data?.stats),

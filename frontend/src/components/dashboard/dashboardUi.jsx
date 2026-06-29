@@ -164,9 +164,14 @@ export function DashboardChartTooltip({ active, payload, label }) {
   );
 }
 
-export function DashboardChartBox({ height, children }) {
+export function DashboardChartBox({ height, children, pdfChart = false }) {
   return (
-    <div style={{ width: "100%", minWidth: 0, height, position: "relative" }}>{children}</div>
+    <div
+      data-pdf-chart={pdfChart ? true : undefined}
+      style={{ width: "100%", minWidth: 0, height, position: "relative" }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -174,6 +179,7 @@ export function DashboardMiniStat({ label, value, loading, tone = "neutral" }) {
   const tones = {
     blue: { border: `${T.blue}33`, bg: "#eff6ff", label: T.blue },
     green: { border: "#bbf7d0", bg: "#f0fdf4", label: "#16a34a" },
+    red: { border: "#fecaca", bg: "#fef2f2", label: "#dc2626" },
     neutral: { border: T.border, bg: "#fafaf8", label: T.inkFaint },
     brand: { border: "#fde68a", bg: "#fff8eb", label: T.brand },
   };

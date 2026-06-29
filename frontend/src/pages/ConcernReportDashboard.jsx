@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import Layout from "../components/Layout";
 import PageContent from "../components/PageContent";
 import { fetchDashboardStats } from "../services/api";
+import { fetchWithCache } from "../utils/fetchCache";
 import {
     AreaChart,
     Area,
@@ -296,7 +297,7 @@ export default function ConcernReportDashboard({ section = "default" }) {
     useEffect(() => {
         setLoading(true);
         setError("");
-        fetchDashboardStats()
+        fetchWithCache(`main-dashboard:${currentUser?.id || "anon"}`, () => fetchDashboardStats())
             .then((payload) => {
                 if (payload?.success) {
                     const next = {

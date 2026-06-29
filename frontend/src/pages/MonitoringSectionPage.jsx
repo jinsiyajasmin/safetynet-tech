@@ -76,6 +76,7 @@ import {
 } from "../utils/monitoringContext";
 import { formatUserDisplayName } from "../utils/plainName";
 import { isGeneralFormsPageSubmission } from "../utils/generalFormSubmissions";
+import { fetchWithCache } from "../utils/fetchCache";
 
 const ROWS_PER_PAGE_OPTIONS = [5, 10, 25];
 const TEMPLATE_TAB_LIBRARY = "library";
@@ -153,7 +154,9 @@ export default function MonitoringSectionPage({ section: sectionKey }) {
   const loadSites = useCallback(async () => {
     setLoadingSites(true);
     try {
-      const data = await fetchSites(siteSearch);
+      const data = await fetchWithCache("monitoring-sites", () => fetchSites(""), {
+        ttlMs: 120_000,
+      });
       setSites((data || []).filter((site) => site.isActive !== false));
     } catch (error) {
       console.error("Failed to load sites", error);
@@ -165,7 +168,7 @@ export default function MonitoringSectionPage({ section: sectionKey }) {
     } finally {
       setLoadingSites(false);
     }
-  }, [siteSearch]);
+  }, []);
 
   const loadFolders = useCallback(async (siteId) => {
     if (!siteId) return;
@@ -229,13 +232,16 @@ export default function MonitoringSectionPage({ section: sectionKey }) {
       setSubmissions([]);
       return;
     }
+    loadFolders(routeSiteId);
+  }, [routeSiteId, loadFolders]);
+
+  useEffect(() => {
+    if (!routeSiteId) return;
+    if (loadingSites) return;
     const match = sites.find((site) => getSiteId(site) === routeSiteId);
     if (match) setSelectedSite(match);
-    else if (!loadingSites) {
-      setSelectedSite({ id: routeSiteId, _id: routeSiteId, name: "Site" });
-    }
-    loadFolders(routeSiteId);
-  }, [routeSiteId, sites, loadingSites, loadFolders]);
+    else setSelectedSite({ id: routeSiteId, _id: routeSiteId, name: "Site" });
+  }, [routeSiteId, sites, loadingSites]);
 
   useEffect(() => {
     if (!routeSiteId || !routeFolderId) {
@@ -243,13 +249,15 @@ export default function MonitoringSectionPage({ section: sectionKey }) {
       setSubmissions([]);
       return;
     }
+    loadSubmissions(routeSiteId, routeFolderId);
+  }, [routeSiteId, routeFolderId, loadSubmissions]);
+
+  useEffect(() => {
+    if (!routeFolderId || loadingFolders) return;
     const match = folders.find((folder) => folder.id === routeFolderId);
     if (match) setSelectedFolder(match);
-    else if (!loadingFolders) {
-      setSelectedFolder({ id: routeFolderId, name: "Folder" });
-    }
-    loadSubmissions(routeSiteId, routeFolderId);
-  }, [routeSiteId, routeFolderId, folders, loadingFolders, loadSubmissions]);
+    else setSelectedFolder({ id: routeFolderId, name: "Folder" });
+  }, [routeFolderId, folders, loadingFolders]);
 
   const filteredSites = useMemo(() => {
     const q = siteSearch.trim().toLowerCase();

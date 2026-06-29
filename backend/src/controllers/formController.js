@@ -13,7 +13,7 @@ const {
   sanitizeVisibilityOnSave,
   isSheqCategory,
 } = require("../utils/generalFormVisibility");
-const { matchesSitepackScope } = require("../utils/sitepackScope");
+const { buildSitepackScopeWhere } = require("../utils/sitepackScope");
 const {
   compactFormResponseRow,
   isCompactListRequest,
@@ -353,11 +353,6 @@ exports.getAllResponses = async (req, res) => {
       actingClientId,
       readScope
     );
-    const categoryWhere = buildCategoryWhere(req.query.category);
-    const where = categoryWhere
-      ? { AND: [companyWhere, categoryWhere] }
-      : companyWhere;
-
     const querySiteId =
       req.query.siteId && !["null", "undefined"].includes(String(req.query.siteId).trim())
         ? String(req.query.siteId).trim()
@@ -367,8 +362,19 @@ exports.getAllResponses = async (req, res) => {
       !["null", "undefined"].includes(String(req.query.subfolderId).trim())
         ? String(req.query.subfolderId).trim()
         : null;
+    const categoryWhere = buildCategoryWhere(req.query.category);
+    const sitepackWhere = buildSitepackScopeWhere({
+      siteId: querySiteId,
+      subfolderId: querySubfolderId,
+    });
 
-    let responses = await prisma.formResponse.findMany({
+    const scopeClauses = [companyWhere];
+    if (categoryWhere) scopeClauses.push(categoryWhere);
+    if (sitepackWhere) scopeClauses.push(sitepackWhere);
+    const where =
+      scopeClauses.length === 1 ? scopeClauses[0] : { AND: scopeClauses };
+
+    const responses = await prisma.formResponse.findMany({
       where,
       orderBy: { createdAt: "desc" },
       include: {
@@ -378,15 +384,6 @@ exports.getAllResponses = async (req, res) => {
         },
       },
     });
-
-    if (querySiteId || querySubfolderId) {
-      responses = responses.filter((row) =>
-        matchesSitepackScope(row, {
-          siteId: querySiteId,
-          subfolderId: querySubfolderId,
-        })
-      );
-    }
 
     const visible = responses.filter((row) =>
       canViewFormResponse(row, userId, clientId, readScope)

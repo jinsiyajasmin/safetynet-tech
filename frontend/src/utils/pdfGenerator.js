@@ -45,19 +45,31 @@ async function mapWithConcurrency(items, mapper, concurrency = 2) {
 }
 
 function waitForChart(root, timeoutMs = 2000) {
-    const chartRoot = root?.querySelector?.("[data-pdf-chart]");
-    if (!chartRoot) return Promise.resolve();
+    const chartRoots = root?.querySelectorAll?.("[data-pdf-chart]");
+    const roots =
+        chartRoots && chartRoots.length > 0
+            ? Array.from(chartRoots)
+            : root?.querySelector?.("[data-pdf-chart]")
+              ? [root.querySelector("[data-pdf-chart]")]
+              : [];
+
+    if (roots.length === 0) return Promise.resolve();
+
+    const chartSvgReady = (svg) =>
+        svg &&
+        (svg.querySelector(".recharts-bar-rectangle") ||
+            svg.querySelector("path.recharts-rectangle") ||
+            svg.querySelector(".recharts-layer.recharts-bar") ||
+            svg.querySelector("path.recharts-curve") ||
+            svg.querySelector(".recharts-line-curve") ||
+            svg.querySelector(".recharts-pie-sector") ||
+            svg.querySelector("path.recharts-sector"));
 
     const started = Date.now();
     return new Promise((resolve) => {
         const tick = () => {
-            const svg = chartRoot.querySelector("svg");
-            const hasBars =
-                svg &&
-                (svg.querySelector(".recharts-bar-rectangle") ||
-                    svg.querySelector("path.recharts-rectangle") ||
-                    svg.querySelector(".recharts-layer.recharts-bar"));
-            if (hasBars || Date.now() - started >= timeoutMs) {
+            const ready = roots.every((chartRoot) => chartSvgReady(chartRoot.querySelector("svg")));
+            if (ready || Date.now() - started >= timeoutMs) {
                 resolve();
                 return;
             }

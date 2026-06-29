@@ -3,6 +3,10 @@ import { Typography } from "@mui/material";
 import Layout from "../components/Layout";
 import PageContent from "../components/PageContent";
 import MonitoringDashboardOverview from "../components/MonitoringDashboardOverview";
+import OhsDashboard from "../components/OhsDashboard";
+import EnvironmentalDashboard from "../components/EnvironmentalDashboard";
+import QualityDashboard from "../components/QualityDashboard";
+import FoodSafetyDashboard from "../components/FoodSafetyDashboard";
 import { DASHBOARD_THEME } from "../components/dashboard/dashboardUi";
 import { getMonitoringSection } from "../constants/monitoringSections";
 
@@ -49,7 +53,17 @@ export default function MonitoringSectionDashboardPage({ section: sectionKey }) 
             </p>
           </div>
 
-          <MonitoringDashboardOverview sectionKey={sectionKey} />
+          {sectionKey === "ohs" ? (
+            <OhsDashboard />
+          ) : sectionKey === "environmental" ? (
+            <EnvironmentalDashboard />
+          ) : sectionKey === "quality" ? (
+            <QualityDashboard />
+          ) : sectionKey === "food-safety" ? (
+            <FoodSafetyDashboard />
+          ) : (
+            <MonitoringDashboardOverview sectionKey={sectionKey} />
+          )}
         </PageContent>
       </div>
     </Layout>

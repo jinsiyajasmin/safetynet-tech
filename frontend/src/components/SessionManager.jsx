@@ -49,13 +49,21 @@ export default function SessionManager() {
   }, [refreshUser]);
 
   useEffect(() => {
-    const syncProfile = () => {
+    const lastSyncRef = { at: 0 };
+    const MIN_SYNC_MS = 60_000;
+
+    const syncProfile = (force = false) => {
       const token = getStoredToken();
       if (!token) return;
       if (isTokenExpired(token)) {
         handleSessionExpired("expired");
         return;
       }
+
+      const now = Date.now();
+      if (!force && now - lastSyncRef.at < MIN_SYNC_MS) return;
+      lastSyncRef.at = now;
+
       scheduleTokenExpiryLogout(token);
       refreshUserFromServer();
     };
@@ -64,16 +72,18 @@ export default function SessionManager() {
       if (document.visibilityState === "visible") syncProfile();
     };
 
-    syncProfile();
+    const onFocus = () => syncProfile();
+
+    syncProfile(true);
     const intervalId = setInterval(() => {
       if (document.visibilityState === "visible") syncProfile();
     }, 90_000);
 
-    window.addEventListener("focus", syncProfile);
+    window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       clearInterval(intervalId);
-      window.removeEventListener("focus", syncProfile);
+      window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [refreshUserFromServer]);
